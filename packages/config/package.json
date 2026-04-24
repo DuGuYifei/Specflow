@@ -1,0 +1,14 @@
+{
+  "name": "@specflow/config",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "build": "echo 'config package has no build output in phase-0'",
+    "lint": "echo 'config package lint placeholder'",
+    "typecheck": "echo 'config package typecheck placeholder'",
+    "test": "echo 'config package test placeholder'",
+    "clean": "echo 'config package clean placeholder'"
+  }
+}

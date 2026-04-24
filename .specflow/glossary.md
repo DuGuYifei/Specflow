@@ -1,0 +1,21 @@
+# Glossary
+
+- **Specflow:** Product implementing Continuous Coding workflows.
+- **Continuous Coding:** Pre-CI workflow discipline for structured implementation generation and verification.
+- **Ticket:** Input work item that starts a workflow.
+- **Spec:** Structured implementation intent derived from ticket context.
+- **Workflow:** Directed graph of implementation and review nodes.
+- **Node:** Unit of work in the workflow graph.
+- **Edge:** Relationship between nodes.
+- **Control Flow Edge:** Defines execution order.
+- **Data Flow Edge:** Moves artifacts/context between nodes.
+- **Review Loop Edge:** Encodes verifier/reviewer feedback cycles.
+- **Reviewer:** Node role responsible for evaluating outputs.
+- **Verifier:** Node role ensuring requirements/policies are met.
+- **Implementation Reviewer:** Reviewer node focused on implementation quality and constraints.
+- **Visual Decomposer:** Future-facing node for UI-aware decomposition.
+- **Visual Verifier:** Future-facing node for UI-aware verification.
+- **Repair Loop:** Iterative correction cycle after review findings.
+- **Code Draft:** Draft implementation output before final patch.
+- **Final Patch:** Review-accepted output ready to enter CI.
+- **CC-CI-CD:** Continuous Coding, Continuous Integration, Continuous Delivery chain.
