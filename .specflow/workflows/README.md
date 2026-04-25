@@ -1,16 +1,11 @@
-# Workflow 规则目录
+# Workflow 状态目录
 
-这个目录记录当前仓库应被 Specflow runtime 和 AI agent 遵守的 workflow 事实与规则。
+这个目录只记录当前仓库的 workflow 生效状态和边界。
 
-这里不放完整产品路线图，也不放长篇阶段规划。完整阶段路线在 `docs/product/roadmap.md`。
+完整阶段路线见 `docs/product/roadmap.md`。
 
-放在这里的内容应该满足：
+当前阶段细节见 `docs/product/phases/phase-0-foundation.md`。
 
-- 当前有效
-- 简短明确
-- 可被 agent 稳定读取
-- 描述 workflow 节点、边、约束或运行边界
+后续阶段说明见 `docs/product/phases/`。
 
-如果某个内容是在解释为什么这么设计，应该放到 `docs/`。
-
-如果某个内容是在描述当前 workflow 应该怎么被理解或遵守，才放到 `.specflow/workflows/`。
+不要在这里重复产品路线、阶段解释或长篇设计背景。

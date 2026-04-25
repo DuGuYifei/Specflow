@@ -1,19 +1,22 @@
-# 当前 workflow 意图
+# Phase 0 Workflow 状态
 
-当前静态 workflow 意图是：
+当前阶段：Phase 0，仓库基础。
 
-```txt
-ticket -> interview -> plan -> code draft -> implementation review -> repair loop -> final patch
-```
+当前 workflow runtime：未实现。
 
-这是当前仓库用于 CLI、UI 静态面板和 AI 阅读的 workflow 意图，不是完整 workflow runtime。
+当前 UI workflow graph：静态占位。
 
-完整产品阶段路线见 `docs/product/roadmap.md`。本文件只记录当前应被遵守的 workflow 事实。
+当前 CLI workflow 命令：只做静态 graph validation。
 
-当前边语义：
+当前边界：
 
-- control flow：执行顺序
-- data flow：artifact 或上下文移动
-- review loop：reviewer/verifier 反馈循环
+- 不执行真实 agent。
+- 不编排真实 workflow。
+- 不产生 workflow run。
+- 不产生 artifact。
+- 不执行 repair loop。
+- 不连接本地 UI 与 runtime。
 
-当前不执行真实 agent，不编排真实 workflow，不连接本地 UI 与 runtime。
+Phase 0 说明见 `docs/product/phases/phase-0-foundation.md`。
+
+完整阶段路线见 `docs/product/roadmap.md`。
