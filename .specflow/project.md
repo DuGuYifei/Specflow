@@ -4,9 +4,9 @@
 
 产品类别：本地优先的持续编码平台。
 
-当前阶段：Phase 0，仓库基础。
+当前阶段：Phase 0 已收尾，准备进入 Phase 1 本地最小闭环。
 
-当前目标：提供 AI 友好的 local-first/package-first 工程骨架。
+当前目标：在已完成的 local-first/package-first 工程骨架上，实现第一个本地持续编码闭环。
 
 当前工程入口：`apps/cli`。
 

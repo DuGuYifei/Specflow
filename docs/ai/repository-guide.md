@@ -44,10 +44,10 @@ shell 激活 mise 后，直接运行 `pnpm ...`。不要在普通文档中要求
 
 ## 当前边界
 
-- 当前仍处于 Phase 0。
-- `packages/runtime` 目前只有 graph contract、validation helper 和占位执行。
+- Phase 0 仓库基础已经收尾，后续工作从 Phase 1 本地最小闭环开始。
+- 当前代码仍只有 Phase 0 能力：`packages/runtime` 目前只有 graph contract、validation helper 和占位执行。
 - CLI 目前只支持静态 graph validation，不创建真实 workflow run。
-- 当前没有 artifact 记录、agent execution 或 repair loop。
+- Phase 1 可以开始实现 artifact 记录、agent execution 和 repair loop，但这些能力当前还不存在。
 - 不实现真实 agent。
 - 不集成真实 Codex 调用。
 - 不实现生产级 workflow 编排。

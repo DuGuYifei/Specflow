@@ -1,6 +1,6 @@
 # Phase 0 Workflow 状态
 
-当前阶段：Phase 0，仓库基础。
+Phase 0 完成度: 已完成。
 
 当前 workflow runtime：未实现。
 
