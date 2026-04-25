@@ -20,30 +20,71 @@ Phase 0 intentionally focuses on boundaries, conventions, and deterministic tool
 
 ## Toolchain requirements
 
-- Node.js: `24.15.0`
-- pnpm: `10.33.2`
+- Node.js: see `.mise.toml`
+- pnpm: see `.mise.toml`
 - Local toolchain manager: `mise`
 
-Tool versions are locked in `.mise.toml` and mirrored in root `package.json`.
+Tool versions are locked in `.mise.toml` and mirrored in root `package.json` / CI.
+
+## 安装 mise
+
+```bash
+curl https://mise.run | sh
+```
+
+## 可选：自动激活 mise（推荐）
+
+如果你启用了自动激活，以后就不需要每条命令都加 `mise exec --` 前缀。
+
+### Linux / Bash
+
+```bash
+echo 'eval "$(mise activate bash)"' >> ~/.bashrc
+source ~/.bashrc
+```
+
+### macOS / Zsh（默认）
+
+```bash
+echo 'eval "$(mise activate zsh)"' >> ~/.zshrc
+source ~/.zshrc
+```
 
 ## Getting started
 
 ```bash
 mise install
-mise exec -- pnpm install
-mise exec -- pnpm lint
-mise exec -- pnpm typecheck
-mise exec -- pnpm test
-mise exec -- pnpm build
+
+# mise exec -- pnpm install
+pnpm install
+
+# mise exec -- pnpm lint
+pnpm lint
+
+# mise exec -- pnpm typecheck
+pnpm typecheck
+
+# mise exec -- pnpm test
+pnpm test
+
+# mise exec -- pnpm build
+pnpm build
 ```
 
 ## Common commands
 
 ```bash
-mise exec -- pnpm --filter @specflow/cli specflow --help
-mise exec -- pnpm --filter @specflow/cli specflow doctor
-mise exec -- pnpm --filter @specflow/server dev
-mise exec -- pnpm --filter @specflow/web build
+# mise exec -- pnpm --filter @specflow/cli specflow --help
+pnpm --filter @specflow/cli specflow --help
+
+# mise exec -- pnpm --filter @specflow/cli specflow doctor
+pnpm --filter @specflow/cli specflow doctor
+
+# mise exec -- pnpm --filter @specflow/server dev
+pnpm --filter @specflow/server dev
+
+# mise exec -- pnpm --filter @specflow/web build
+pnpm --filter @specflow/web build
 ```
 
 ## Monorepo layout

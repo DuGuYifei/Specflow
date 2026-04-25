@@ -12,7 +12,7 @@ We chose:
 - TypeScript for shared typing across all boundaries
 - `.specflow` as a repository-level project knowledge layer
 - `mise` for local toolchain management
-- exact version locking for Node.js (`24.15.0`) and pnpm (`10.33.2`) for deterministic human/AI/CI execution
+- exact version locking sourced from `.mise.toml` for deterministic human/AI/CI execution
 
 ## Consequences
 

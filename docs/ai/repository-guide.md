@@ -27,8 +27,7 @@
 
 ## Toolchain rules
 
-- Use Node.js `24.15.0`.
-- Use pnpm `10.33.2`.
+- Use Node.js and pnpm versions from `.mise.toml`.
 - Use `mise` for local execution.
 - Do not change toolchain versions unless explicitly requested.
 

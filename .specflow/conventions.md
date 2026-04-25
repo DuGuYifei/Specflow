@@ -14,8 +14,7 @@
 
 - This project uses mise for local Node.js and pnpm toolchain management.
 - Toolchain versions are defined in `.mise.toml`.
-- Node.js must be `24.15.0`.
-- pnpm must be `10.33.2`.
+- Node.js and pnpm versions must follow `.mise.toml`.
 - `package.json` must mirror pnpm through `packageManager` and Node.js through `engines.node`.
 - Version changes must happen in a dedicated PR.
 - This ensures deterministic execution across local development, CI, and AI agents such as Codex.
