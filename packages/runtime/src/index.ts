@@ -76,7 +76,7 @@ export function validateGraph(graph: GraphDefinition): GraphValidationResult {
   };
 }
 
-export function createPhaseZeroGraph(): GraphDefinition {
+export function createDefaultWorkflowGraph(): GraphDefinition {
   const nodes: WorkflowNode[] = [
     { id: "ticket", type: "ticket", label: "Ticket", status: "pending" },
     { id: "interview", type: "interview", label: "Interview", status: "pending" },
@@ -93,8 +93,8 @@ export function createPhaseZeroGraph(): GraphDefinition {
   ];
 
   return {
-    id: "phase-0-intent",
-    name: "Phase 0 Workflow Intent",
+    id: "default-workflow-intent",
+    name: "Default Workflow Intent",
     nodes,
     edges: [
       {
@@ -145,7 +145,7 @@ export function createPhaseZeroGraph(): GraphDefinition {
 
 export async function executeInMemoryStub(
   ticket: Ticket,
-  graph: GraphDefinition = createPhaseZeroGraph()
+  graph: GraphDefinition = createDefaultWorkflowGraph()
 ): Promise<WorkflowRun> {
   const now = new Date().toISOString();
 
@@ -160,8 +160,8 @@ export async function executeInMemoryStub(
         id: "stub-artifact",
         nodeId: "final-patch",
         kind: "context",
-        title: "Phase 0 execution stub",
-        content: "No real agent execution runs in Phase 0."
+        title: "Local execution stub",
+        content: "No real agent execution runs in placeholder mode."
       }
     ],
     reviews: [],

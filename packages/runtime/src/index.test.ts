@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { createPhaseZeroGraph, validateGraph } from "./index.js";
+import { createDefaultWorkflowGraph, validateGraph } from "./index.js";
 
 describe("validateGraph", () => {
-  it("accepts the Phase 0 intent graph", () => {
-    expect(validateGraph(createPhaseZeroGraph())).toEqual({
+  it("accepts the default workflow graph", () => {
+    expect(validateGraph(createDefaultWorkflowGraph())).toEqual({
       valid: true,
       issues: []
     });

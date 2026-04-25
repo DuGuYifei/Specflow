@@ -3,9 +3,9 @@ import { access, readFile } from "node:fs/promises";
 import { dirname, join, parse } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Command } from "commander";
-import { formatPhaseZeroFlow } from "@specflow/shared";
+import { formatDefaultWorkflowFlow } from "@specflow/shared";
 import { readSpecflowKnowledge } from "@specflow/specflow";
-import { createPhaseZeroGraph, validateGraph } from "@specflow/runtime";
+import { createDefaultWorkflowGraph, validateGraph } from "@specflow/runtime";
 
 const requiredProjectPaths = [
   ".mise.toml",
@@ -99,12 +99,12 @@ async function readSpec(): Promise<void> {
 }
 
 async function validateWorkflow(): Promise<void> {
-  const graph = createPhaseZeroGraph();
+  const graph = createDefaultWorkflowGraph();
   const result = validateGraph(graph);
 
   console.log("Specflow workflow validation");
   console.log(`graph: ${graph.name}`);
-  console.log(`flow: ${formatPhaseZeroFlow()}`);
+  console.log(`flow: ${formatDefaultWorkflowFlow()}`);
   console.log(`valid: ${String(result.valid)}`);
 
   for (const issue of result.issues) {
@@ -126,7 +126,7 @@ export function createCli(): Command {
 
   program
     .command("doctor")
-    .description("Validate that the local Phase 0 repository structure is present.")
+    .description("Validate that the local repository structure is present.")
     .action(runDoctor);
 
   const spec = program.command("spec").description("Read Specflow project knowledge.");
@@ -142,7 +142,7 @@ export function createCli(): Command {
 
   workflow
     .command("validate")
-    .description("Validate the static Phase 0 workflow graph definition.")
+    .description("Validate the static default workflow graph definition.")
     .action(validateWorkflow);
 
   return program;

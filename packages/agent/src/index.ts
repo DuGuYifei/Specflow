@@ -20,7 +20,7 @@ export class CodexAgent implements Agent {
   async run(messages: AgentMessage[]): Promise<AgentRunResult> {
     return {
       status: "blocked",
-      output: "Codex integration is intentionally not implemented in Phase 0.",
+      output: "Codex integration is intentionally not implemented yet.",
       messages
     };
   }

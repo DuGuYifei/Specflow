@@ -30,7 +30,7 @@ export interface Ticket {
 export interface SpecflowProject {
   name: string;
   category: "Continuous Coding";
-  phase: "Phase 0";
+  status: "local-foundation" | "local-loop";
   repositoryRoot: string;
 }
 

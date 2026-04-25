@@ -55,5 +55,5 @@ export async function readSpecflowKnowledge(root: string): Promise<SpecflowKnowl
 }
 
 export async function updateSpecflowKnowledgePlaceholder(): Promise<never> {
-  throw new Error("Writing .specflow knowledge is reserved for future phases.");
+  throw new Error("Writing .specflow knowledge is not implemented yet.");
 }

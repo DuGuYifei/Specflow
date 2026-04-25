@@ -10,7 +10,7 @@ import {
   type Node
 } from "@xyflow/react";
 
-const phaseZeroNodes: Node[] = [
+const defaultWorkflowNodes: Node[] = [
   {
     id: "ticket",
     position: { x: 0, y: 120 },
@@ -45,7 +45,7 @@ const reviewEdge = {
   labelStyle: { fill: "#7a2e21", fontWeight: 600 }
 };
 
-const phaseZeroEdges: Edge[] = [
+const defaultWorkflowEdges: Edge[] = [
   { id: "ticket-interview", source: "ticket", target: "interview", ...controlEdge },
   { id: "interview-plan", source: "interview", target: "plan", ...controlEdge },
   { id: "plan-code-draft", source: "plan", target: "code-draft", ...controlEdge },
@@ -85,13 +85,13 @@ export function WorkflowPanel() {
           <p className="eyebrow">Continuous Coding</p>
           <h1>Specflow</h1>
         </div>
-        <p className="phase">Local-first foundation</p>
+        <p className="status">Local workflow foundation</p>
       </header>
       <section className="graph-surface" aria-label="Static local workflow graph">
         {/* TODO: Bind nodes to local runtime state after the runtime leaves placeholder mode. */}
         <ReactFlow
-          nodes={phaseZeroNodes}
-          edges={phaseZeroEdges}
+          nodes={defaultWorkflowNodes}
+          edges={defaultWorkflowEdges}
           fitView
           nodesDraggable={false}
           nodesConnectable={false}

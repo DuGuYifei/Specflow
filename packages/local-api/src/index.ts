@@ -1,8 +1,8 @@
 import Fastify from "fastify";
 import {
   CONTINUOUS_CODING_CATEGORY,
-  PHASE_ZERO_NAME,
-  formatPhaseZeroFlow
+  LOCAL_FOUNDATION_STATUS,
+  formatDefaultWorkflowFlow
 } from "@specflow/shared";
 
 export function buildLocalApi() {
@@ -18,8 +18,8 @@ export function buildLocalApi() {
   localApi.get("/api/project", async () => ({
     name: "Specflow",
     category: CONTINUOUS_CODING_CATEGORY,
-    phase: PHASE_ZERO_NAME,
-    flow: formatPhaseZeroFlow(),
+    status: LOCAL_FOUNDATION_STATUS,
+    flow: formatDefaultWorkflowFlow(),
     runtime: "placeholder"
   }));
 

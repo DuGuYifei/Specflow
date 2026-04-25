@@ -1,8 +1,8 @@
 export const SPECFLOW_PRODUCT_NAME = "Specflow";
 export const CONTINUOUS_CODING_CATEGORY = "Continuous Coding";
-export const PHASE_ZERO_NAME = "Phase 0";
+export const LOCAL_FOUNDATION_STATUS = "local-foundation";
 
-export const PHASE_ZERO_WORKFLOW_STEPS = [
+export const DEFAULT_WORKFLOW_STEPS = [
   "ticket",
   "interview",
   "plan",
@@ -12,6 +12,6 @@ export const PHASE_ZERO_WORKFLOW_STEPS = [
   "final patch"
 ] as const;
 
-export function formatPhaseZeroFlow(): string {
-  return PHASE_ZERO_WORKFLOW_STEPS.join(" -> ");
+export function formatDefaultWorkflowFlow(): string {
+  return DEFAULT_WORKFLOW_STEPS.join(" -> ");
 }
