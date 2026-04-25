@@ -12,6 +12,12 @@ CC -> CI -> CD
 
 Specflow 不替代 CI/CD，而是在 CI/CD 之前增加一个本地编码收敛层。
 
+## 当前状态
+
+当前仍处于 Phase 0：仓库基础阶段。
+
+本仓库现在只提供 local-first/package-first 工程骨架、静态 workflow graph validation、`.specflow` 读取能力和本地能力包占位。Phase 1 尚未开始，因此还没有真实 workflow run、artifact 记录、agent execution 或 repair loop。
+
 ## 技术选择
 
 - CLI：TypeScript 和 `commander`
