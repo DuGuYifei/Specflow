@@ -1,0 +1,30 @@
+{
+  "name": "@specflow/cli",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "specflow": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "node --import tsx src/index.ts --help",
+    "specflow": "node dist/index.js",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint .",
+    "test": "vitest run --passWithNoTests --config ../../vitest.config.ts",
+    "clean": "rimraf dist"
+  },
+  "dependencies": {
+    "@specflow/shared": "workspace:*",
+    "@specflow/specflow": "workspace:*",
+    "@specflow/runtime": "workspace:*",
+    "commander": "14.0.2"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.1",
+    "tsx": "4.20.6",
+    "typescript": "5.9.3",
+    "vitest": "4.0.8"
+  }
+}
