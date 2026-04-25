@@ -1,55 +1,57 @@
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 export interface SpecflowKnowledge {
-  project: string;
-  architecture: string;
-  conventions: string;
-  glossary: string;
-  phaseZeroWorkflow: string;
+  files: SpecflowKnowledgeFile[];
 }
 
-async function readSpecflowFile(root: string, relativePath: string): Promise<string> {
+export interface SpecflowKnowledgeFile {
+  path: string;
+  content: string;
+}
+
+export async function readSpecflowFile(
+  root: string,
+  relativePath: string
+): Promise<string> {
   return readFile(join(root, ".specflow", relativePath), "utf8");
 }
 
-export async function readProjectSpec(root: string): Promise<string> {
-  return readSpecflowFile(root, "project.md");
-}
+async function listMarkdownFiles(
+  root: string,
+  relativeDirectory = ""
+): Promise<string[]> {
+  const absoluteDirectory = join(root, ".specflow", relativeDirectory);
+  const entries = await readdir(absoluteDirectory, { withFileTypes: true });
+  const files = await Promise.all(
+    entries.map(async (entry) => {
+      const relativePath = join(relativeDirectory, entry.name);
 
-export async function readArchitectureDoc(root: string): Promise<string> {
-  return readSpecflowFile(root, "architecture.md");
-}
+      if (entry.isDirectory()) {
+        return listMarkdownFiles(root, relativePath);
+      }
 
-export async function readConventions(root: string): Promise<string> {
-  return readSpecflowFile(root, "conventions.md");
-}
+      if (entry.isFile() && entry.name.endsWith(".md")) {
+        return [relativePath.replaceAll("\\", "/")];
+      }
 
-export async function readGlossary(root: string): Promise<string> {
-  return readSpecflowFile(root, "glossary.md");
-}
+      return [];
+    })
+  );
 
-export async function readPhaseZeroWorkflowIntent(root: string): Promise<string> {
-  return readSpecflowFile(root, "workflows/phase-0.md");
+  return files.flat().sort();
 }
 
 export async function readSpecflowKnowledge(root: string): Promise<SpecflowKnowledge> {
-  const [project, architecture, conventions, glossary, phaseZeroWorkflow] =
-    await Promise.all([
-      readProjectSpec(root),
-      readArchitectureDoc(root),
-      readConventions(root),
-      readGlossary(root),
-      readPhaseZeroWorkflowIntent(root)
-    ]);
+  const paths = await listMarkdownFiles(root);
+  const files = await Promise.all(
+    paths.map(async (path) => ({
+      path,
+      content: await readSpecflowFile(root, path)
+    }))
+  );
 
-  return {
-    project,
-    architecture,
-    conventions,
-    glossary,
-    phaseZeroWorkflow
-  };
+  return { files };
 }
 
 export async function updateSpecflowKnowledgePlaceholder(): Promise<never> {

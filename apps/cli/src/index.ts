@@ -4,7 +4,7 @@ import { dirname, join, parse } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Command } from "commander";
 import { formatPhaseZeroFlow } from "@specflow/shared";
-import { readProjectSpec } from "@specflow/specflow";
+import { readSpecflowKnowledge } from "@specflow/specflow";
 import { createPhaseZeroGraph, validateGraph } from "@specflow/runtime";
 
 const requiredProjectPaths = [
@@ -12,11 +12,7 @@ const requiredProjectPaths = [
   "package.json",
   "pnpm-workspace.yaml",
   "tsconfig.base.json",
-  ".specflow/project.md",
-  ".specflow/architecture.md",
-  ".specflow/conventions.md",
-  ".specflow/glossary.md",
-  ".specflow/workflows/phase-0.md",
+  ".specflow",
   "apps/cli",
   "packages/local-api",
   "packages/ui",
@@ -43,7 +39,7 @@ async function findRepositoryRoot(start = process.cwd()): Promise<string> {
   while (true) {
     if (
       (await pathExists(join(current, "pnpm-workspace.yaml"))) &&
-      (await pathExists(join(current, ".specflow", "project.md")))
+      (await pathExists(join(current, ".specflow")))
     ) {
       return current;
     }
@@ -87,10 +83,19 @@ async function runDoctor(): Promise<void> {
 
 async function readSpec(): Promise<void> {
   const root = await findRepositoryRoot();
-  const spec = await readProjectSpec(root);
+  const knowledge = await readSpecflowKnowledge(root);
 
-  console.log("Specflow project spec");
-  console.log(spec.trim());
+  console.log("Specflow knowledge");
+
+  if (knowledge.files.length === 0) {
+    console.log("No .specflow Markdown files found.");
+    return;
+  }
+
+  for (const file of knowledge.files) {
+    console.log(`\n# ${file.path}`);
+    console.log(file.content.trim());
+  }
 }
 
 async function validateWorkflow(): Promise<void> {
