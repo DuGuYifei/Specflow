@@ -11,6 +11,7 @@ export type EdgeType = "control_flow" | "data_flow" | "review_loop";
 
 export type NodeType =
   | "ticket"
+  | "spec_context"
   | "interview"
   | "plan"
   | "code_draft"
@@ -20,11 +21,16 @@ export type NodeType =
   | "visual_decomposer"
   | "visual_verifier";
 
+export type TicketSource = "inline" | "file";
+
 export interface Ticket {
   id: string;
-  title: string;
-  description: string;
-  source?: string;
+  body: string;
+  source: TicketSource;
+  createdAt: string;
+  title?: string;
+  sourcePath?: string;
+  description?: string;
 }
 
 export interface SpecflowProject {
@@ -34,12 +40,34 @@ export interface SpecflowProject {
   repositoryRoot: string;
 }
 
+export type WorkflowArtifactKind =
+  | "ticket"
+  | "spec-context"
+  | "plan"
+  | "code-draft"
+  | "review-result"
+  | "repair"
+  | "final-patch"
+  | "spec"
+  | "patch"
+  | "review"
+  | "context";
+
+export type WorkflowArtifactContentType =
+  | "application/json"
+  | "text/markdown"
+  | "text/plain";
+
 export interface WorkflowArtifact {
   id: string;
+  runId: string;
   nodeId: string;
-  kind: "spec" | "plan" | "patch" | "review" | "context";
+  kind: WorkflowArtifactKind;
   title: string;
   content: string;
+  contentType: WorkflowArtifactContentType;
+  createdAt: string;
+  metadata?: Record<string, string | number | boolean>;
 }
 
 export interface ReviewResult {
@@ -65,14 +93,54 @@ export interface WorkflowEdge {
   label?: string;
 }
 
+export type WorkflowRunStatus =
+  | "created"
+  | "running"
+  | "completed"
+  | "failed"
+  | "cancelled";
+
+export type NodeExecutionStatus =
+  | "pending"
+  | "running"
+  | "completed"
+  | "failed"
+  | "skipped";
+
+export type NodeExecutionMode = "system" | "agent";
+
+export interface AgentCliConfig {
+  cli: string;
+  args: string[];
+}
+
+export interface NodeExecutionState {
+  nodeId: string;
+  nodeType: NodeType;
+  label: string;
+  status: NodeExecutionStatus;
+  executionMode: NodeExecutionMode;
+  agentCli?: AgentCliConfig;
+  inputArtifactIds: string[];
+  outputArtifactIds: string[];
+  attempts: number;
+  startedAt?: string;
+  completedAt?: string;
+  error?: string;
+}
+
 export interface WorkflowRun {
   id: string;
   ticket: Ticket;
-  status: NodeStatus;
+  status: WorkflowRunStatus;
   nodes: WorkflowNode[];
   edges: WorkflowEdge[];
+  nodeExecutions: NodeExecutionState[];
   artifacts: WorkflowArtifact[];
   reviews: ReviewResult[];
   createdAt: string;
   updatedAt: string;
+  completedAt?: string;
+  finalArtifactId?: string;
+  maxRepairAttempts: number;
 }

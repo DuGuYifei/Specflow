@@ -6,7 +6,7 @@
 
 当前阶段：Phase 1 本地最小闭环已开始。
 
-当前目标：先实现最小 workflow run、artifact、execution state 的本地类型和存储边界，再逐步收敛到第一个本地持续编码闭环。
+当前目标：在已实现的本地 placeholder workflow run、artifact、execution state 和 `.specflow/runs/` 存储边界上，逐步接近第一个可真实生成和审查 final patch 的本地持续编码闭环。
 
 当前工程入口：`apps/cli`。
 

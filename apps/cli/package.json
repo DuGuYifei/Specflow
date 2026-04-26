@@ -16,6 +16,7 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
+    "@specflow/core": "workspace:*",
     "@specflow/shared": "workspace:*",
     "@specflow/specflow": "workspace:*",
     "@specflow/runtime": "workspace:*",

@@ -1,10 +1,10 @@
 # Phase 1 Workflow 状态
 
-Phase 1 当前状态：准备开始。
+Phase 1 当前状态：已开始实现。
 
 当前目标：实现本地持续编码最小闭环，但按可交付切片逐步推进。
 
-当前优先切片：设计并实现最小 workflow run、artifact、execution state 的本地类型和存储边界。
+当前已实现切片：最小 workflow run、artifact、execution state 的本地类型和 `.specflow/runs/` 文件存储边界；CLI 可以创建、列出和查看本地 placeholder workflow run。
 
 ## 当前边界
 
@@ -16,6 +16,7 @@ Phase 1 当前状态：准备开始。
 - 不实现生产级 orchestration。
 - 不添加数据库、认证或 CI workflow。
 - 不创建复杂 UI 或桌面壳。
+- 本地运行记录写入 `.specflow/runs/`，该目录不提交入库。
 
 ## Agent CLI 选择
 
@@ -43,6 +44,8 @@ Phase 1 当前状态：准备开始。
 
 ### P1.1 Run / Artifact / Execution State 契约
 
+完成状态：已完成。
+
 完成条件：
 
 - 定义最小 `WorkflowRun`、`WorkflowArtifact`、`NodeExecutionState`。
@@ -59,6 +62,8 @@ Phase 1 当前状态：准备开始。
 
 ### P1.2 CLI 创建和读取 Workflow Run
 
+完成状态：已完成。
+
 完成条件：
 
 - CLI 可以从 ticket 创建本地 workflow run。
@@ -73,6 +78,8 @@ Phase 1 当前状态：准备开始。
 
 ### P1.3 Spec Context 节点
 
+完成状态：已完成。
+
 完成条件：
 
 - runtime 可以通过 `packages/specflow` 读取 `.specflow` 上下文。
@@ -86,6 +93,8 @@ Phase 1 当前状态：准备开始。
 
 ### P1.4 Plan 节点占位执行
 
+完成状态：已完成。
+
 完成条件：
 
 - 基于 ticket artifact 和 spec context artifact 生成 plan artifact。
@@ -98,6 +107,8 @@ Phase 1 当前状态：准备开始。
 - 不进入代码修改。
 
 ### P1.5 Code Draft / Review / Repair 占位闭环
+
+完成状态：已完成。
 
 完成条件：
 
@@ -114,6 +125,8 @@ Phase 1 当前状态：准备开始。
 
 ### P1.6 Final Patch 候选输出
 
+完成状态：已完成。
+
 完成条件：
 
 - final patch 节点生成 final patch artifact。
@@ -126,6 +139,8 @@ Phase 1 当前状态：准备开始。
 - 不连接 PR、CI 或远程服务。
 
 ### P1.7 最小日志和错误状态
+
+完成状态：部分完成。
 
 完成条件：
 
