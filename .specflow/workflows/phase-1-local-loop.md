@@ -424,6 +424,23 @@ Phase 1 当前状态：已开始实现。
 - 当前不实现筛选或搜索。
 - 当前不实现长时间线视图。
 
+### P1.25 README Current UI Entry
+
+完成状态：已完成。
+
+完成条件：
+
+- README 当前状态提到 reviewer/control 节点。
+- README 的 `specflow ui` 说明提到 validation、runtime compatibility 和 execution preview。
+- README 的 `specflow ui` 说明提到 mock review mode、repair attempt 和 run list 摘要。
+- README 明确 mock run options 不写入 workflow definition。
+
+非目标：
+
+- 当前不把 README 改成长设计文档。
+- 当前不加入截图。
+- 当前不加入部署或 hosted backend 说明。
+
 ### P1.6 Final Patch 候选输出
 
 完成状态：已完成。
