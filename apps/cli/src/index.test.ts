@@ -36,6 +36,9 @@ describe("workflow commands", () => {
 
     expect(logs).toContain("Specflow workflow runs");
     expect(logs.some((line) => line.includes(runId))).toBe(true);
+    expect(logs.some((line) => line.includes("reviews:2"))).toBe(true);
+    expect(logs.some((line) => line.includes("repairs:1"))).toBe(true);
+    expect(logs.some((line) => line.includes("review:approved"))).toBe(true);
 
     logs.length = 0;
     await runCommand("workflow", "show", runId);

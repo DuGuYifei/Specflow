@@ -475,6 +475,23 @@ Phase 1 当前状态：已开始实现。
 - 当前不实现按 runtime profile 选择兼容性检查。
 - 当前不引入 JSON Schema validator。
 
+### P1.28 CLI Run List Observability Summary
+
+完成状态：已完成。
+
+完成条件：
+
+- `specflow workflow list` 输出 review 次数。
+- `specflow workflow list` 输出 repair 次数。
+- `specflow workflow list` 输出最新 review 状态。
+- CLI 测试覆盖 completed fail-once run 的摘要。
+
+非目标：
+
+- 当前不实现 CLI run 筛选。
+- 当前不实现表格渲染库。
+- 当前不实现 run 对比命令。
+
 ### P1.6 Final Patch 候选输出
 
 完成状态：已完成。

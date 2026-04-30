@@ -240,7 +240,16 @@ async function listWorkflowRuns(): Promise<void> {
 
   for (const run of runs) {
     console.log(
-      `${run.id} ${run.status} ${run.workflowDefinition.id} ${run.createdAt} ${run.updatedAt}`
+      [
+        run.id,
+        run.status,
+        run.workflowDefinition.id,
+        `reviews:${run.reviews.length}`,
+        `repairs:${repairCount(run)}`,
+        `review:${latestReviewState(run)}`,
+        run.createdAt,
+        run.updatedAt
+      ].join(" ")
     );
   }
 }
@@ -306,6 +315,20 @@ function workflowDefinitionSourceLabel(run: WorkflowRun): string {
   return definition.path
     ? `${definition.source}:${definition.path}`
     : definition.source;
+}
+
+function repairCount(run: WorkflowRun): number {
+  return run.artifacts.filter((artifact) => artifact.kind === "repair").length;
+}
+
+function latestReviewState(run: WorkflowRun): string {
+  const latestReview = run.reviews.at(-1);
+
+  if (!latestReview) {
+    return "none";
+  }
+
+  return latestReview.approved ? "approved" : "needs-repair";
 }
 
 export function createCli(): Command {
