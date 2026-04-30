@@ -25,6 +25,20 @@ export const DEFAULT_AGENT_CLI = "codex";
 
 export type GraphDefinition = WorkflowDefinition;
 
+const localPlaceholderRequiredNodes: Array<{
+  id: string;
+  type: WorkflowNode["type"];
+}> = [
+  { id: "ticket-input", type: "ticket" },
+  { id: "spec-context", type: "spec_context" },
+  { id: "session-director", type: "workflow_director" },
+  { id: "plan", type: "plan" },
+  { id: "code-draft", type: "code_draft" },
+  { id: "implementation-review", type: "implementation_reviewer" },
+  { id: "repair-loop", type: "repair" },
+  { id: "final-patch", type: "final_patch" }
+];
+
 export interface GraphValidationIssue {
   message: string;
   nodeId?: string;
@@ -272,6 +286,36 @@ export function validateGraph(graph: GraphDefinition): GraphValidationResult {
       issues.push({
         message: `Director node requires a control scope: ${node.id}`,
         nodeId: node.id
+      });
+    }
+  }
+
+  return {
+    valid: issues.length === 0,
+    issues
+  };
+}
+
+export function validateLocalPlaceholderRuntimeGraph(
+  graph: GraphDefinition
+): GraphValidationResult {
+  const issues: GraphValidationIssue[] = [];
+
+  for (const requiredNode of localPlaceholderRequiredNodes) {
+    const node = graph.nodes.find((candidate) => candidate.id === requiredNode.id);
+
+    if (!node) {
+      issues.push({
+        message: `Missing node required by local placeholder runtime: ${requiredNode.id}`,
+        nodeId: requiredNode.id
+      });
+      continue;
+    }
+
+    if (node.type !== requiredNode.type) {
+      issues.push({
+        message: `Node has incompatible type for local placeholder runtime: ${requiredNode.id}`,
+        nodeId: requiredNode.id
       });
     }
   }

@@ -8,6 +8,7 @@ import {
   createLocalWorkflowRun,
   executeLocalWorkflowRun,
   validateGraph,
+  validateLocalPlaceholderRuntimeGraph,
   type GraphDefinition,
   type GraphValidationIssue,
   type GraphValidationResult,
@@ -260,42 +261,21 @@ async function resolveWorkflowDefinition(
     };
   }
 
-  const runtimeCompatibilityError = currentRuntimeCompatibilityError(
+  const runtimeCompatibility = validateLocalPlaceholderRuntimeGraph(
     workflow.definition
   );
 
-  if (runtimeCompatibilityError) {
+  if (!runtimeCompatibility.valid) {
     return {
       ok: false,
-      error: runtimeCompatibilityError
+      error: `Workflow definition is valid but not executable by the current placeholder runtime. ${formatValidationIssues(
+        runtimeCompatibility.issues
+      )}`,
+      issues: runtimeCompatibility.issues
     };
   }
 
   return { ok: true, workflow };
-}
-
-function currentRuntimeCompatibilityError(
-  definition: GraphDefinition
-): string | undefined {
-  const nodeIds = new Set(definition.nodes.map((node) => node.id));
-  const missingNodeIds = [
-    "ticket-input",
-    "spec-context",
-    "session-director",
-    "plan",
-    "code-draft",
-    "implementation-review",
-    "repair-loop",
-    "final-patch"
-  ].filter((nodeId) => !nodeIds.has(nodeId));
-
-  if (missingNodeIds.length === 0) {
-    return undefined;
-  }
-
-  return `Workflow definition is valid but not executable by the current placeholder runtime. Missing nodes: ${missingNodeIds.join(
-    ", "
-  )}`;
 }
 
 function formatValidationIssues(issues: GraphValidationIssue[]): string {

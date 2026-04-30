@@ -10,7 +10,8 @@ import {
   createPhase1LocalLoopGraph,
   executeLocalWorkflowRun,
   runLocalWorkflow,
-  validateGraph
+  validateGraph,
+  validateLocalPlaceholderRuntimeGraph
 } from "./index.js";
 
 const tempRoots: string[] = [];
@@ -67,6 +68,29 @@ describe("validateGraph", () => {
     expect(result.issues.map((issue) => issue.message)).toContain(
       "Session policy references missing group: missing-group"
     );
+  });
+});
+
+describe("validateLocalPlaceholderRuntimeGraph", () => {
+  it("checks whether the local placeholder executor can run a graph", () => {
+    const graph = createPhase1LocalLoopGraph();
+
+    expect(validateLocalPlaceholderRuntimeGraph(graph)).toEqual({
+      valid: true,
+      issues: []
+    });
+
+    graph.nodes = graph.nodes.filter((node) => node.id !== "final-patch");
+
+    expect(validateLocalPlaceholderRuntimeGraph(graph)).toEqual({
+      valid: false,
+      issues: [
+        {
+          message: "Missing node required by local placeholder runtime: final-patch",
+          nodeId: "final-patch"
+        }
+      ]
+    });
   });
 });
 

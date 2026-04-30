@@ -34,4 +34,6 @@ React 节点式 workflow 面板组件位于 `packages/ui`。
 
 `.specflow/workflows/*.workflow.json` 是结构化 workflow definition。当前 runtime 创建 run 时可以绑定仓库或内置 definition；placeholder executor 仍只保证当前 Phase 1 节点形状可执行，后续配置驱动执行应沿用这个边界继续扩展。
 
+本地 placeholder graph 可执行性检查由 `packages/runtime` 负责，server 只能调用 runtime 暴露的 compatibility helper，不应复制 executor 必需节点清单。
+
 当前不包含数据库、认证、CI workflow、真实 Codex 集成、生产级 workflow 编排、桌面壳或传统前后端分离架构。

@@ -19,6 +19,7 @@ Phase 1 当前状态：已开始实现。
 - UI draft graph 优先使用 `/api/workflows` 返回的结构化 definition。
 - 本地 server 创建 run 时可以接收 `workflowDefinitionId`，并把绑定的 definition reference 写入 run state。
 - 当前 placeholder executor 只保证包含 Phase 1 固定节点 id 的 workflow definition 可执行。
+- 当前 placeholder executor 的 graph 可执行性检查由 `packages/runtime` 暴露，server 不复制必需节点清单。
 - Workflow definition 中的 `sessionGroups` 描述可展示的 session plan；节点通过 `session.groupId` 加入组。
 - Workflow definition 中的 agent-mode 节点可以声明 `agentCli`；未声明时 runtime 使用默认 mock `codex`。
 - `implementation-review` 通过 `control_scope` 管理 `repair-loop` 和 `final-patch`，并在运行时写入 `review` control decision。
@@ -297,6 +298,23 @@ Phase 1 当前状态：已开始实现。
 - 当前不实现 toast 系统。
 - 当前不实现按字段定位错误。
 - 当前不实现 workflow definition 编辑器。
+
+### P1.18 Runtime Placeholder Compatibility Check
+
+完成状态：已完成。
+
+完成条件：
+
+- Runtime 暴露本地 placeholder graph 可执行性检查。
+- 可执行性检查确认当前 executor 必需节点存在且类型匹配。
+- Server 创建 run 时调用 runtime compatibility helper。
+- Server 不再复制 placeholder executor 的必需节点清单。
+
+非目标：
+
+- 当前不实现任意 graph 调度。
+- 当前不生成可视化执行计划。
+- 当前不移除 Phase 1 固定节点 executor。
 
 ### P1.6 Final Patch 候选输出
 
