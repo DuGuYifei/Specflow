@@ -33,7 +33,7 @@ interface WorkflowRun {
   sessions?: WorkflowSession[];
   controlDecisions?: WorkflowControlDecision[];
   artifacts: WorkflowArtifact[];
-  reviews: unknown[];
+  reviews: ReviewResult[];
   createdAt: string;
   updatedAt: string;
   maxRepairAttempts: number;
@@ -208,6 +208,13 @@ interface WorkflowControlDecision {
     reason: string;
   }>;
   createdAt: string;
+}
+
+interface ReviewResult {
+  reviewerNodeId: string;
+  approved: boolean;
+  summary: string;
+  requiredChanges: string[];
 }
 
 interface WorkflowArtifact {
@@ -586,6 +593,8 @@ export function WorkflowPanel() {
               >
                 <span className="run-name">{shortId(run.id)}</span>
                 <span className={`run-state state-${run.status}`}>{run.status}</span>
+                <span className="run-meta">{runWorkflowLabel(run)}</span>
+                <span className="run-meta">{runReviewSummary(run)}</span>
                 <span className="run-meta">{formatTime(run.createdAt)}</span>
               </button>
             ))}
@@ -1352,6 +1361,24 @@ function workflowDefinitionSourceLabel(definition: WorkflowDefinitionRef): strin
   return definition.path
     ? `${definition.source}:${definition.path}`
     : definition.source;
+}
+
+function runWorkflowLabel(run: WorkflowRun): string {
+  return run.workflowDefinition.path
+    ? `${run.workflowDefinition.name} / ${run.workflowDefinition.source}`
+    : run.workflowDefinition.name;
+}
+
+function runReviewSummary(run: WorkflowRun): string {
+  const repairs = run.artifacts.filter((artifact) => artifact.kind === "repair").length;
+  const latestReview = run.reviews.at(-1);
+
+  if (!latestReview) {
+    return repairs > 0 ? `${repairs} repairs` : "no review";
+  }
+
+  const reviewState = latestReview.approved ? "approved" : "needs repair";
+  return `${run.reviews.length} reviews / ${repairs} repairs / ${reviewState}`;
 }
 
 function isTerminalRun(run?: WorkflowRun): boolean {

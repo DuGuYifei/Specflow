@@ -406,6 +406,24 @@ Phase 1 当前状态：已开始实现。
 - 当前不实现真实 AI reviewer 开关。
 - 当前不实现复杂 retry policy 编辑器。
 
+### P1.24 Run List Observability Summary
+
+完成状态：已完成。
+
+完成条件：
+
+- UI run 列表显示绑定的 workflow 名称。
+- UI run 列表显示 review 次数。
+- UI run 列表显示 repair 次数。
+- UI run 列表显示最新 review 状态。
+- 摘要复用现有 run API 返回的数据，不新增 server 聚合端点。
+
+非目标：
+
+- 当前不实现 run 对比视图。
+- 当前不实现筛选或搜索。
+- 当前不实现长时间线视图。
+
 ### P1.6 Final Patch 候选输出
 
 完成状态：已完成。

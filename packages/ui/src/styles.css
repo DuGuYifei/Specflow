@@ -169,7 +169,7 @@ h2 {
 }
 
 .run-item {
-  min-height: 72px;
+  min-height: 96px;
   display: grid;
   gap: 7px;
   padding: 11px;
