@@ -14,7 +14,8 @@ import {
   FileWorkflowRunStore,
   createDefaultWorkflowGraph,
   runLocalWorkflow,
-  validateGraph
+  validateGraph,
+  validateLocalPlaceholderRuntimeGraph
 } from "@specflow/runtime";
 import type { WorkflowRun } from "@specflow/core";
 
@@ -116,7 +117,8 @@ async function validateWorkflow(): Promise<void> {
   const workflowDefinitions = await readSpecflowWorkflowDefinitions(root);
   const workflowResults = workflowDefinitions.map((workflow) => ({
     workflow,
-    result: validateGraph(workflow.definition)
+    result: validateGraph(workflow.definition),
+    runtimeCompatibility: validateLocalPlaceholderRuntimeGraph(workflow.definition)
   }));
 
   console.log("Specflow workflow validation");
@@ -137,13 +139,23 @@ async function validateWorkflow(): Promise<void> {
       `repository definition: ${item.workflow.path} ${item.workflow.definition.name}`
     );
     console.log(`valid: ${String(item.result.valid)}`);
+    console.log(`runtime compatible: ${String(item.runtimeCompatibility.valid)}`);
 
     for (const issue of item.result.issues) {
       console.log(`issue: ${item.workflow.path}: ${issue.message}`);
     }
+
+    for (const issue of item.runtimeCompatibility.issues) {
+      console.log(`runtime issue: ${item.workflow.path}: ${issue.message}`);
+    }
   }
 
-  if (!result.valid || workflowResults.some((item) => !item.result.valid)) {
+  if (
+    !result.valid ||
+    workflowResults.some(
+      (item) => !item.result.valid || !item.runtimeCompatibility.valid
+    )
+  ) {
     process.exitCode = 1;
   }
 }

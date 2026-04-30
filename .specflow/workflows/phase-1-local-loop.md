@@ -458,6 +458,23 @@ Phase 1 当前状态：已开始实现。
 - 当前不生成 workflow definition 脚手架命令。
 - 当前不替代 runtime graph semantic validation。
 
+### P1.27 CLI Runtime Compatibility Output
+
+完成状态：已完成。
+
+完成条件：
+
+- `specflow workflow validate` 输出 repository definition 的 runtime compatibility。
+- CLI 对 runtime compatibility issue 使用 `runtime issue` 前缀。
+- 当 repository definition valid 但不兼容当前 placeholder runtime 时，CLI 返回失败码。
+- CLI 测试覆盖 valid-but-incompatible definition。
+
+非目标：
+
+- 当前不输出完整 execution preview。
+- 当前不实现按 runtime profile 选择兼容性检查。
+- 当前不引入 JSON Schema validator。
+
 ### P1.6 Final Patch 候选输出
 
 完成状态：已完成。

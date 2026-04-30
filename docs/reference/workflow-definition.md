@@ -16,6 +16,8 @@ Schema validation and runtime validation are separate:
   consistency.
 - The current placeholder executor also checks runtime compatibility for the
   Phase 1 local loop node shape.
+- `specflow workflow validate` prints both semantic validity and current
+  placeholder runtime compatibility for repository workflow definitions.
 
 ## Key Fields
 

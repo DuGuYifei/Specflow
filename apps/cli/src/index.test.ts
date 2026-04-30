@@ -107,6 +107,11 @@ describe("workflow commands", () => {
       "repository definition: workflows/demo.workflow.json Demo Workflow"
     );
     expect(logs).toContain("valid: true");
+    expect(logs).toContain("runtime compatible: false");
+    expect(logs).toContain(
+      "runtime issue: workflows/demo.workflow.json: Missing node required by local placeholder runtime: spec-context"
+    );
+    expect(process.exitCode).toBe(1);
   });
 });
 
