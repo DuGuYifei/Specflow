@@ -102,6 +102,7 @@ interface WorkflowDefinitionSummary {
   path?: string;
   definition: WorkflowDefinition;
   validation: WorkflowValidationResult;
+  runtimeCompatibility: WorkflowValidationResult;
 }
 
 interface NodeExecutionState {
@@ -204,6 +205,12 @@ interface ApiErrorResponse {
   issues?: WorkflowValidationIssue[];
 }
 
+interface WorkflowReadiness {
+  runnable: boolean;
+  label: string;
+  message?: string;
+}
+
 const nodePositions: Record<string, { x: number; y: number }> = {
   "ticket-input": { x: 0, y: 150 },
   "spec-context": { x: 230, y: 150 },
@@ -238,6 +245,7 @@ export function WorkflowPanel() {
       ) ?? workflowDefinitions[0],
     [selectedWorkflowDefinitionId, workflowDefinitions]
   );
+  const selectedWorkflowReadiness = workflowReadiness(selectedWorkflowDefinition);
   const draftRun = useMemo(
     () => createDraftRun(selectedWorkflowDefinition?.definition),
     [selectedWorkflowDefinition]
@@ -248,6 +256,9 @@ export function WorkflowPanel() {
     (selectedWorkflowDefinition
       ? toWorkflowDefinitionRef(selectedWorkflowDefinition)
       : undefined);
+  const visibleWorkflowRuntimeLabel = selectedRun
+    ? "bound"
+    : selectedWorkflowReadiness.label;
   const selectedExecution = visibleRun.nodeExecutions.find(
     (execution) => execution.nodeId === selectedNodeId
   );
@@ -408,6 +419,11 @@ export function WorkflowPanel() {
       return;
     }
 
+    if (!selectedWorkflowReadiness.runnable) {
+      setError(selectedWorkflowReadiness.message ?? "Workflow is not runnable.");
+      return;
+    }
+
     setIsCreatingRun(true);
     setError(undefined);
 
@@ -454,31 +470,34 @@ export function WorkflowPanel() {
           <p className="section-label">Workflow</p>
           {workflowDefinitions.length > 0 ? (
             <div className="definition-list">
-              {workflowDefinitions.map((workflow) => (
-                <button
-                  className={`definition-item ${
-                    workflow.definition.id === selectedWorkflowDefinition?.definition.id
-                      ? "is-selected"
-                      : ""
-                  }`}
-                  key={`${workflow.source}:${workflow.definition.id}`}
-                  onClick={() => {
-                    setSelectedWorkflowDefinitionId(workflow.definition.id);
-                    setSelectedRunId(undefined);
-                    setSelectedRun(undefined);
-                    setSelectedNodeId("ticket-input");
-                    setSelectedArtifactId(undefined);
-                  }}
-                  type="button"
-                >
-                  <span>{workflow.definition.name}</span>
-                  <strong>
-                    {workflow.source}
-                    {workflow.validation.valid ? " / valid" : " / invalid"}
-                  </strong>
-                  <small>{workflow.path ?? workflow.definition.id}</small>
-                </button>
-              ))}
+              {workflowDefinitions.map((workflow) => {
+                const readiness = workflowReadiness(workflow);
+
+                return (
+                  <button
+                    className={`definition-item ${
+                      workflow.definition.id ===
+                      selectedWorkflowDefinition?.definition.id
+                        ? "is-selected"
+                        : ""
+                    } ${readiness.runnable ? "" : "is-blocked"}`}
+                    key={`${workflow.source}:${workflow.definition.id}`}
+                    onClick={() => {
+                      setSelectedWorkflowDefinitionId(workflow.definition.id);
+                      setSelectedRunId(undefined);
+                      setSelectedRun(undefined);
+                      setSelectedNodeId("ticket-input");
+                      setSelectedArtifactId(undefined);
+                    }}
+                    type="button"
+                  >
+                    <span>{workflow.definition.name}</span>
+                    <strong>{`${workflow.source} / ${readiness.label}`}</strong>
+                    <small>{workflow.path ?? workflow.definition.id}</small>
+                    {!readiness.runnable ? <small>{readiness.message}</small> : null}
+                  </button>
+                );
+              })}
             </div>
           ) : (
             <p className="muted-line">Loading definition</p>
@@ -572,12 +591,19 @@ export function WorkflowPanel() {
             />
             <button
               className="primary-action"
-              disabled={isCreatingRun || ticket.trim().length === 0}
+              disabled={
+                isCreatingRun ||
+                ticket.trim().length === 0 ||
+                !selectedWorkflowReadiness.runnable
+              }
               onClick={() => void createRun()}
               type="button"
             >
               {isCreatingRun ? "Starting" : "Run"}
             </button>
+            {!selectedWorkflowReadiness.runnable ? (
+              <p className="workflow-warning">{selectedWorkflowReadiness.message}</p>
+            ) : null}
           </section>
         ) : null}
 
@@ -591,6 +617,8 @@ export function WorkflowPanel() {
                 ? workflowDefinitionSourceLabel(visibleWorkflowDefinition)
                 : "unknown"}
             </strong>
+            <span>runtime</span>
+            <strong>{visibleWorkflowRuntimeLabel}</strong>
             <span>node</span>
             <strong>{selectedNodeId}</strong>
             <span>status</span>
@@ -1149,6 +1177,44 @@ function toWorkflowDefinitionRef(
     version: workflow.definition.version,
     path: workflow.path
   };
+}
+
+function workflowReadiness(workflow?: WorkflowDefinitionSummary): WorkflowReadiness {
+  if (!workflow) {
+    return {
+      runnable: false,
+      label: "loading",
+      message: "Workflow definition is loading."
+    };
+  }
+
+  if (!workflow.validation.valid) {
+    return {
+      runnable: false,
+      label: "invalid",
+      message:
+        firstValidationIssue(workflow.validation) ?? "Workflow definition is invalid."
+    };
+  }
+
+  if (!workflow.runtimeCompatibility.valid) {
+    return {
+      runnable: false,
+      label: "blocked",
+      message:
+        firstValidationIssue(workflow.runtimeCompatibility) ??
+        "Workflow is not executable by the current runtime."
+    };
+  }
+
+  return {
+    runnable: true,
+    label: "runnable"
+  };
+}
+
+function firstValidationIssue(result: WorkflowValidationResult): string | undefined {
+  return result.issues[0]?.message;
 }
 
 function workflowDefinitionSourceLabel(definition: WorkflowDefinitionRef): string {

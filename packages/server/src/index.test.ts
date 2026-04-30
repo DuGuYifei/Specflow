@@ -172,6 +172,10 @@ describe("server routes", () => {
         path: string;
         definition: { id: string };
         validation: { valid: boolean };
+        runtimeCompatibility: {
+          valid: boolean;
+          issues: Array<{ message: string }>;
+        };
       }>;
     };
 
@@ -181,7 +185,39 @@ describe("server routes", () => {
       source: "repository",
       path: "workflows/demo.workflow.json",
       definition: { id: "demo" },
-      validation: { valid: true }
+      validation: { valid: true },
+      runtimeCompatibility: {
+        valid: false
+      }
+    });
+    expect(body.workflows[0]?.runtimeCompatibility.issues[0]?.message).toBe(
+      "Missing node required by local placeholder runtime: spec-context"
+    );
+  });
+
+  it("serves builtin workflow definitions with runtime compatibility", async () => {
+    const root = await createRepositoryRoot();
+    const server = buildServer({
+      root,
+      uiDistPath: await createUiDist()
+    });
+    const response = await server.inject({ method: "GET", url: "/api/workflows" });
+    const body = response.json() as {
+      workflows: Array<{
+        source: string;
+        definition: { id: string };
+        validation: { valid: boolean };
+        runtimeCompatibility: { valid: boolean; issues: unknown[] };
+      }>;
+    };
+
+    expect(response.statusCode).toBe(200);
+    expect(body.workflows).toHaveLength(1);
+    expect(body.workflows[0]).toMatchObject({
+      source: "builtin",
+      definition: { id: "phase-1-local-loop" },
+      validation: { valid: true },
+      runtimeCompatibility: { valid: true, issues: [] }
     });
   });
 

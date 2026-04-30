@@ -38,6 +38,7 @@ interface WorkflowDefinitionSummary {
   path?: string;
   definition: GraphDefinition;
   validation: GraphValidationResult;
+  runtimeCompatibility: GraphValidationResult;
 }
 
 const defaultHost = "127.0.0.1";
@@ -214,7 +215,8 @@ async function listWorkflowDefinitions(
       source: "repository" as const,
       path: workflow.path,
       definition: workflow.definition,
-      validation: validateGraph(workflow.definition)
+      validation: validateGraph(workflow.definition),
+      runtimeCompatibility: validateLocalPlaceholderRuntimeGraph(workflow.definition)
     }));
   }
 
@@ -225,7 +227,8 @@ async function listWorkflowDefinitions(
       source: "builtin",
       path: undefined,
       definition,
-      validation: validateGraph(definition)
+      validation: validateGraph(definition),
+      runtimeCompatibility: validateLocalPlaceholderRuntimeGraph(definition)
     }
   ];
 }
@@ -261,17 +264,13 @@ async function resolveWorkflowDefinition(
     };
   }
 
-  const runtimeCompatibility = validateLocalPlaceholderRuntimeGraph(
-    workflow.definition
-  );
-
-  if (!runtimeCompatibility.valid) {
+  if (!workflow.runtimeCompatibility.valid) {
     return {
       ok: false,
       error: `Workflow definition is valid but not executable by the current placeholder runtime. ${formatValidationIssues(
-        runtimeCompatibility.issues
+        workflow.runtimeCompatibility.issues
       )}`,
-      issues: runtimeCompatibility.issues
+      issues: workflow.runtimeCompatibility.issues
     };
   }
 

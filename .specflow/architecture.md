@@ -26,7 +26,7 @@ React 节点式 workflow 面板组件位于 `packages/ui`。
 
 当前 UI 必须能显示节点角色、agent CLI、session 归属、Session Director 的管理范围和控制决策。
 
-本地 server 暴露 `/api/workflows`，用于给 UI 提供结构化 workflow definition 和 validation result。UI draft graph 应优先使用该 API 返回的 definition。
+本地 server 暴露 `/api/workflows`，用于给 UI 提供结构化 workflow definition、validation result 和当前 runtime compatibility result。UI draft graph 应优先使用该 API 返回的 definition，并在不可执行时提前阻止创建 run。
 
 本地 server 创建 run 时可以接收 `workflowDefinitionId`。`WorkflowRun` 必须记录实际绑定的 workflow definition id、name、source、version 和 path，便于之后复现、审计和 UI 展示。
 

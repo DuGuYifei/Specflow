@@ -152,6 +152,10 @@ h2 {
   box-shadow: 0 0 0 1px rgba(127, 184, 106, 0.16);
 }
 
+.definition-item.is-blocked {
+  border-color: rgba(215, 95, 88, 0.34);
+}
+
 .run-item,
 .artifact-item {
   width: 100%;
@@ -374,6 +378,14 @@ h2 {
   background: rgba(75, 85, 91, 0.16);
   color: #6f7d83;
   cursor: not-allowed;
+}
+
+.workflow-warning {
+  margin: 10px 0 0;
+  color: #ffc1bd;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
 }
 
 .detail-grid {

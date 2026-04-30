@@ -186,6 +186,7 @@ Phase 1 当前状态：已开始实现。
 - UI 启动时读取 `/api/workflows`。
 - UI draft graph 优先由 workflow definition 构建。
 - UI 显示当前 workflow definition 的来源和校验状态。
+- API 同时返回当前 runtime compatibility result，让 UI 能区分 valid 但 blocked 的 definition。
 
 非目标：
 
@@ -315,6 +316,23 @@ Phase 1 当前状态：已开始实现。
 - 当前不实现任意 graph 调度。
 - 当前不生成可视化执行计划。
 - 当前不移除 Phase 1 固定节点 executor。
+
+### P1.19 Workflow Runtime Compatibility UI
+
+完成状态：已完成。
+
+完成条件：
+
+- `/api/workflows` 为每个 workflow definition 返回 runtime compatibility result。
+- Server 复用 runtime compatibility helper，不重复计算 executor 私有规则。
+- UI workflow 列表显示 `runnable`、`blocked` 或 `invalid`。
+- UI 在选中 definition 对当前 placeholder runtime 不可执行时禁用 Run，并展示首个 issue。
+
+非目标：
+
+- 当前不实现 workflow definition 编辑器。
+- 当前不实现任意 graph 调度。
+- 当前不生成完整 execution plan preview。
 
 ### P1.6 Final Patch 候选输出
 
