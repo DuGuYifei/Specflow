@@ -400,6 +400,7 @@ h2 {
 }
 
 .decision-list,
+.session-plan-list,
 .session-list {
   display: grid;
   gap: 8px;
@@ -407,6 +408,7 @@ h2 {
 }
 
 .decision-item,
+.session-plan-item,
 .session-item {
   display: grid;
   gap: 5px;
@@ -416,21 +418,26 @@ h2 {
 }
 
 .decision-item strong,
+.session-plan-item strong,
 .session-item strong,
 .decision-item span,
+.session-plan-item span,
 .session-item span,
 .decision-item small,
+.session-plan-item small,
 .session-item small {
   overflow-wrap: anywhere;
 }
 
 .decision-item strong,
+.session-plan-item span,
 .session-item span {
   color: #e7edf0;
   font-weight: 850;
 }
 
 .decision-item span,
+.session-plan-item small,
 .session-item small {
   color: #91a1a8;
   font-size: 0.76rem;
@@ -438,6 +445,7 @@ h2 {
 }
 
 .decision-item small,
+.session-plan-item strong,
 .session-item strong {
   color: #abc4ad;
   font-size: 0.72rem;

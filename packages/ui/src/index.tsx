@@ -25,6 +25,7 @@ interface WorkflowRun {
     source: "inline" | "file";
     createdAt: string;
   };
+  sessionGroups?: WorkflowSessionGroup[];
   nodes: WorkflowNode[];
   edges: WorkflowEdge[];
   nodeExecutions: NodeExecutionState[];
@@ -73,8 +74,16 @@ interface WorkflowDefinition {
   version?: string;
   description?: string;
   entryNodeId?: string;
+  sessionGroups?: WorkflowSessionGroup[];
   nodes: WorkflowNode[];
   edges: WorkflowEdge[];
+}
+
+interface WorkflowSessionGroup {
+  id: string;
+  label: string;
+  description?: string;
+  controllerNodeId?: string;
 }
 
 interface WorkflowValidationIssue {
@@ -245,6 +254,7 @@ export function WorkflowPanel() {
     visibleRun.controlDecisions?.filter(
       (decision) => decision.controllerNodeId === selectedNodeId
     ) ?? [];
+  const sessionPlans = useMemo(() => mapSessionPlans(visibleRun), [visibleRun]);
   const outputArtifacts = selectedExecution
     ? visibleRun.artifacts.filter((artifact) =>
         selectedExecution.outputArtifactIds.includes(artifact.id)
@@ -605,6 +615,24 @@ export function WorkflowPanel() {
           </div>
         </section>
 
+        {sessionPlans.length > 0 ? (
+          <section className="inspector-section">
+            <p className="section-label">Session plan</p>
+            <div className="session-plan-list">
+              {sessionPlans.map((plan) => (
+                <div className="session-plan-item" key={plan.group.id}>
+                  <span>{plan.group.label}</span>
+                  <strong>{plan.group.id}</strong>
+                  <small>{plan.nodeLabels.join(", ")}</small>
+                  {plan.controllerLabel ? (
+                    <small>controlled by {plan.controllerLabel}</small>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          </section>
+        ) : null}
+
         {controllerDecisions.length > 0 ? (
           <section className="inspector-section">
             <p className="section-label">Director decisions</p>
@@ -762,6 +790,51 @@ function mapRunEdges(edges: WorkflowEdge[]): Edge[] {
   });
 }
 
+interface SessionPlan {
+  group: WorkflowSessionGroup;
+  nodeLabels: string[];
+  controllerLabel?: string;
+}
+
+function mapSessionPlans(run: WorkflowRun): SessionPlan[] {
+  const groups = run.sessionGroups ?? inferSessionGroups(run.nodes);
+
+  return groups
+    .map((group) => {
+      const nodes = run.nodes.filter((node) => node.session?.groupId === group.id);
+      const controller = group.controllerNodeId
+        ? run.nodes.find((node) => node.id === group.controllerNodeId)
+        : undefined;
+
+      return {
+        group,
+        nodeLabels: nodes.map((node) => node.label),
+        controllerLabel: controller?.label
+      };
+    })
+    .filter((plan) => plan.nodeLabels.length > 0);
+}
+
+function inferSessionGroups(nodes: WorkflowNode[]): WorkflowSessionGroup[] {
+  const groups = new Map<string, WorkflowSessionGroup>();
+
+  for (const node of nodes) {
+    const policy = node.session;
+
+    if (!policy?.groupId || groups.has(policy.groupId)) {
+      continue;
+    }
+
+    groups.set(policy.groupId, {
+      id: policy.groupId,
+      label: policy.label ?? policy.groupId,
+      controllerNodeId: policy.controllerNodeId
+    });
+  }
+
+  return [...groups.values()];
+}
+
 function createDraftRun(definition?: WorkflowDefinition): WorkflowRun {
   const now = new Date().toISOString();
   const managedNodeIds = [
@@ -894,6 +967,23 @@ function createDraftRun(definition?: WorkflowDefinition): WorkflowRun {
       createdAt: now
     },
     status: "created",
+    sessionGroups: definition?.sessionGroups ?? [
+      {
+        id: "direction",
+        label: "Direction",
+        controllerNodeId: "session-director"
+      },
+      {
+        id: "implementation",
+        label: "Implementation",
+        controllerNodeId: "session-director"
+      },
+      {
+        id: "review",
+        label: "Review",
+        controllerNodeId: "session-director"
+      }
+    ],
     nodes,
     edges: definition?.edges ?? [
       {

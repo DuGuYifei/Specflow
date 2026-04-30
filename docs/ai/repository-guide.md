@@ -75,6 +75,8 @@ Reviewer、director、manager 和 verifier 节点应优先使用 `control_scope`
 
 节点 agent CLI 配置也属于结构化事实。新增或修改节点级 CLI 选择时，要同步 `WorkflowNode.agentCli` 类型、runtime node execution 初始化、UI 展示和 `.workflow.json`。
 
+Session group 也属于结构化事实。新增或修改节点 session policy 时，优先同步 `WorkflowDefinition.sessionGroups`，让 UI 可以展示稳定的 Session Plan。
+
 UI draft graph 通过 server 的 `/api/workflows` 获取 workflow definition。调整 workflow definition 展示时，优先保持这个 API 边界稳定。
 
 创建 run 时，UI/server 应传递并记录 `workflowDefinitionId`。修改 run state 时，不要丢失 `workflowDefinition` reference；它是复现某次 workflow 的最小来源信息。

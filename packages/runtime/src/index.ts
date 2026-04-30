@@ -16,7 +16,8 @@ import type {
   WorkflowDefinitionSource,
   WorkflowNode,
   WorkflowRun,
-  WorkflowSession
+  WorkflowSession,
+  WorkflowSessionGroup
 } from "@specflow/core";
 import { readSpecflowKnowledge } from "@specflow/specflow";
 
@@ -123,6 +124,23 @@ export function validateGraph(graph: GraphDefinition): GraphValidationResult {
     });
   }
 
+  const sessionGroupIds = new Set<string>();
+
+  for (const group of graph.sessionGroups ?? []) {
+    if (sessionGroupIds.has(group.id)) {
+      issues.push({ message: `Duplicate session group id: ${group.id}` });
+    }
+
+    sessionGroupIds.add(group.id);
+
+    if (group.controllerNodeId && !nodeIds.has(group.controllerNodeId)) {
+      issues.push({
+        message: `Session group controller does not exist: ${group.controllerNodeId}`,
+        nodeId: group.controllerNodeId
+      });
+    }
+  }
+
   for (const edge of graph.edges) {
     if (!nodeIds.has(edge.source)) {
       issues.push({
@@ -190,6 +208,17 @@ export function validateGraph(graph: GraphDefinition): GraphValidationResult {
     ) {
       issues.push({
         message: `Session policy requires a group id: ${node.id}`,
+        nodeId: node.id
+      });
+    }
+
+    if (
+      policy?.groupId &&
+      sessionGroupIds.size > 0 &&
+      !sessionGroupIds.has(policy.groupId)
+    ) {
+      issues.push({
+        message: `Session policy references missing group: ${policy.groupId}`,
         nodeId: node.id
       });
     }
@@ -378,10 +407,32 @@ export function createDefaultWorkflowGraph(): GraphDefinition {
       }
     }
   ];
+  const sessionGroups: WorkflowSessionGroup[] = [
+    {
+      id: "discovery",
+      label: "Discovery"
+    },
+    {
+      id: "direction",
+      label: "Direction",
+      controllerNodeId: "session-director"
+    },
+    {
+      id: "implementation",
+      label: "Implementation",
+      controllerNodeId: "session-director"
+    },
+    {
+      id: "review",
+      label: "Review",
+      controllerNodeId: "session-director"
+    }
+  ];
 
   return {
     id: "default-workflow-intent",
     name: "Default Workflow Intent",
+    sessionGroups,
     nodes,
     edges: [
       {
@@ -570,10 +621,28 @@ export function createPhase1LocalLoopGraph(): GraphDefinition {
       }
     }
   ];
+  const sessionGroups: WorkflowSessionGroup[] = [
+    {
+      id: "direction",
+      label: "Direction",
+      controllerNodeId: "session-director"
+    },
+    {
+      id: "implementation",
+      label: "Implementation",
+      controllerNodeId: "session-director"
+    },
+    {
+      id: "review",
+      label: "Review",
+      controllerNodeId: "session-director"
+    }
+  ];
 
   return {
     id: "phase-1-local-loop",
     name: "Phase 1 Local Loop",
+    sessionGroups,
     nodes,
     edges: [
       {
@@ -743,6 +812,7 @@ export async function createLocalWorkflowRun(
     ),
     ticket,
     status: "created",
+    sessionGroups: resolveWorkflowSessionGroups(graph),
     nodes: graph.nodes,
     edges: graph.edges,
     nodeExecutions: graph.nodes.map((node) =>
@@ -985,6 +1055,7 @@ export async function executeInMemoryStub(
     workflowDefinition: createWorkflowDefinitionRef(graph, "builtin"),
     ticket,
     status: "completed",
+    sessionGroups: resolveWorkflowSessionGroups(graph),
     nodes: graph.nodes.map((node) => ({ ...node, status: "completed" })),
     edges: graph.edges,
     nodeExecutions: graph.nodes.map((node) => ({
@@ -1422,6 +1493,12 @@ function normalizeWorkflowRun(run: WorkflowRun): WorkflowRun {
     },
     "builtin"
   );
+  run.sessionGroups ??= resolveWorkflowSessionGroups({
+    id: run.workflowDefinition.id,
+    name: run.workflowDefinition.name,
+    nodes: run.nodes,
+    edges: run.edges
+  });
   run.sessions ??= [];
   run.controlDecisions ??= [];
 
@@ -1444,6 +1521,32 @@ function createWorkflowDefinitionRef(
     version: definition.version,
     path
   };
+}
+
+function resolveWorkflowSessionGroups(
+  definition: WorkflowDefinition
+): WorkflowSessionGroup[] {
+  const groups = new Map<string, WorkflowSessionGroup>();
+
+  for (const group of definition.sessionGroups ?? []) {
+    groups.set(group.id, { ...group });
+  }
+
+  for (const node of definition.nodes) {
+    const policy = node.session;
+
+    if (!policy?.groupId || groups.has(policy.groupId)) {
+      continue;
+    }
+
+    groups.set(policy.groupId, {
+      id: policy.groupId,
+      label: policy.label ?? policy.groupId,
+      controllerNodeId: policy.controllerNodeId
+    });
+  }
+
+  return [...groups.values()];
 }
 
 function formatValidationIssues(issues: GraphValidationIssue[]): string {

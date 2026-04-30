@@ -41,7 +41,7 @@ describe("validateGraph", () => {
 
     plan.session = {
       mode: "ai_decides",
-      groupId: "implementation",
+      groupId: "missing-group",
       controllerNodeId: "missing-director"
     };
     plan.agentCli = {
@@ -63,6 +63,9 @@ describe("validateGraph", () => {
     );
     expect(result.issues.map((issue) => issue.message)).toContain(
       "Agent CLI requires a command: plan"
+    );
+    expect(result.issues.map((issue) => issue.message)).toContain(
+      "Session policy references missing group: missing-group"
     );
   });
 });
@@ -155,6 +158,11 @@ describe("runLocalWorkflow", () => {
       version: "0.2.0",
       path: "workflows/custom.workflow.json"
     });
+    expect(run.sessionGroups.map((group) => group.id)).toEqual([
+      "direction",
+      "implementation",
+      "review"
+    ]);
     expect(run.nodes.map((node) => node.id)).toEqual(
       definition.nodes.map((node) => node.id)
     );

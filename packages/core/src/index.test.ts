@@ -76,6 +76,13 @@ describe("core domain types", () => {
       name: "Phase 1 Local Loop",
       version: "0.1.0",
       entryNodeId: "ticket-input",
+      sessionGroups: [
+        {
+          id: "implementation",
+          label: "Implementation",
+          controllerNodeId: "session-director"
+        }
+      ],
       nodes: [
         {
           id: "ticket-input",
@@ -88,6 +95,7 @@ describe("core domain types", () => {
     };
 
     expect(definition.entryNodeId).toBe("ticket-input");
+    expect(definition.sessionGroups?.[0]?.id).toBe("implementation");
   });
 
   it("allows workflow runs to reference their source definition", () => {

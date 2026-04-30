@@ -4,6 +4,23 @@
   "version": "0.1.0",
   "description": "Structured workflow definition for the current local placeholder loop.",
   "entryNodeId": "ticket-input",
+  "sessionGroups": [
+    {
+      "id": "direction",
+      "label": "Direction",
+      "controllerNodeId": "session-director"
+    },
+    {
+      "id": "implementation",
+      "label": "Implementation",
+      "controllerNodeId": "session-director"
+    },
+    {
+      "id": "review",
+      "label": "Review",
+      "controllerNodeId": "session-director"
+    }
+  ],
   "nodes": [
     {
       "id": "ticket-input",

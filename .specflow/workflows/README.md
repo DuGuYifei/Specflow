@@ -6,7 +6,7 @@
 
 当前阶段状态见 `.specflow/workflows/phase-1-local-loop.md`。
 
-结构化 workflow definition 使用 `*.workflow.json`。这类文件记录当前可验证的节点、边、节点 agent CLI、session policy 和 control scope，是未来 UI 编辑 workflow 的输入边界。
+结构化 workflow definition 使用 `*.workflow.json`。这类文件记录当前可验证的 session group、节点、边、节点 agent CLI、session policy 和 control scope，是未来 UI 编辑 workflow 的输入边界。
 
 后续阶段说明见 `docs/product/phases/`。
 

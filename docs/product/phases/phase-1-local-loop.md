@@ -47,6 +47,8 @@ ticket -> spec context -> session director -> plan -> code draft -> implementati
 
 Phase 1 已把 session 作为 workflow run 的状态之一。节点可以声明不进入 session、复用同组 session、每次开启新 session，或由 Session Director 产出的 control decision 决定。
 
+Workflow definition 现在包含 `sessionGroups`，用于声明 Direction、Implementation、Review 等可展示的 session plan。节点通过 `session.groupId` 加入这些组，UI 可以在 run 开始前就展示哪些节点预期共用 session。
+
 当前 Session Director 是 deterministic mock：它通过 `control_scope` 管理 plan、code draft、implementation reviewer、repair loop 和 final patch，并产出 `control-decision` artifact。未来真实 AI 可以替换这一步，但 run state 和 UI 展示不需要改变。
 
 Implementation reviewer 也进入同一 control model：它通过 `control_scope` 管理 repair loop 和 final patch，并在每次 review 后写入 `review` control decision。这样 reviewer、verifier、manager 这类节点未来可以用同一种 UI 和 run state 表达“我管理哪些节点、我做了什么决策”。

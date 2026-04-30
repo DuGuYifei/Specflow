@@ -134,12 +134,20 @@ export interface WorkflowEdge {
   label?: string;
 }
 
+export interface WorkflowSessionGroup {
+  id: string;
+  label: string;
+  description?: string;
+  controllerNodeId?: string;
+}
+
 export interface WorkflowDefinition {
   id: string;
   name: string;
   version?: string;
   description?: string;
   entryNodeId?: string;
+  sessionGroups?: WorkflowSessionGroup[];
   nodes: WorkflowNode[];
   edges: WorkflowEdge[];
 }
@@ -226,6 +234,7 @@ export interface WorkflowRun {
   workflowDefinition: WorkflowDefinitionRef;
   ticket: Ticket;
   status: WorkflowRunStatus;
+  sessionGroups: WorkflowSessionGroup[];
   nodes: WorkflowNode[];
   edges: WorkflowEdge[];
   nodeExecutions: NodeExecutionState[];
