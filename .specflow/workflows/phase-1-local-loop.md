@@ -4,7 +4,7 @@ Phase 1 当前状态：已开始实现。
 
 当前目标：实现本地持续编码最小闭环，但按可交付切片逐步推进。
 
-当前已实现切片：最小 workflow run、artifact、execution state、定义级 session group plan、节点级 agent CLI 选择、session module、mock Session Director、reviewer control scope、workflow-bound run 创建的本地类型和 `.specflow/runs/` 文件存储边界；CLI 可以创建、列出和查看本地 placeholder workflow run；`specflow ui` 可以启动本地可视化面板观察运行过程。
+当前已实现切片：最小 workflow run、artifact、execution state、定义级 session group plan、节点级 agent CLI 选择、session module、mock Session Director、reviewer control scope、control decision 细节展示、workflow-bound run 创建的本地类型和 `.specflow/runs/` 文件存储边界；CLI 可以创建、列出和查看本地 placeholder workflow run；`specflow ui` 可以启动本地可视化面板观察运行过程。
 
 当前结构化 workflow definition：`.specflow/workflows/phase-1-local-loop.workflow.json`。
 
@@ -22,6 +22,7 @@ Phase 1 当前状态：已开始实现。
 - Workflow definition 中的 `sessionGroups` 描述可展示的 session plan；节点通过 `session.groupId` 加入组。
 - Workflow definition 中的 agent-mode 节点可以声明 `agentCli`；未声明时 runtime 使用默认 mock `codex`。
 - `implementation-review` 通过 `control_scope` 管理 `repair-loop` 和 `final-patch`，并在运行时写入 `review` control decision。
+- UI Inspector 会展开 control decision 细节，显示 session director 对目标节点的新 session / 复用 session 决策。
 - `packages/agent` 只保留 agent runner、执行策略和 agent CLI 选择的边界。
 - 不集成真实 Codex 调用。
 - 不实现生产级 orchestration。
@@ -262,6 +263,23 @@ Phase 1 当前状态：已开始实现。
 - 当前不实现 UI 编辑 session group。
 - 当前不实现真实 agent session 进程复用。
 - 当前不实现复杂 session 生命周期策略。
+
+### P1.16 Control Decision Detail UI
+
+完成状态：已完成。
+
+完成条件：
+
+- UI Inspector 不只显示 control decision 摘要。
+- Session decision 展示目标节点、session group、新开或复用 session、原因。
+- Review/control decision 展示目标节点名称。
+- 展示逻辑复用 `WorkflowControlDecision`，不为 Session Director 单独创建专用 UI 数据模型。
+
+非目标：
+
+- 当前不实现可编辑 decision。
+- 当前不实现图上动画路由。
+- 当前不实现实时日志流。
 
 ### P1.6 Final Patch 候选输出
 

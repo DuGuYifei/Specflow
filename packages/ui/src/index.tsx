@@ -641,7 +641,30 @@ export function WorkflowPanel() {
                 <div className="decision-item" key={decision.id}>
                   <strong>{decision.kind}</strong>
                   <span>{decision.summary}</span>
-                  <small>{decision.targetNodeIds.join(", ")}</small>
+                  <small>
+                    {decision.targetNodeIds
+                      .map((nodeId) => nodeDisplayLabel(visibleRun, nodeId))
+                      .join(", ")}
+                  </small>
+                  {(decision.sessionDecisions?.length ?? 0) > 0 ? (
+                    <div className="decision-detail-list">
+                      {decision.sessionDecisions?.map((sessionDecision) => (
+                        <div
+                          className="decision-detail-item"
+                          key={`${decision.id}:${sessionDecision.targetNodeId}`}
+                        >
+                          <strong>
+                            {nodeDisplayLabel(visibleRun, sessionDecision.targetNodeId)}
+                          </strong>
+                          <small>
+                            {sessionDecision.openNewSession ? "new" : "reuse"} /{" "}
+                            {sessionDecision.sessionGroupId}
+                          </small>
+                          <span>{sessionDecision.reason}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
               ))}
             </div>
@@ -833,6 +856,10 @@ function inferSessionGroups(nodes: WorkflowNode[]): WorkflowSessionGroup[] {
   }
 
   return [...groups.values()];
+}
+
+function nodeDisplayLabel(run: WorkflowRun, nodeId: string): string {
+  return run.nodes.find((node) => node.id === nodeId)?.label ?? nodeId;
 }
 
 function createDraftRun(definition?: WorkflowDefinition): WorkflowRun {

@@ -71,6 +71,8 @@ Session、director、manager、reviewer 和 verifier 属于领域模型。新增
 
 Reviewer、director、manager 和 verifier 节点应优先使用 `control_scope` + `WorkflowControlDecision` 表达管理关系和决策结果。不要为每一种控制角色另起一套互不兼容的状态模型。
 
+UI 展示 control decision 时应读取通用 `WorkflowControlDecision` 形状。Session Director 可以有 `sessionDecisions` 明细，但不要把 UI 绑定到某个单一节点 id。
+
 `.specflow/workflows/*.workflow.json` 是程序读取的结构化事实，`.specflow/workflows/*.md` 是状态说明。不要只改 Markdown 而遗漏 JSON definition。
 
 节点 agent CLI 配置也属于结构化事实。新增或修改节点级 CLI 选择时，要同步 `WorkflowNode.agentCli` 类型、runtime node execution 初始化、UI 展示和 `.workflow.json`。

@@ -53,6 +53,8 @@ Workflow definition 现在包含 `sessionGroups`，用于声明 Direction、Impl
 
 Implementation reviewer 也进入同一 control model：它通过 `control_scope` 管理 repair loop 和 final patch，并在每次 review 后写入 `review` control decision。这样 reviewer、verifier、manager 这类节点未来可以用同一种 UI 和 run state 表达“我管理哪些节点、我做了什么决策”。
 
+UI Inspector 会展开 control decision 细节。Session Director 的 decision 会显示每个目标节点是新开 session 还是复用 session；reviewer 的 decision 会显示它路由到 repair loop 还是 final patch。
+
 ## Workflow Definition
 
 Phase 1 的当前结构化定义位于 `.specflow/workflows/phase-1-local-loop.workflow.json`。它记录节点、边、session policy 和 control scope，供 CLI 校验，并作为后续 UI 配置编辑和 runtime 配置驱动执行的边界。

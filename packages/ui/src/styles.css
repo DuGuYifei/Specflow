@@ -452,6 +452,44 @@ h2 {
   text-transform: uppercase;
 }
 
+.decision-detail-list {
+  display: grid;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.decision-detail-item {
+  display: grid;
+  gap: 4px;
+  padding: 8px;
+  border: 1px solid rgba(130, 150, 157, 0.12);
+  background: rgba(13, 19, 24, 0.55);
+}
+
+.decision-detail-item strong,
+.decision-detail-item span,
+.decision-detail-item small {
+  overflow-wrap: anywhere;
+}
+
+.decision-detail-item strong {
+  color: #e7edf0;
+  font-size: 0.76rem;
+}
+
+.decision-detail-item span {
+  color: #91a1a8;
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+.decision-detail-item small {
+  color: #abc4ad;
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
 .session-item.is-selected {
   border-color: rgba(127, 184, 106, 0.62);
   background: rgba(45, 98, 50, 0.18);
