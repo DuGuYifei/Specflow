@@ -103,6 +103,41 @@ interface WorkflowDefinitionSummary {
   definition: WorkflowDefinition;
   validation: WorkflowValidationResult;
   runtimeCompatibility: WorkflowValidationResult;
+  executionPreview: WorkflowExecutionPreview;
+}
+
+interface WorkflowExecutionPreview {
+  workflowId: string;
+  workflowName: string;
+  sessionGroups: WorkflowSessionGroup[];
+  nodes: WorkflowNodeExecutionPreview[];
+}
+
+interface WorkflowNodeExecutionPreview {
+  nodeId: string;
+  label: string;
+  type: string;
+  role?: string;
+  executionMode: "system" | "agent";
+  agentCli?: {
+    cli: string;
+    args: string[];
+  };
+  session: {
+    mode: NodeSessionPolicy["mode"];
+    groupId?: string;
+    groupLabel?: string;
+    controllerNodeId?: string;
+    controllerLabel?: string;
+    newSessionOnLoop: boolean;
+  };
+  controls?: {
+    managedNodeIds: string[];
+    managedNodeLabels: string[];
+    decisionKinds: string[];
+  };
+  incomingEdgeIds: string[];
+  outgoingEdgeIds: string[];
 }
 
 interface NodeExecutionState {
@@ -256,6 +291,11 @@ export function WorkflowPanel() {
     (selectedWorkflowDefinition
       ? toWorkflowDefinitionRef(selectedWorkflowDefinition)
       : undefined);
+  const visibleWorkflowSummary = selectedRun
+    ? workflowDefinitions.find(
+        (workflow) => workflow.definition.id === selectedRun.workflowDefinition.id
+      )
+    : selectedWorkflowDefinition;
   const visibleWorkflowRuntimeLabel = selectedRun
     ? "bound"
     : selectedWorkflowReadiness.label;
@@ -263,6 +303,9 @@ export function WorkflowPanel() {
     (execution) => execution.nodeId === selectedNodeId
   );
   const selectedNode = visibleRun.nodes.find((node) => node.id === selectedNodeId);
+  const selectedNodePreview = visibleWorkflowSummary?.executionPreview.nodes.find(
+    (node) => node.nodeId === selectedNodeId
+  );
   const selectedSession = selectedExecution?.sessionId
     ? visibleRun.sessions?.find((session) => session.id === selectedExecution.sessionId)
     : undefined;
@@ -647,6 +690,27 @@ export function WorkflowPanel() {
             ) : null}
           </div>
         </section>
+
+        {selectedNodePreview ? (
+          <section className="inspector-section">
+            <p className="section-label">Execution preview</p>
+            <div className="execution-preview-list">
+              <div className="execution-preview-item">
+                <strong>{executionPreviewTitle(selectedNodePreview)}</strong>
+                <span>{executionPreviewSessionLabel(selectedNodePreview)}</span>
+                <small>
+                  {selectedNodePreview.incomingEdgeIds.length} in /{" "}
+                  {selectedNodePreview.outgoingEdgeIds.length} out
+                </small>
+                {selectedNodePreview.controls ? (
+                  <small>
+                    manages {selectedNodePreview.controls.managedNodeLabels.join(", ")}
+                  </small>
+                ) : null}
+              </div>
+            </div>
+          </section>
+        ) : null}
 
         {sessionPlans.length > 0 ? (
           <section className="inspector-section">
@@ -1135,6 +1199,28 @@ function executionModeLabel(execution?: NodeExecutionState): string {
   return execution.executionMode === "agent"
     ? `agent:${execution.agentCli?.cli ?? "unknown"}`
     : "system";
+}
+
+function executionPreviewTitle(preview: WorkflowNodeExecutionPreview): string {
+  if (preview.executionMode === "system") {
+    return "system";
+  }
+
+  return `agent:${preview.agentCli?.cli ?? "unknown"}`;
+}
+
+function executionPreviewSessionLabel(preview: WorkflowNodeExecutionPreview): string {
+  if (preview.session.mode === "none") {
+    return "no session";
+  }
+
+  const group = preview.session.groupLabel ?? preview.session.groupId ?? "session";
+  const controller = preview.session.controllerLabel
+    ? ` / controlled by ${preview.session.controllerLabel}`
+    : "";
+  const loop = preview.session.newSessionOnLoop ? " / new on loop" : "";
+
+  return `${group}:${preview.session.mode}${controller}${loop}`;
 }
 
 function agentArgsLabel(args: string[]): string {

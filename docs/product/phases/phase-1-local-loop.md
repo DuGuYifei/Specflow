@@ -63,6 +63,8 @@ Phase 1 的当前结构化定义位于 `.specflow/workflows/phase-1-local-loop.w
 
 Agent-mode 节点可以在 definition 中声明 `agentCli`。当前 Phase 1 definition 显式使用 mock `codex`，未来可以在同一字段上配置 `claude` 或自定义 CLI；真实 agent 启动仍不是本阶段目标。
 
-本地 server 通过 `/api/workflows` 暴露这些定义、校验结果和当前 runtime 可执行性结果。UI draft graph 优先从该 API 构建，并在 definition 对当前 placeholder runtime 不可执行时提前标记 blocked。
+本地 server 通过 `/api/workflows` 暴露这些定义、校验结果、当前 runtime 可执行性结果和 execution preview。UI draft graph 优先从该 API 构建，并在 definition 对当前 placeholder runtime 不可执行时提前标记 blocked。
+
+Execution preview 是 definition 到可视化工作台之间的稳定派生层。它把节点执行模式、agent CLI、session policy、controller 和 control scope 摘要交给 UI 展示，后续图编辑器可以继续复用这个边界。
 
 创建 run 时，UI 会把选中的 `workflowDefinitionId` 传给本地 server。run state 会记录实际绑定的 definition reference，包含来源和路径；当前 placeholder executor 仍要求 definition 保持 Phase 1 固定节点形状，直到 runtime 进入真正配置驱动调度。

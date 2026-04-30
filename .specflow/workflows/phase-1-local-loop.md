@@ -187,6 +187,7 @@ Phase 1 当前状态：已开始实现。
 - UI draft graph 优先由 workflow definition 构建。
 - UI 显示当前 workflow definition 的来源和校验状态。
 - API 同时返回当前 runtime compatibility result，让 UI 能区分 valid 但 blocked 的 definition。
+- API 返回 runtime 派生的 execution preview，让 UI 展示执行模式、agent CLI、session 和 control scope 摘要。
 
 非目标：
 
@@ -333,6 +334,24 @@ Phase 1 当前状态：已开始实现。
 - 当前不实现 workflow definition 编辑器。
 - 当前不实现任意 graph 调度。
 - 当前不生成完整 execution plan preview。
+
+### P1.20 Workflow Execution Preview
+
+完成状态：已完成。
+
+完成条件：
+
+- Runtime 可以从 workflow definition 派生 execution preview。
+- Preview 包含节点执行模式、agent CLI、session policy、controller、control scope 和入出边摘要。
+- `/api/workflows` 为每个 definition 返回 execution preview。
+- UI Inspector 展示选中节点的 execution preview。
+- Server 和 UI 不复制 runtime 的节点执行模式、agent CLI 和 session 推导规则。
+
+非目标：
+
+- 当前不实现真正配置驱动调度器。
+- 当前不实现 graph 编辑器。
+- 当前不生成跨节点时间线或并发调度计划。
 
 ### P1.6 Final Patch 候选输出
 

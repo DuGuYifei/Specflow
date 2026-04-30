@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type {
   AgentCliConfig,
   NodeSessionDecision,
+  NodeSessionMode,
   NodeExecutionMode,
   NodeExecutionState,
   Ticket,
@@ -48,6 +49,41 @@ export interface GraphValidationIssue {
 export interface GraphValidationResult {
   valid: boolean;
   issues: GraphValidationIssue[];
+}
+
+export interface WorkflowExecutionPreview {
+  workflowId: string;
+  workflowName: string;
+  sessionGroups: WorkflowSessionGroup[];
+  nodes: WorkflowNodeExecutionPreview[];
+}
+
+export interface WorkflowNodeExecutionPreview {
+  nodeId: string;
+  label: string;
+  type: WorkflowNode["type"];
+  role?: WorkflowNode["role"];
+  executionMode: NodeExecutionMode;
+  agentCli?: AgentCliConfig;
+  session: WorkflowNodeSessionPreview;
+  controls?: WorkflowNodeControlPreview;
+  incomingEdgeIds: string[];
+  outgoingEdgeIds: string[];
+}
+
+export interface WorkflowNodeSessionPreview {
+  mode: NodeSessionMode;
+  groupId?: string;
+  groupLabel?: string;
+  controllerNodeId?: string;
+  controllerLabel?: string;
+  newSessionOnLoop: boolean;
+}
+
+export interface WorkflowNodeControlPreview {
+  managedNodeIds: string[];
+  managedNodeLabels: string[];
+  decisionKinds: string[];
 }
 
 export interface NodeExecutionContext {
@@ -323,6 +359,63 @@ export function validateLocalPlaceholderRuntimeGraph(
   return {
     valid: issues.length === 0,
     issues
+  };
+}
+
+export function createWorkflowExecutionPreview(
+  graph: GraphDefinition
+): WorkflowExecutionPreview {
+  const sessionGroups = resolveWorkflowSessionGroups(graph);
+  const sessionGroupById = new Map(
+    sessionGroups.map((group) => [group.id, group] as const)
+  );
+  const nodeById = new Map(graph.nodes.map((node) => [node.id, node] as const));
+
+  return {
+    workflowId: graph.id,
+    workflowName: graph.name,
+    sessionGroups,
+    nodes: graph.nodes.map((node) => {
+      const executionMode = nodeExecutionMode(node);
+      const policy = node.session ?? { mode: "none" as const };
+      const group = policy.groupId ? sessionGroupById.get(policy.groupId) : undefined;
+      const controller = policy.controllerNodeId
+        ? nodeById.get(policy.controllerNodeId)
+        : undefined;
+      const controls = node.control
+        ? {
+            managedNodeIds: [...node.control.managedNodeIds],
+            managedNodeLabels: node.control.managedNodeIds.map(
+              (nodeId) => nodeById.get(nodeId)?.label ?? nodeId
+            ),
+            decisionKinds: [...node.control.decisionKinds]
+          }
+        : undefined;
+
+      return {
+        nodeId: node.id,
+        label: node.label,
+        type: node.type,
+        role: node.role,
+        executionMode,
+        agentCli: executionMode === "agent" ? agentCliForNode(node) : undefined,
+        session: {
+          mode: policy.mode,
+          groupId: policy.groupId,
+          groupLabel: group?.label ?? policy.label,
+          controllerNodeId: policy.controllerNodeId,
+          controllerLabel: controller?.label,
+          newSessionOnLoop: policy.newSessionOnLoop === true
+        },
+        controls,
+        incomingEdgeIds: graph.edges
+          .filter((edge) => edge.target === node.id)
+          .map((edge) => edge.id),
+        outgoingEdgeIds: graph.edges
+          .filter((edge) => edge.source === node.id)
+          .map((edge) => edge.id)
+      };
+    })
   };
 }
 

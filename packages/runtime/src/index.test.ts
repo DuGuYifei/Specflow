@@ -8,6 +8,7 @@ import {
   createLocalWorkflowRun,
   createDefaultWorkflowGraph,
   createPhase1LocalLoopGraph,
+  createWorkflowExecutionPreview,
   executeLocalWorkflowRun,
   runLocalWorkflow,
   validateGraph,
@@ -90,6 +91,61 @@ describe("validateLocalPlaceholderRuntimeGraph", () => {
           nodeId: "final-patch"
         }
       ]
+    });
+  });
+});
+
+describe("createWorkflowExecutionPreview", () => {
+  it("summarizes agent, session, edge, and control metadata", () => {
+    const graph = createPhase1LocalLoopGraph();
+    const preview = createWorkflowExecutionPreview(graph);
+    const plan = preview.nodes.find((node) => node.nodeId === "plan");
+    const director = preview.nodes.find((node) => node.nodeId === "session-director");
+    const reviewer = preview.nodes.find(
+      (node) => node.nodeId === "implementation-review"
+    );
+
+    expect(preview.workflowId).toBe("phase-1-local-loop");
+    expect(preview.sessionGroups.map((group) => group.id)).toEqual([
+      "direction",
+      "implementation",
+      "review"
+    ]);
+    expect(plan).toMatchObject({
+      executionMode: "agent",
+      agentCli: { cli: DEFAULT_AGENT_CLI, args: [] },
+      session: {
+        mode: "ai_decides",
+        groupId: "implementation",
+        groupLabel: "Implementation",
+        controllerNodeId: "session-director",
+        controllerLabel: "Session Director",
+        newSessionOnLoop: false
+      },
+      incomingEdgeIds: expect.arrayContaining(["session-director-plan"]),
+      outgoingEdgeIds: ["plan-code-draft"]
+    });
+    expect(director?.controls).toMatchObject({
+      decisionKinds: ["session"],
+      managedNodeIds: [
+        "plan",
+        "code-draft",
+        "implementation-review",
+        "repair-loop",
+        "final-patch"
+      ]
+    });
+    expect(reviewer).toMatchObject({
+      session: {
+        mode: "ai_decides",
+        groupId: "review",
+        newSessionOnLoop: true
+      },
+      controls: {
+        decisionKinds: ["review"],
+        managedNodeIds: ["repair-loop", "final-patch"],
+        managedNodeLabels: ["Repair Loop", "Final Patch"]
+      }
     });
   });
 });

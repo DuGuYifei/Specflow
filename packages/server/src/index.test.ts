@@ -176,6 +176,10 @@ describe("server routes", () => {
           valid: boolean;
           issues: Array<{ message: string }>;
         };
+        executionPreview: {
+          workflowId: string;
+          nodes: Array<{ nodeId: string; executionMode: string }>;
+        };
       }>;
     };
 
@@ -188,6 +192,10 @@ describe("server routes", () => {
       validation: { valid: true },
       runtimeCompatibility: {
         valid: false
+      },
+      executionPreview: {
+        workflowId: "demo",
+        nodes: [{ nodeId: "ticket-input", executionMode: "system" }]
       }
     });
     expect(body.workflows[0]?.runtimeCompatibility.issues[0]?.message).toBe(
@@ -208,6 +216,15 @@ describe("server routes", () => {
         definition: { id: string };
         validation: { valid: boolean };
         runtimeCompatibility: { valid: boolean; issues: unknown[] };
+        executionPreview: {
+          workflowId: string;
+          nodes: Array<{
+            nodeId: string;
+            executionMode: string;
+            agentCli?: { cli: string };
+            session: { groupId?: string };
+          }>;
+        };
       }>;
     };
 
@@ -217,7 +234,17 @@ describe("server routes", () => {
       source: "builtin",
       definition: { id: "phase-1-local-loop" },
       validation: { valid: true },
-      runtimeCompatibility: { valid: true, issues: [] }
+      runtimeCompatibility: { valid: true, issues: [] },
+      executionPreview: {
+        workflowId: "phase-1-local-loop"
+      }
+    });
+    expect(
+      body.workflows[0]?.executionPreview.nodes.find((node) => node.nodeId === "plan")
+    ).toMatchObject({
+      executionMode: "agent",
+      agentCli: { cli: "codex" },
+      session: { groupId: "implementation" }
     });
   });
 

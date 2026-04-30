@@ -6,13 +6,15 @@ import {
   FileWorkflowRunStore,
   createPhase1LocalLoopGraph,
   createLocalWorkflowRun,
+  createWorkflowExecutionPreview,
   executeLocalWorkflowRun,
   validateGraph,
   validateLocalPlaceholderRuntimeGraph,
   type GraphDefinition,
   type GraphValidationIssue,
   type GraphValidationResult,
-  type TicketInput
+  type TicketInput,
+  type WorkflowExecutionPreview
 } from "@specflow/runtime";
 import {
   CONTINUOUS_CODING_CATEGORY,
@@ -39,6 +41,7 @@ interface WorkflowDefinitionSummary {
   definition: GraphDefinition;
   validation: GraphValidationResult;
   runtimeCompatibility: GraphValidationResult;
+  executionPreview: WorkflowExecutionPreview;
 }
 
 const defaultHost = "127.0.0.1";
@@ -216,7 +219,8 @@ async function listWorkflowDefinitions(
       path: workflow.path,
       definition: workflow.definition,
       validation: validateGraph(workflow.definition),
-      runtimeCompatibility: validateLocalPlaceholderRuntimeGraph(workflow.definition)
+      runtimeCompatibility: validateLocalPlaceholderRuntimeGraph(workflow.definition),
+      executionPreview: createWorkflowExecutionPreview(workflow.definition)
     }));
   }
 
@@ -228,7 +232,8 @@ async function listWorkflowDefinitions(
       path: undefined,
       definition,
       validation: validateGraph(definition),
-      runtimeCompatibility: validateLocalPlaceholderRuntimeGraph(definition)
+      runtimeCompatibility: validateLocalPlaceholderRuntimeGraph(definition),
+      executionPreview: createWorkflowExecutionPreview(definition)
     }
   ];
 }

@@ -412,6 +412,7 @@ h2 {
 }
 
 .decision-list,
+.execution-preview-list,
 .session-plan-list,
 .session-list {
   display: grid;
@@ -420,6 +421,7 @@ h2 {
 }
 
 .decision-item,
+.execution-preview-item,
 .session-plan-item,
 .session-item {
   display: grid;
@@ -430,18 +432,22 @@ h2 {
 }
 
 .decision-item strong,
+.execution-preview-item strong,
 .session-plan-item strong,
 .session-item strong,
 .decision-item span,
+.execution-preview-item span,
 .session-plan-item span,
 .session-item span,
 .decision-item small,
+.execution-preview-item small,
 .session-plan-item small,
 .session-item small {
   overflow-wrap: anywhere;
 }
 
 .decision-item strong,
+.execution-preview-item strong,
 .session-plan-item span,
 .session-item span {
   color: #e7edf0;
@@ -449,6 +455,7 @@ h2 {
 }
 
 .decision-item span,
+.execution-preview-item span,
 .session-plan-item small,
 .session-item small {
   color: #91a1a8;
@@ -457,6 +464,7 @@ h2 {
 }
 
 .decision-item small,
+.execution-preview-item small,
 .session-plan-item strong,
 .session-item strong {
   color: #abc4ad;
