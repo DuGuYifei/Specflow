@@ -273,6 +273,10 @@ h2 {
   border-color: rgba(127, 184, 106, 0.46);
 }
 
+.node-role-reviewer {
+  border-color: rgba(213, 150, 61, 0.5);
+}
+
 .state-created,
 .state-pending,
 .state-skipped {

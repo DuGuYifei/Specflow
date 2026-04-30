@@ -4,7 +4,7 @@ Phase 1 当前状态：已开始实现。
 
 当前目标：实现本地持续编码最小闭环，但按可交付切片逐步推进。
 
-当前已实现切片：最小 workflow run、artifact、execution state、节点级 agent CLI 选择、session module、mock Session Director、workflow-bound run 创建的本地类型和 `.specflow/runs/` 文件存储边界；CLI 可以创建、列出和查看本地 placeholder workflow run；`specflow ui` 可以启动本地可视化面板观察运行过程。
+当前已实现切片：最小 workflow run、artifact、execution state、节点级 agent CLI 选择、session module、mock Session Director、reviewer control scope、workflow-bound run 创建的本地类型和 `.specflow/runs/` 文件存储边界；CLI 可以创建、列出和查看本地 placeholder workflow run；`specflow ui` 可以启动本地可视化面板观察运行过程。
 
 当前结构化 workflow definition：`.specflow/workflows/phase-1-local-loop.workflow.json`。
 
@@ -20,6 +20,7 @@ Phase 1 当前状态：已开始实现。
 - 本地 server 创建 run 时可以接收 `workflowDefinitionId`，并把绑定的 definition reference 写入 run state。
 - 当前 placeholder executor 只保证包含 Phase 1 固定节点 id 的 workflow definition 可执行。
 - Workflow definition 中的 agent-mode 节点可以声明 `agentCli`；未声明时 runtime 使用默认 mock `codex`。
+- `implementation-review` 通过 `control_scope` 管理 `repair-loop` 和 `final-patch`，并在运行时写入 `review` control decision。
 - `packages/agent` 只保留 agent runner、执行策略和 agent CLI 选择的边界。
 - 不集成真实 Codex 调用。
 - 不实现生产级 orchestration。
@@ -224,6 +225,24 @@ Phase 1 当前状态：已开始实现。
 - 当前不启动真实 Codex、Claude 或其他 agent。
 - 当前不实现 UI 图编辑器中的 agent CLI 下拉选择。
 - 当前不实现按节点保存用户编辑后的 workflow definition。
+
+### P1.14 Reviewer Control Scope
+
+完成状态：已完成。
+
+完成条件：
+
+- `implementation-review` 在 workflow definition 中声明 `control_scope`。
+- `implementation-review` 管理 `repair-loop` 和 `final-patch`。
+- Runtime 每次 review 都写入 `review` control decision。
+- Review artifact 仍保持 `ReviewResult` 形状，避免破坏当前 repair loop 读取逻辑。
+- UI 可通过既有 control decision 和 control scope 展示 reviewer 的管理范围。
+
+非目标：
+
+- 当前不实现任意 reviewer/verifier 节点模板。
+- 当前不实现真实 AI reviewer。
+- 当前不实现复杂路由调度器。
 
 ### P1.6 Final Patch 候选输出
 

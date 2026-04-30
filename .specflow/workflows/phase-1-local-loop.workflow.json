@@ -101,6 +101,10 @@
         "label": "Review",
         "controllerNodeId": "session-director",
         "newSessionOnLoop": true
+      },
+      "control": {
+        "managedNodeIds": ["repair-loop", "final-patch"],
+        "decisionKinds": ["review"]
       }
     },
     {
@@ -222,6 +226,20 @@
       "target": "final-patch",
       "type": "control_scope",
       "label": "manages session"
+    },
+    {
+      "id": "implementation-review-controls-repair-loop",
+      "source": "implementation-review",
+      "target": "repair-loop",
+      "type": "control_scope",
+      "label": "reviews outcome"
+    },
+    {
+      "id": "implementation-review-controls-final-patch",
+      "source": "implementation-review",
+      "target": "final-patch",
+      "type": "control_scope",
+      "label": "reviews outcome"
     }
   ]
 }

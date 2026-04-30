@@ -12,6 +12,8 @@ workflow session、节点 session 策略、director control decision 和 `contro
 
 节点级 agent CLI 选择属于 workflow definition。`WorkflowNode.agentCli` 记录节点偏好的 CLI 命令和参数；runtime 只在 agent-mode 节点执行时使用它，未声明时使用当前默认 mock `codex`。
 
+Reviewer、director、manager 和 verifier 都可以通过 `control_scope` 管理其他节点，并通过 `WorkflowControlDecision` 写入可观察决策。当前 `implementation-review` 已作为 reviewer/control 节点管理 `repair-loop` 和 `final-patch`。
+
 `.specflow` 读写、schema 和仓库知识层工具位于 `packages/specflow`。
 
 agent runner、工具调用和执行策略占位位于 `packages/agent`。

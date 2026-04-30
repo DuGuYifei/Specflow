@@ -261,6 +261,7 @@ export function createDefaultWorkflowGraph(): GraphDefinition {
     "repair-loop",
     "final-patch"
   ];
+  const reviewManagedNodeIds = ["repair-loop", "final-patch"];
   const nodes: WorkflowNode[] = [
     {
       id: "ticket",
@@ -341,6 +342,10 @@ export function createDefaultWorkflowGraph(): GraphDefinition {
         label: "Review",
         controllerNodeId: "session-director",
         newSessionOnLoop: true
+      },
+      control: {
+        managedNodeIds: reviewManagedNodeIds,
+        decisionKinds: ["review"]
       }
     },
     {
@@ -433,6 +438,13 @@ export function createDefaultWorkflowGraph(): GraphDefinition {
         target: nodeId,
         type: "control_scope" as const,
         label: "manages session"
+      })),
+      ...reviewManagedNodeIds.map((nodeId) => ({
+        id: `implementation-review-controls-${nodeId}`,
+        source: "implementation-review",
+        target: nodeId,
+        type: "control_scope" as const,
+        label: "reviews outcome"
       }))
     ]
   };
@@ -446,6 +458,7 @@ export function createPhase1LocalLoopGraph(): GraphDefinition {
     "repair-loop",
     "final-patch"
   ];
+  const reviewManagedNodeIds = ["repair-loop", "final-patch"];
   const nodes: WorkflowNode[] = [
     {
       id: "ticket-input",
@@ -521,6 +534,10 @@ export function createPhase1LocalLoopGraph(): GraphDefinition {
         label: "Review",
         controllerNodeId: "session-director",
         newSessionOnLoop: true
+      },
+      control: {
+        managedNodeIds: reviewManagedNodeIds,
+        decisionKinds: ["review"]
       }
     },
     {
@@ -613,6 +630,13 @@ export function createPhase1LocalLoopGraph(): GraphDefinition {
         target: nodeId,
         type: "control_scope" as const,
         label: "manages session"
+      })),
+      ...reviewManagedNodeIds.map((nodeId) => ({
+        id: `implementation-review-controls-${nodeId}`,
+        source: "implementation-review",
+        target: nodeId,
+        type: "control_scope" as const,
+        label: "reviews outcome"
       }))
     ]
   };
@@ -1066,8 +1090,10 @@ async function completeReviewNode(
           : "Placeholder review requires a repair attempt.",
         requiredChanges: approved ? [] : ["Run the placeholder repair node."]
       };
+      const decision = createReviewControlDecision(run, approved, now);
 
       run.reviews.push(review);
+      run.controlDecisions.push(decision);
 
       return createArtifact(
         run,
@@ -1080,6 +1106,7 @@ async function completeReviewNode(
           now,
           metadata: {
             approved,
+            decisionId: decision.id,
             ...sessionMetadata(session)
           }
         }
@@ -1195,6 +1222,31 @@ function createSessionControlDecision(
     summary:
       "Mock Session Director chooses implementation/review session boundaries without calling a real agent.",
     sessionDecisions,
+    createdAt: now()
+  };
+}
+
+function createReviewControlDecision(
+  run: WorkflowRun,
+  approved: boolean,
+  now: () => string
+): WorkflowControlDecision {
+  const controller = findNode(run, "implementation-review");
+  const intendedTargetNodeId = approved ? "final-patch" : "repair-loop";
+  const managedNodeIds = controller.control?.managedNodeIds ?? [intendedTargetNodeId];
+  const targetNodeIds = managedNodeIds.includes(intendedTargetNodeId)
+    ? [intendedTargetNodeId]
+    : managedNodeIds;
+
+  return {
+    id: createId("decision"),
+    runId: run.id,
+    controllerNodeId: controller.id,
+    kind: "review",
+    targetNodeIds,
+    summary: approved
+      ? "Mock reviewer routes approved work toward final patch."
+      : "Mock reviewer routes rejected work toward repair.",
     createdAt: now()
   };
 }

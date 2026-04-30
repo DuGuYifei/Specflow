@@ -204,18 +204,26 @@ describe("runLocalWorkflow", () => {
       (execution) => execution.nodeId === "final-patch"
     );
 
-    expect(run.controlDecisions).toHaveLength(1);
-    expect(run.controlDecisions[0]?.controllerNodeId).toBe("session-director");
+    const sessionDecision = run.controlDecisions.find(
+      (decision) => decision.kind === "session"
+    );
+    const reviewDecisions = run.controlDecisions.filter(
+      (decision) => decision.kind === "review"
+    );
+
+    expect(sessionDecision?.controllerNodeId).toBe("session-director");
     expect(
-      run.controlDecisions[0]?.sessionDecisions?.map(
-        (decision) => decision.targetNodeId
-      )
+      sessionDecision?.sessionDecisions?.map((decision) => decision.targetNodeId)
     ).toEqual([
       "plan",
       "code-draft",
       "implementation-review",
       "repair-loop",
       "final-patch"
+    ]);
+    expect(reviewDecisions.map((decision) => decision.targetNodeIds)).toEqual([
+      ["repair-loop"],
+      ["final-patch"]
     ]);
     expect(planExecution?.sessionId).toBeDefined();
     expect(draftExecution?.sessionId).toBe(planExecution?.sessionId);
