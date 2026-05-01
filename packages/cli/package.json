@@ -1,0 +1,19 @@
+{
+  "name": "@specflow/cli",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/specflow.ts"
+  },
+  "bin": {
+    "specflow": "./src/specflow.ts"
+  },
+  "scripts": {
+    "start": "bun src/specflow.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@specflow/server": "workspace:*"
+  }
+}

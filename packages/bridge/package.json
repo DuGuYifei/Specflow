@@ -1,0 +1,17 @@
+{
+  "name": "@specflow/bridge",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@specflow/agent-proxy": "workspace:*",
+    "@specflow/shared": "workspace:*",
+    "@specflow/workflow": "workspace:*"
+  }
+}

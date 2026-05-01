@@ -1,0 +1,17 @@
+{
+  "name": "@specflow/server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "start": "bun src/main.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@specflow/bridge": "workspace:*",
+    "@specflow/shared": "workspace:*"
+  }
+}

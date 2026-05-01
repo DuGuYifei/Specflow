@@ -1,0 +1,12 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./packages/shared" },
+    { "path": "./packages/agent-proxy" },
+    { "path": "./packages/workflow" },
+    { "path": "./packages/bridge" },
+    { "path": "./packages/server" },
+    { "path": "./packages/ui" },
+    { "path": "./packages/cli" }
+  ]
+}
