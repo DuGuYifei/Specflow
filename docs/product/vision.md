@@ -48,19 +48,17 @@ Edge 表示节点之间的关系。Specflow 至少有四类边：`control_flow` 
 
 Session 是一组节点共享的 agent CLI 上下文。多个节点可以进入同一个 session module，以保持计划、实现和修复之间的上下文连续性；节点也可以声明当 repair loop 再次进入时开启新 session，避免旧上下文污染新的审查或修复。
 
-## 基础 workflow
+## workflow 基础样例
 
-长期基础流程是：
+基础流程是：
 
 ```txt
+session director
 ticket input
   -> spec context
   -> interview
-  -> session director
   -> plan
   -> code draft
-  -> implementation reviewer
-  -> repair
   -> implementation reviewer
   -> final patch
 ```
@@ -69,52 +67,16 @@ ticket input
 
 Session Director 是基础流程中的第一个 director 节点。它用可观察 artifact 记录哪些节点共享 session、哪些节点应该开启新 session。当前实现是 deterministic mock，未来可以替换为真实 AI 决策。
 
-## Reviewer 和 Verifier
-
-Reviewer 和 Verifier 是 Specflow 的核心节点类型。它们检查某个 artifact 是否足够好，是否可以进入下一步。
-
-Director 和 Manager 是同一类可复用控制节点。它们不一定生成代码，而是管理 workflow 的某个范围，例如 session 边界、review 结果路由、验证策略、修复次数或节点是否需要重新执行。设计上它们通过 `control_scope` 明确自己能管理的节点，避免变成不可观察的全局黑盒。
-
-Implementation Reviewer 审查代码实现草稿。它不是传统 PR code review，而是检查 AI 生成的第一版实现是否满足 ticket、符合 plan、遵守 `.specflow` 约定、遗漏关键边界条件，以及是否需要进入 repair loop。
-
-Visual Decomposer 处理图片、截图、设计稿和 UI mock，把视觉输入拆解为结构化 UI 信息。
-
-Visual Verifier 审查 Visual Decomposer 的输出，检查是否遗漏重要视觉元素、组件层级是否合理、布局关系是否准确、是否保留关键状态和交互。
-
-Spec Consistency Checker 检查产物是否和 `.specflow` 中的仓库知识冲突。
-
-Execution Verifier 执行本地验证命令，例如 lint、typecheck、test、build。它更接近传统自动化检查，但在 Specflow 中属于 workflow graph 的一个可观察节点。
-
-## Repair Loop
-
-Repair Loop 是 Specflow 区别于普通 AI coding 工具的核心能力之一。
-
-普通 AI coding 工具经常是：
-
-```txt
-用户提需求 -> AI 生成代码 -> 用户自己检查
-```
-
-Specflow 的模式是：
-
-```txt
-生成代码 -> 审查 -> 修复 -> 再审查 -> 输出
-```
-
-Repair Loop 的价值是让代码生成过程持续收敛，而不是一次性输出。
-
-## `.specflow` 与 `docs`
+## `.specflow`
 
 `.specflow` 是仓库级长期知识层。它记录当前仓库应该被系统和 AI 遵守的事实与规则。
 
-`docs` 是给人看的解释文档层。它记录产品愿景、架构说明、设计背景、技术选型原因、ADR 和 AI 阅读路径。
+仓库本身可能已经存在了一些doc文档，.specflow 可以通过自行扫描发现他们，比如：
 
-边界是：
+* 假设一个仓库已经存在`docs` 给人看的解释文档层。它记录产品愿景、架构说明、设计背景、技术选型原因、ADR 和 AI 阅读路径等
+* 仓库还会有 README.md， AGENT.md，CONTRIBUTING.md 等面向用户和贡献者的文档。
 
-```txt
-.specflow 写当前应遵守什么。
-docs 写为什么这么设计、如何理解、历史上怎么决定。
-```
+所以初次构建 .specflow 可以引用已有的文档，通过写明相关文档在仓库的 relevant path。
 
 ## 产品边界
 
