@@ -48,10 +48,10 @@ Install dependencies:
 bun install
 ```
 
-Start Specflow:
+Start Specflow in development mode:
 
 ```sh
-bun run specflow
+bun run dev
 ```
 
 The command starts the Specflow server and prints the browser URL:
@@ -60,15 +60,14 @@ The command starts the Specflow server and prints the browser URL:
 Specflow UI: http://localhost:5173/
 ```
 
-During development, the server proxies the UI from Vite so React updates stay fast. Production builds are served as static UI assets by the server package.
+The server proxies UI requests to Vite so React updates stay fast. In production the server serves the embedded static UI from the compiled binary.
 
 ## Scripts
 
 ```sh
-bun run dev
-bun run specflow
-bun run build
-bun run typecheck
+bun run dev        # start server + Vite dev proxy
+bun run build      # build:ui then build:bin → ./specflow binary
+bun run typecheck  # type-check all packages
 ```
 
 ## Package Layout
