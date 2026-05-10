@@ -2,6 +2,7 @@ import { createSpecflowBridge } from "@specflow/bridge";
 import { APP_NAME, DEFAULT_HOST, SERVER_PORT } from "@specflow/shared";
 import { serveStaticUi } from "./static-ui";
 import { createDevUiProxy } from "./ui-dev";
+import { initWorkspace } from "./workspace";
 
 export interface SpecflowServerOptions {
   host?: string;
@@ -17,6 +18,7 @@ export interface RunningSpecflowServer {
 export async function startSpecflowServer(
   options: SpecflowServerOptions = {},
 ): Promise<RunningSpecflowServer> {
+  await initWorkspace();
   const host = options.host ?? DEFAULT_HOST;
   const preferredPort = options.port ?? SERVER_PORT;
   const mode =
