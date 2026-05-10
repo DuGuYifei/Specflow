@@ -2,10 +2,12 @@ import { extname } from "node:path";
 
 const distPrefix = "../../ui/dist";
 
-const files = import.meta.glob<string>("../../ui/dist/**/*", {
-  as: "file",
-  eager: true,
-});
+// import.meta.glob is a bundler-only transform (bun build --compile).
+// Under `bun run` it is undefined; dev mode never calls serveStaticUi so {} is safe.
+let files: Record<string, string> = {};
+try {
+  files = import.meta.glob<string>("../../ui/dist/**/*", { as: "file", eager: true });
+} catch { /* not in bundled context */ }
 
 const contentTypes = new Map([
   [".css", "text/css; charset=utf-8"],
