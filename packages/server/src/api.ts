@@ -2,8 +2,9 @@ import { WorkflowExecutor } from "@specflow/bridge";
 import type { SpecflowBridge } from "@specflow/bridge";
 import type { NodeStatusEvent, RunStatusEvent } from "@specflow/bridge";
 import { canvasToWorkflow } from "./canvas-to-workflow";
-import { listCanvases, loadCanvas, saveCanvas } from "./canvas-store";
-import { formatDuration, listRuns, loadRun, saveRun, type RunRecord, type RunState } from "./run-store";
+import { listCanvases, loadCanvas, saveCanvas, deleteCanvas } from "./canvas-store";
+import { formatDuration, listRuns, loadRun, saveRun, deleteRun, type RunRecord, type RunState } from "./run-store";
+import type { CanvasDoc } from "./canvas-doc";
 
 // ── simple in-process event bus ───────────────────────────────────────────────
 
@@ -33,7 +34,13 @@ class EventBus {
 
 export function createApiHandler(bridge: SpecflowBridge, root: string) {
   const bus = new EventBus();
-  let runCount = 0;
+
+  const DEFAULT_SESSION = {
+    id: "s1",
+    name: "main",
+    color: "oklch(0.7 0.13 250)",
+    agent: "claude-code",
+  };
 
   function sseResponse(runId: string): Response {
     const encoder = new TextEncoder();
@@ -57,7 +64,6 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
         });
         const offTerm = bus.on(`${runId}:term`, (e) => enqueue("terminal", e));
 
-        // Unsubscribe when the client disconnects
         void (async () => {
           await stream.cancel;
           offNode(); offRun(); offTerm();
@@ -83,7 +89,6 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
     }
 
     const workflow = canvasToWorkflow(doc);
-    runCount += 1;
     const runId = crypto.randomUUID();
     const existingCount = (await listRuns(workflowId, root)).length;
     const label = `Run #${existingCount + 1}`;
@@ -101,18 +106,21 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
       startedAt: new Date().toISOString(),
       agent: doc.sessions[0]?.agent ?? "mock",
       nodeStates: initialNodeStates,
+      nodeOutputs: {},
       canvasSnapshot: doc,
     };
 
     await saveRun(record, root);
 
     let lastTermSeq = 0;
+    let currentNodeId: string | undefined;
+
     const flushTerminalEvents = () => {
       const all = bridge.terminalEvents.list({ runId });
       for (const te of all) {
         if (te.sequence > lastTermSeq) {
           lastTermSeq = te.sequence;
-          bus.emit(`${runId}:term`, { chunk: te.chunk, stream: te.stream });
+          bus.emit(`${runId}:term`, { chunk: te.chunk, stream: te.stream, nodeId: currentNodeId });
         }
       }
     };
@@ -123,8 +131,17 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
         e.status === "failed" ? "error" :
         e.status === "running" ? "running" : "pending";
 
+      if (e.status === "running") {
+        currentNodeId = e.nodeId;
+      }
+
       record.nodeStates[e.nodeId] = uiStatus;
       if (uiStatus === "running") record.activeNode = e.nodeId;
+
+      if (e.status === "done" && (e as NodeStatusEvent & { output?: string }).output) {
+        record.nodeOutputs[e.nodeId] = (e as NodeStatusEvent & { output?: string }).output!;
+      }
+
       void saveRun(record, root);
       bus.emit(`${runId}:node`, { nodeId: e.nodeId, status: uiStatus, runId });
       flushTerminalEvents();
@@ -152,8 +169,6 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
       onRunStatus,
     });
 
-    // Forward terminal events as they arrive by tailing new ones per node event
-    // (terminal events are appended synchronously during node execution)
     void executor.run(workflow, initialInput).catch(() => { /* handled via onRunStatus */ });
 
     return Response.json({ runId });
@@ -174,7 +189,23 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
       return Response.json(list.map((c) => ({ ...c, runs: runsByWorkflow.get(c.id) ?? 0 })));
     }
 
-    // GET /api/canvases/:id
+    // POST /api/canvases  (create new canvas)
+    if (request.method === "POST" && pathname === "/api/canvases") {
+      let body: { name?: string } = {};
+      try { body = await request.json(); } catch { /* ok */ }
+      const id = `wf${crypto.randomUUID().replace(/-/g, "").slice(0, 8)}`;
+      const doc: CanvasDoc = {
+        id,
+        name: body.name ?? "Untitled workflow",
+        sessions: [DEFAULT_SESSION],
+        nodes: [],
+        edges: [],
+      };
+      await saveCanvas(id, doc, root);
+      return Response.json(doc);
+    }
+
+    // /api/canvases/:id
     const canvasMatch = pathname.match(/^\/api\/canvases\/([^/]+)$/);
     if (canvasMatch) {
       const id = canvasMatch[1];
@@ -196,6 +227,10 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
         await saveCanvas(id, body, root);
         return Response.json({ ok: true });
       }
+      if (request.method === "DELETE") {
+        await deleteCanvas(id, root);
+        return Response.json({ ok: true });
+      }
     }
 
     // POST /api/canvases/:id/run
@@ -214,14 +249,21 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
       return Response.json(runs);
     }
 
-    // GET /api/runs/:id
+    // /api/runs/:id
     const runIdMatch = pathname.match(/^\/api\/runs\/([^/]+)$/);
-    if (runIdMatch && request.method === "GET") {
-      try {
-        const rec = await loadRun(runIdMatch[1], root);
-        return Response.json(rec);
-      } catch {
-        return Response.json({ error: "Not found" }, { status: 404 });
+    if (runIdMatch) {
+      const id = runIdMatch[1];
+      if (request.method === "GET") {
+        try {
+          const rec = await loadRun(id, root);
+          return Response.json(rec);
+        } catch {
+          return Response.json({ error: "Not found" }, { status: 404 });
+        }
+      }
+      if (request.method === "DELETE") {
+        await deleteRun(id, root);
+        return Response.json({ ok: true });
       }
     }
 

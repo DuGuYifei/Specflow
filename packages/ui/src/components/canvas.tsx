@@ -36,7 +36,6 @@ function edgeMid(from: { x: number; y: number }, to: { x: number; y: number }, l
   return { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 };
 }
 
-// Approximate rendered heights per node kind (used for bounding-box fit).
 const NODE_H: Record<string, number> = { step: 120, gate: 110, end: 36 };
 
 // ── node cards ────────────────────────────────────────────────────────────────
@@ -52,11 +51,11 @@ interface StepCardProps {
 
 function StepCard({ n, session, selected, runState, onMouseDown, onSelect }: StepCardProps) {
   const cls = ['node'];
-  if (selected)           cls.push('selected');
+  if (selected)               cls.push('selected');
   if (runState === 'running') cls.push('running');
   if (runState === 'success') cls.push('success');
   if (runState === 'error')   cls.push('error');
-  if (n.locked)           cls.push('locked');
+  if (n.locked)               cls.push('locked');
 
   return (
     <div
@@ -105,9 +104,10 @@ interface GateCardProps {
   runState: string | undefined;
   onMouseDown: (e: React.MouseEvent, id: string) => void;
   onSelect: (id: string) => void;
+  onAddBranch: (gateId: string) => void;
 }
 
-function GateCard({ n, selected, runState, onMouseDown, onSelect }: GateCardProps) {
+function GateCard({ n, selected, runState, onMouseDown, onSelect, onAddBranch }: GateCardProps) {
   const cls = ['gate-wrap'];
   if (selected)               cls.push('selected');
   if (runState === 'running') cls.push('running');
@@ -131,13 +131,13 @@ function GateCard({ n, selected, runState, onMouseDown, onSelect }: GateCardProp
         </div>
         <h3 className="gate-title">{n.title}</h3>
       </div>
-      <div className="gate-port-in" />
+      <div className="gate-port-in" data-port="in" data-node={n.id} />
       {branches.map((b, i) => {
         const total = branches.length + 1;
         const t = (i + 1) / (total + 1);
         const top = h * t - 6;
         return (
-          <div key={b.id} className={`gate-port-out ${b.id}`} style={{ right: -7, top }}>
+          <div key={b.id} className={`gate-port-out ${b.id}`} data-port="gate-out" data-node={n.id} data-branch={b.id} style={{ right: -7, top }}>
             <span className="pl">{b.label}</span>
           </div>
         );
@@ -146,6 +146,7 @@ function GateCard({ n, selected, runState, onMouseDown, onSelect }: GateCardProp
         className="gate-port-add"
         style={{ right: -8, top: h * (branches.length + 1) / (branches.length + 2) - 7 }}
         title="Add branch"
+        onClick={(e) => { e.stopPropagation(); onAddBranch(n.id); }}
       >+</div>
     </div>
   );
@@ -168,6 +169,7 @@ function EndCard({ n, selected, onMouseDown, onSelect }: EndCardProps) {
       style={{ left: n.x, top: n.y }}
       onMouseDown={(e) => onMouseDown(e, n.id)}
       onClick={(e) => { e.stopPropagation(); onSelect(n.id); }}
+      data-port="in" data-node={n.id}
     >
       <Icon name="check" size={11} />{n.title || 'End'}
     </div>
@@ -175,6 +177,8 @@ function EndCard({ n, selected, onMouseDown, onSelect }: EndCardProps) {
 }
 
 // ── canvas ────────────────────────────────────────────────────────────────────
+
+export type CanvasMode = 'pan' | 'connect' | 'add-step' | 'add-gate' | 'add-end';
 
 interface CanvasProps {
   nodes: WorkflowNode[];
@@ -187,6 +191,11 @@ interface CanvasProps {
   runState: RunStateMap;
   showRun: boolean;
   onNodeMove: (id: string, x: number, y: number) => void;
+  onAddNode: (node: WorkflowNode) => void;
+  onAddEdge: (edge: Edge) => void;
+  onDeleteNode: (id: string) => void;
+  onAddBranch: (gateId: string) => void;
+  viewMode: 'edit' | 'run';
   zoom: number;
   setZoom: (z: number) => void;
   pan: { x: number; y: number };
@@ -197,22 +206,34 @@ type DragState =
   | { kind: 'pan'; startX: number; startY: number; panX: number; panY: number }
   | { kind: 'node'; nodeId: string; startX: number; startY: number; nx: number; ny: number };
 
+interface PendingConnect {
+  fromId: string;
+  branch?: string;
+}
+
 export function Canvas({
   nodes, edges, sessions,
   selection, onSelectNode, onSelectEdge, onClearSelection,
   runState, showRun, onNodeMove,
+  onAddNode, onAddEdge, onDeleteNode, onAddBranch,
+  viewMode,
   zoom, setZoom, pan, setPan,
 }: CanvasProps) {
+  const [mode, setMode] = useState<CanvasMode>('pan');
+  const [pendingConnect, setPendingConnect] = useState<PendingConnect | null>(null);
+  const [cursorPos, setCursorPos] = useState({ x: 0, y: 0 });
+
   const dragRef = useRef<DragState | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const zoomRef = useRef(zoom);
   const panRef  = useRef(pan);
+  const nodesRef = useRef(nodes);
   const [hoverEdge, setHoverEdge] = useState<string | null>(null);
 
-  zoomRef.current = zoom;
-  panRef.current  = pan;
+  zoomRef.current  = zoom;
+  panRef.current   = pan;
+  nodesRef.current = nodes;
 
-  // Compute zoom + pan to fit all nodes inside the visible canvas area.
   const fitToView = useCallback(() => {
     if (!wrapRef.current || nodes.length === 0) return;
     const cw = wrapRef.current.clientWidth;
@@ -238,15 +259,12 @@ export function Canvas({
     setPan({ x: cw / 2 - cx * z, y: ch / 2 - cy * z });
   }, [nodes, setZoom, setPan]);
 
-  // Fit on first render once the DOM has measured.
   useEffect(() => {
     const t = setTimeout(fitToView, 0);
     return () => clearTimeout(t);
-  // Intentionally only on mount — nodes ref is stable at load time.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Non-passive wheel listener so preventDefault actually stops page scroll.
   useEffect(() => {
     const el = wrapRef.current;
     if (!el) return;
@@ -263,15 +281,115 @@ export function Canvas({
     return () => el.removeEventListener('wheel', handler);
   }, [setZoom, setPan]);
 
+  // Helper: canvas coords from client coords
+  const clientToCanvas = useCallback((clientX: number, clientY: number) => {
+    if (!wrapRef.current) return { x: 0, y: 0 };
+    const rect = wrapRef.current.getBoundingClientRect();
+    return {
+      x: (clientX - rect.left - panRef.current.x) / zoomRef.current,
+      y: (clientY - rect.top  - panRef.current.y) / zoomRef.current,
+    };
+  }, []);
+
+  // ── connect-mode helpers ──────────────────────────────────────────────────
+
+  const completeEdge = useCallback((fromId: string, toId: string, branch?: string) => {
+    if (fromId === toId) return;
+    const fromN = nodesRef.current.find((n) => n.id === fromId);
+    const toN   = nodesRef.current.find((n) => n.id === toId);
+    if (!fromN || !toN) return;
+
+    const sameSession =
+      fromN.kind !== 'gate' && toN.kind !== 'gate' && toN.kind !== 'end' &&
+      fromN.sessionId != null && fromN.sessionId === toN.sessionId;
+
+    const edge: Edge = {
+      id: `e${Date.now()}`,
+      from: fromId,
+      to: toId,
+      branch,
+      sameSession,
+    };
+    onAddEdge(edge);
+  }, [onAddEdge]);
+
+  // ── canvas mousedown (pan / add-node / connect) ───────────────────────────
+
   const onCanvasMouseDown = (e: React.MouseEvent) => {
     const target = e.target as Element;
     if (target.closest('.node, .gate-wrap, .end-node, .edge-tag, .canvas-toolbar, .edge-hover-target')) return;
+
+    if (mode === 'connect') {
+      // Clicking empty space cancels pending connect
+      if (pendingConnect) setPendingConnect(null);
+      return;
+    }
+
+    if (mode !== 'pan' && viewMode === 'edit') {
+      // Add-node modes: place node at click position
+      const pos = clientToCanvas(e.clientX, e.clientY);
+      const kind = mode === 'add-step' ? 'step' : mode === 'add-gate' ? 'gate' : 'end';
+      const id = `n${Date.now()}`;
+      const num = `${nodesRef.current.length + 1}`;
+      const firstSession = sessions[0]?.id ?? null;
+
+      let newNode: WorkflowNode;
+      if (kind === 'step') {
+        newNode = { kind: 'step', id, num, x: pos.x - 110, y: pos.y - 60, w: 220, title: 'Untitled', desc: '', sessionId: firstSession, updateDoc: false };
+      } else if (kind === 'gate') {
+        newNode = { kind: 'gate', id, num, x: pos.x - 110, y: pos.y - 55, w: 220, title: 'Decision', sessionId: firstSession, branches: [{ id: 'pass', label: 'pass', color: 'oklch(0.55 0.13 145)' }, { id: 'fix', label: 'fix', color: 'var(--err)' }] };
+      } else {
+        newNode = { kind: 'end', id, num, x: pos.x - 30, y: pos.y - 18, w: 80, title: 'Done', sessionId: null };
+      }
+
+      onAddNode(newNode);
+      setMode('pan');
+      onSelectNode(id);
+      return;
+    }
+
     dragRef.current = { kind: 'pan', startX: e.clientX, startY: e.clientY, panX: pan.x, panY: pan.y };
     onClearSelection();
   };
 
+  // ── node mousedown (drag / connect ports) ─────────────────────────────────
+
   const onNodeMouseDown = (e: React.MouseEvent, nodeId: string) => {
     const target = e.target as Element;
+
+    if (mode === 'connect' && viewMode === 'edit') {
+      const outEl = target.closest('[data-port="out"], [data-port="gate-out"]');
+      const inEl  = target.closest('[data-port="in"]');
+
+      if (outEl) {
+        e.stopPropagation();
+        const fromId = outEl.getAttribute('data-node') ?? nodeId;
+        const branch = outEl.getAttribute('data-branch') ?? undefined;
+        if (!pendingConnect) {
+          setPendingConnect({ fromId, branch });
+        }
+        return;
+      }
+
+      if (inEl && pendingConnect) {
+        e.stopPropagation();
+        const toId = inEl.getAttribute('data-node') ?? nodeId;
+        completeEdge(pendingConnect.fromId, toId, pendingConnect.branch);
+        setPendingConnect(null);
+        setMode('pan');
+        return;
+      }
+
+      // Clicked body of a node while pending — treat incoming port
+      if (pendingConnect) {
+        completeEdge(pendingConnect.fromId, nodeId, pendingConnect.branch);
+        setPendingConnect(null);
+        setMode('pan');
+      }
+      return;
+    }
+
+    // Non-connect mode: skip port clicks, initiate drag
     if (
       target.classList.contains('port') ||
       target.classList.contains('gate-port-out') ||
@@ -279,6 +397,12 @@ export function Canvas({
       target.classList.contains('gate-port-in')
     ) return;
     e.stopPropagation();
+
+    if (viewMode === 'run') {
+      onSelectNode(nodeId);
+      return;
+    }
+
     const n = nodes.find((x) => x.id === nodeId);
     if (!n) return;
     dragRef.current = { kind: 'node', nodeId, startX: e.clientX, startY: e.clientY, nx: n.x, ny: n.y };
@@ -288,7 +412,14 @@ export function Canvas({
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
       const d = dragRef.current;
-      if (!d) return;
+      if (!d) {
+        // Track cursor for connect-mode live line
+        if (pendingConnect) {
+          const pos = clientToCanvas(e.clientX, e.clientY);
+          setCursorPos(pos);
+        }
+        return;
+      }
       if (d.kind === 'pan') {
         setPan({ x: d.panX + (e.clientX - d.startX), y: d.panY + (e.clientY - d.startY) });
       } else if (d.kind === 'node') {
@@ -304,7 +435,7 @@ export function Canvas({
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
     };
-  }, [zoom, onNodeMove, setPan]);
+  }, [zoom, onNodeMove, setPan, pendingConnect, clientToCanvas]);
 
   const nodeById = useMemo(() => {
     const m: Record<string, WorkflowNode> = {};
@@ -314,11 +445,30 @@ export function Canvas({
 
   const sessionById = (id: string | null) => sessions.find((s) => s.id === id);
 
+  // Pending connect line origin
+  const pendingFrom = pendingConnect
+    ? (() => {
+        const fromN = nodeById[pendingConnect.fromId];
+        return fromN ? nodeAnchorOut(fromN, pendingConnect.branch) : null;
+      })()
+    : null;
+
+  const toolbarModeBtn = (m: CanvasMode, icon: import('./icon').IconName, title: string) => (
+    <button
+      title={title}
+      style={mode === m ? { background: 'var(--ink)', color: 'var(--bg)' } : undefined}
+      onClick={() => { setMode(mode === m ? 'pan' : m); setPendingConnect(null); }}
+    >
+      <Icon name={icon} size={14} />
+    </button>
+  );
+
   return (
     <div
       ref={wrapRef}
       className="canvas-wrap"
       onMouseDown={onCanvasMouseDown}
+      style={{ cursor: mode !== 'pan' && mode !== 'connect' ? 'crosshair' : pendingConnect ? 'cell' : undefined }}
     >
       <div
         className="canvas-stage"
@@ -335,6 +485,9 @@ export function Canvas({
             </marker>
             <marker id="arrow-running" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse" markerUnits="userSpaceOnUse">
               <path d="M 0 1 L 9 5 L 0 9 z" fill="var(--running)" />
+            </marker>
+            <marker id="arrow-pending" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse" markerUnits="userSpaceOnUse">
+              <path d="M 0 1 L 9 5 L 0 9 z" fill="var(--ink-2)" />
             </marker>
           </defs>
 
@@ -382,6 +535,18 @@ export function Canvas({
               </g>
             );
           })}
+
+          {/* pending connect line */}
+          {pendingFrom && (
+            <path
+              d={edgePath(pendingFrom, cursorPos)}
+              fill="none"
+              stroke="var(--ink-2)"
+              strokeWidth={1.2}
+              strokeDasharray="4 3"
+              style={{ pointerEvents: 'none' }}
+            />
+          )}
         </svg>
 
         {/* edge tag badges */}
@@ -430,6 +595,7 @@ export function Canvas({
               key={n.id} n={n} selected={selected}
               runState={runState[n.id]}
               onMouseDown={onNodeMouseDown} onSelect={onSelectNode}
+              onAddBranch={onAddBranch}
             />
           );
           if (n.kind === 'end') return (
@@ -468,12 +634,15 @@ export function Canvas({
 
       {/* toolbar */}
       <div className="canvas-toolbar" onMouseDown={(e) => e.stopPropagation()}>
-        <button title="Hand / pan"><Icon name="hand" size={14} /></button>
-        <button title="Connect"><Icon name="connect" size={14} /></button>
-        <button title="Add step"><Icon name="plus" size={14} /></button>
-        <button title="Add gate"><Icon name="route" size={14} /></button>
-        <button title="Add end"><Icon name="check" size={14} /></button>
-        <div className="divider" />
+        {viewMode === 'edit' && (
+          <>
+            {toolbarModeBtn('connect', 'connect', 'Connect nodes')}
+            {toolbarModeBtn('add-step', 'plus', 'Add step node')}
+            {toolbarModeBtn('add-gate', 'route', 'Add gate node')}
+            {toolbarModeBtn('add-end', 'check', 'Add end node')}
+            <div className="divider" />
+          </>
+        )}
         <button onClick={() => setZoom(Math.max(0.3, zoom - 0.1))}>
           <Icon name="zoom-out" size={13} />
         </button>

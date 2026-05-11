@@ -32,6 +32,7 @@ export interface NodeStatusEvent {
   nodeId: string;
   status: NodeStatus;
   at: string;
+  output?: string;
 }
 
 export interface RunStatusEvent {
@@ -209,7 +210,7 @@ export class WorkflowExecutor {
         nodeRun.status = "done";
         nodeRun.output = output;
         nodeRun.completedAt = new Date().toISOString();
-        this.#onNodeStatus?.({ runId: input.run.id, nodeId: input.node.id, status: "done", at: nodeRun.completedAt });
+        this.#onNodeStatus?.({ runId: input.run.id, nodeId: input.node.id, status: "done", at: nodeRun.completedAt, output });
         return { output, downstreamInput: output };
       }
 
@@ -222,7 +223,7 @@ export class WorkflowExecutor {
       nodeRun.output = JSON.stringify(decision);
       nodeRun.gateDecision = decision;
       nodeRun.completedAt = new Date().toISOString();
-      this.#onNodeStatus?.({ runId: input.run.id, nodeId: input.node.id, status: "done", at: nodeRun.completedAt });
+      this.#onNodeStatus?.({ runId: input.run.id, nodeId: input.node.id, status: "done", at: nodeRun.completedAt, output: nodeRun.output });
       return {
         output: nodeRun.output,
         downstreamInput: input.input,

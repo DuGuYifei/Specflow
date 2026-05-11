@@ -7,11 +7,13 @@ interface ConnectionPanelProps {
   edge: Edge;
   fromNode?: WorkflowNode;
   toNode?: WorkflowNode;
+  viewMode: 'edit' | 'run';
   onClose: () => void;
   onEditEdge?: (id: string, patch: { tag?: string; prompt?: string }) => void;
+  onDeleteEdge?: (id: string) => void;
 }
 
-export function ConnectionPanel({ edge, fromNode, toNode, onClose, onEditEdge }: ConnectionPanelProps) {
+export function ConnectionPanel({ edge, fromNode, toNode, viewMode, onClose, onEditEdge, onDeleteEdge }: ConnectionPanelProps) {
   if (edge.sameSession) {
     return (
       <RightPanel
@@ -20,7 +22,7 @@ export function ConnectionPanel({ edge, fromNode, toNode, onClose, onEditEdge }:
         onClose={onClose}
       >
         <div className="code-hint">
-          Both nodes run in the <strong>same session</strong>. Output and input flow through the live conversation — no separate hand-off prompt or output tag is needed. To customize, split the nodes into different sessions.
+          Both nodes run in the <strong>same session</strong>. Output and input flow through the live conversation — no separate hand-off prompt or output tag is needed.
         </div>
         <div className="section-title">From → To</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -31,6 +33,13 @@ export function ConnectionPanel({ edge, fromNode, toNode, onClose, onEditEdge }:
             <div className="nbox"><span className="nid">{toNode?.num}</span><span className="nname">{toNode?.title}</span></div>
           </div>
         </div>
+        {viewMode === 'edit' && onDeleteEdge && (
+          <div style={{ marginTop: 18 }}>
+            <button className="btn ghost" style={{ color: 'var(--err)' }} onClick={() => { onDeleteEdge(edge.id); onClose(); }}>
+              <Icon name="trash" size={12} />Delete
+            </button>
+          </div>
+        )}
       </RightPanel>
     );
   }
@@ -45,16 +54,24 @@ export function ConnectionPanel({ edge, fromNode, toNode, onClose, onEditEdge }:
         <div className="code-hint">
           Gate output edges have no prompt or tag — the gate&apos;s input is forwarded as-is to whichever branch it picks.
         </div>
+        {viewMode === 'edit' && onDeleteEdge && (
+          <div style={{ marginTop: 18 }}>
+            <button className="btn ghost" style={{ color: 'var(--err)' }} onClick={() => { onDeleteEdge(edge.id); onClose(); }}>
+              <Icon name="trash" size={12} />Delete
+            </button>
+          </div>
+        )}
       </RightPanel>
     );
   }
 
-  return <EditableConnectionPanel edge={edge} fromNode={fromNode} toNode={toNode} onClose={onClose} onEditEdge={onEditEdge} />;
+  return <EditableConnectionPanel edge={edge} fromNode={fromNode} toNode={toNode} viewMode={viewMode} onClose={onClose} onEditEdge={onEditEdge} onDeleteEdge={onDeleteEdge} />;
 }
 
-function EditableConnectionPanel({ edge, fromNode, toNode, onClose, onEditEdge }: ConnectionPanelProps) {
+function EditableConnectionPanel({ edge, fromNode, toNode, viewMode, onClose, onEditEdge, onDeleteEdge }: ConnectionPanelProps) {
   const [tag, setTag] = useState(edge.tag ?? '');
   const [prompt, setPrompt] = useState(edge.prompt ?? '');
+  const readonly = viewMode === 'run';
 
   const handleSave = () => {
     onEditEdge?.(edge.id, { tag, prompt });
@@ -85,6 +102,7 @@ function EditableConnectionPanel({ edge, fromNode, toNode, onClose, onEditEdge }
         className="input"
         style={{ fontFamily: 'var(--font-mono)' }}
         value={tag}
+        disabled={readonly}
         onChange={(e) => setTag(e.target.value)}
       />
       <div className="code-hint">
@@ -101,18 +119,21 @@ function EditableConnectionPanel({ edge, fromNode, toNode, onClose, onEditEdge }
         className="textarea code"
         rows={5}
         value={prompt}
+        disabled={readonly}
         onChange={(e) => setPrompt(e.target.value)}
         placeholder="How should the previous node format its output?"
       />
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 18 }}>
-        <button className="btn ghost" style={{ color: 'var(--err)' }}>
-          <Icon name="trash" size={12} />Delete
-        </button>
-        <button className="btn primary" onClick={handleSave}>
-          <Icon name="check" size={12} />Save
-        </button>
-      </div>
+      {!readonly && (
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 18 }}>
+          <button className="btn ghost" style={{ color: 'var(--err)' }} onClick={() => { onDeleteEdge?.(edge.id); onClose(); }}>
+            <Icon name="trash" size={12} />Delete
+          </button>
+          <button className="btn primary" onClick={handleSave}>
+            <Icon name="check" size={12} />Save
+          </button>
+        </div>
+      )}
     </RightPanel>
   );
 }

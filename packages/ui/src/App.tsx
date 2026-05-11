@@ -1,8 +1,9 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import type { WorkflowNode, Edge, Session, Workflow, Run, Selection, RunStateMap, Theme, RunStatus } from './types';
+import type { WorkflowNode, Edge, Session, Workflow, Run, Selection, RunStateMap, Theme, RunStatus, LogLine } from './types';
 import {
   fetchCanvases, fetchCanvas, saveCanvas, runCanvas,
   fetchRuns, fetchRun, subscribeToRun,
+  createCanvas, deleteRun as apiDeleteRun,
   apiRunToUiRun, summaryToWorkflow,
   type SseEventType,
 } from './api';
@@ -12,6 +13,14 @@ import { Canvas } from './components/canvas';
 import { NodePanel } from './components/node-panel';
 import { ConnectionPanel } from './components/connection-panel';
 import { SessionsBar } from './components/sessions-bar';
+
+const SESSION_COLORS = [
+  'oklch(0.7 0.13 250)',
+  'oklch(0.7 0.14 160)',
+  'oklch(0.7 0.14 30)',
+  'oklch(0.7 0.14 310)',
+  'oklch(0.65 0.12 80)',
+];
 
 export function App() {
   const [activeWorkflow, setActiveWorkflow] = useState('wf1');
@@ -26,13 +35,11 @@ export function App() {
   const [activeRunId, setActiveRunId] = useState('');
   const activeRun = runs.find((r) => r.id === activeRunId);
 
-  // Node state from the selected historical run record
   const [historicNodeStates, setHistoricNodeStates] = useState<RunStateMap>({});
-  // Live node state overrides from SSE during an active run
   const [liveNodeStates, setLiveNodeStates] = useState<RunStateMap>({});
   const runState = useMemo<RunStateMap>(() => ({ ...historicNodeStates, ...liveNodeStates }), [historicNodeStates, liveNodeStates]);
 
-  const [logLines, setLogLines] = useState<string[]>([]);
+  const [logLines, setLogLines] = useState<LogLine[]>([]);
 
   const [selection, setSelection]             = useState<Selection | null>(null);
   const [zoom, setZoom]                       = useState(1);
@@ -41,6 +48,7 @@ export function App() {
   const [activeSessionId, setActiveSessionId] = useState('');
   const [addSessionPing, setAddSessionPing]   = useState(0);
   const [theme, setTheme]                     = useState<Theme>('light');
+  const [viewMode, setViewMode]               = useState<'edit' | 'run'>('edit');
 
   const nodesRef    = useRef(nodes);
   const edgesRef    = useRef(edges);
@@ -49,7 +57,6 @@ export function App() {
   useEffect(() => { edgesRef.current    = edges;    }, [edges]);
   useEffect(() => { sessionsRef.current = sessions; }, [sessions]);
 
-  // Apply theme to <html>
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
@@ -111,7 +118,16 @@ export function App() {
     });
   }, [scheduleSave]);
 
-  const onToggleUpdateDoc = (id: string) => {
+  const onEditNode = useCallback((id: string, patch: Record<string, unknown>) => {
+    setNodes((ns) => {
+      const updated = ns.map((n) => n.id === id ? { ...n, ...patch } as WorkflowNode : n);
+      nodesRef.current = updated;
+      scheduleSave();
+      return updated;
+    });
+  }, [scheduleSave]);
+
+  const onToggleUpdateDoc = useCallback((id: string) => {
     setNodes((ns) => {
       const updated = ns.map((n) => {
         if (n.id !== id || n.kind !== 'step') return n;
@@ -121,7 +137,7 @@ export function App() {
       scheduleSave();
       return updated;
     });
-  };
+  }, [scheduleSave]);
 
   const onChangeSession = useCallback((id: string, sid: string) => {
     setNodes((ns) => {
@@ -147,6 +163,110 @@ export function App() {
     });
   }, [scheduleSave]);
 
+  const onAddBranch = useCallback((gateId: string) => {
+    setNodes((ns) => {
+      const updated = ns.map((n) => {
+        if (n.id !== gateId || n.kind !== 'gate') return n;
+        const newBranch = { id: `b${Date.now()}`, label: 'branch', color: 'var(--ink-3)' };
+        return { ...n, branches: [...n.branches, newBranch] };
+      });
+      nodesRef.current = updated;
+      scheduleSave();
+      return updated;
+    });
+  }, [scheduleSave]);
+
+  const onEditBranch = useCallback((gateId: string, branchId: string, patch: { label?: string; color?: string }) => {
+    setNodes((ns) => {
+      const updated = ns.map((n) => {
+        if (n.id !== gateId || n.kind !== 'gate') return n;
+        return { ...n, branches: n.branches.map((b) => b.id === branchId ? { ...b, ...patch } : b) };
+      });
+      nodesRef.current = updated;
+      scheduleSave();
+      return updated;
+    });
+  }, [scheduleSave]);
+
+  const onDeleteBranch = useCallback((gateId: string, branchId: string) => {
+    setNodes((ns) => {
+      const updated = ns.map((n) => {
+        if (n.id !== gateId || n.kind !== 'gate') return n;
+        return { ...n, branches: n.branches.filter((b) => b.id !== branchId) };
+      });
+      nodesRef.current = updated;
+      return updated;
+    });
+    setEdges((es) => {
+      const updated = es.filter((e) => !(e.from === gateId && e.branch === branchId));
+      edgesRef.current = updated;
+      scheduleSave();
+      return updated;
+    });
+  }, [scheduleSave]);
+
+  const onAddPath = useCallback((nodeId: string, path = '') => {
+    setNodes((ns) => {
+      const updated = ns.map((n) => {
+        if (n.id !== nodeId || n.kind !== 'step') return n;
+        return { ...n, paths: [...(n.paths ?? []), path] };
+      });
+      nodesRef.current = updated;
+      scheduleSave();
+      return updated;
+    });
+  }, [scheduleSave]);
+
+  const onEditPath = useCallback((nodeId: string, index: number, value: string) => {
+    setNodes((ns) => {
+      const updated = ns.map((n) => {
+        if (n.id !== nodeId || n.kind !== 'step') return n;
+        const paths = [...(n.paths ?? [])];
+        paths[index] = value;
+        return { ...n, paths };
+      });
+      nodesRef.current = updated;
+      scheduleSave();
+      return updated;
+    });
+  }, [scheduleSave]);
+
+  const onDeletePath = useCallback((nodeId: string, index: number) => {
+    setNodes((ns) => {
+      const updated = ns.map((n) => {
+        if (n.id !== nodeId || n.kind !== 'step') return n;
+        return { ...n, paths: (n.paths ?? []).filter((_, i) => i !== index) };
+      });
+      nodesRef.current = updated;
+      scheduleSave();
+      return updated;
+    });
+  }, [scheduleSave]);
+
+  const onAddAttachment = useCallback((nodeId: string, label: string) => {
+    setNodes((ns) => {
+      const updated = ns.map((n) => {
+        if (n.id !== nodeId || n.kind !== 'step') return n;
+        return { ...n, attachments: [...(n.attachments ?? []), { label }] };
+      });
+      nodesRef.current = updated;
+      scheduleSave();
+      return updated;
+    });
+  }, [scheduleSave]);
+
+  const onDeleteAttachment = useCallback((nodeId: string, index: number) => {
+    setNodes((ns) => {
+      const updated = ns.map((n) => {
+        if (n.id !== nodeId || n.kind !== 'step') return n;
+        return { ...n, attachments: (n.attachments ?? []).filter((_, i) => i !== index) };
+      });
+      nodesRef.current = updated;
+      scheduleSave();
+      return updated;
+    });
+  }, [scheduleSave]);
+
   const onEditEdge = useCallback((id: string, patch: { tag?: string; prompt?: string }) => {
     setEdges((es) => {
       const updated = es.map((e) => e.id === id ? { ...e, ...patch } : e);
@@ -155,6 +275,88 @@ export function App() {
       return updated;
     });
   }, [scheduleSave]);
+
+  const onDeleteEdge = useCallback((id: string) => {
+    setEdges((es) => {
+      const updated = es.filter((e) => e.id !== id);
+      edgesRef.current = updated;
+      scheduleSave();
+      return updated;
+    });
+  }, [scheduleSave]);
+
+  // ── node/edge create (from canvas) ────────────────────────────────────────
+
+  const onAddNode = useCallback((node: WorkflowNode) => {
+    setNodes((ns) => {
+      const updated = [...ns, node];
+      nodesRef.current = updated;
+      scheduleSave();
+      return updated;
+    });
+  }, [scheduleSave]);
+
+  const onAddEdge = useCallback((edge: Edge) => {
+    setEdges((es) => {
+      const updated = [...es, edge];
+      edgesRef.current = updated;
+      scheduleSave();
+      return updated;
+    });
+  }, [scheduleSave]);
+
+  const onDeleteNode = useCallback((id: string) => {
+    const node = nodesRef.current.find((n) => n.id === id);
+    if (!node) return;
+    if ((node as WorkflowNode & { locked?: boolean }).locked) return;
+    if (!window.confirm(`Delete node "${node.title}"?`)) return;
+    const updatedNodes = nodesRef.current.filter((n) => n.id !== id);
+    const updatedEdges = edgesRef.current.filter((e) => e.from !== id && e.to !== id);
+    nodesRef.current = updatedNodes;
+    edgesRef.current = updatedEdges;
+    setNodes(updatedNodes);
+    setEdges(updatedEdges);
+    setSelection(null);
+    scheduleSave();
+  }, [scheduleSave]);
+
+  // ── session management ────────────────────────────────────────────────────
+
+  const onAddSession = useCallback((name: string, agent: string) => {
+    setSessions((ss) => {
+      const id = `s${Date.now()}`;
+      const color = SESSION_COLORS[ss.length % SESSION_COLORS.length];
+      const updated = [...ss, { id, name, color, agent }];
+      sessionsRef.current = updated;
+      scheduleSave();
+      return updated;
+    });
+  }, [scheduleSave]);
+
+  const onDeleteSession = useCallback((id: string) => {
+    const remaining = sessionsRef.current.filter((s) => s.id !== id);
+    const fallback = remaining[0]?.id ?? null;
+    const updatedNodes = nodesRef.current.map((n) =>
+      n.sessionId === id ? { ...n, sessionId: fallback } as WorkflowNode : n,
+    );
+    const updatedEdges = edgesRef.current.map((e) => {
+      const fromN = updatedNodes.find((n) => n.id === e.from);
+      const toN   = updatedNodes.find((n) => n.id === e.to);
+      if (!fromN || !toN || e.loopback || fromN.kind === 'gate' || toN.kind === 'gate' || toN.kind === 'end') return e;
+      return { ...e, sameSession: fromN.sessionId != null && fromN.sessionId === toN.sessionId };
+    });
+    sessionsRef.current = remaining;
+    nodesRef.current    = updatedNodes;
+    edgesRef.current    = updatedEdges;
+    setSessions(remaining);
+    setNodes(updatedNodes);
+    setEdges(updatedEdges);
+    scheduleSave();
+  }, [scheduleSave]);
+
+  // ── logs ──────────────────────────────────────────────────────────────────
+
+  const onClearLogs = useCallback(() => setLogLines([]), []);
 
   // ── selection ─────────────────────────────────────────────────────────────
 
@@ -166,6 +368,22 @@ export function App() {
     setBarExpanded(true);
     setAddSessionPing((n) => n + 1);
   }, []);
+
+  // ── keyboard delete ───────────────────────────────────────────────────────
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+      const active = document.activeElement;
+      if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) return;
+      if (!selection) return;
+      e.preventDefault();
+      if (selection.kind === 'node') onDeleteNode(selection.id);
+      if (selection.kind === 'edge') onDeleteEdge(selection.id);
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [selection, onDeleteNode, onDeleteEdge]);
 
   // ── run management ────────────────────────────────────────────────────────
 
@@ -181,7 +399,6 @@ export function App() {
     try {
       const { runId } = await runCanvas(activeWorkflow);
 
-      // Initialise all nodes as pending
       const pending: RunStateMap = {};
       for (const n of nodesRef.current) pending[n.id] = 'pending';
       setLiveNodeStates(pending);
@@ -206,8 +423,8 @@ export function App() {
           const ev = data as { nodeId: string; status: string };
           setLiveNodeStates((prev) => ({ ...prev, [ev.nodeId]: ev.status as import('./types').RunState }));
         } else if (type === 'terminal') {
-          const ev = data as { chunk: string };
-          setLogLines((prev) => [...prev.slice(-500), ev.chunk]);
+          const ev = data as { chunk: string; nodeId?: string };
+          setLogLines((prev) => [...prev.slice(-500), { chunk: ev.chunk, nodeId: ev.nodeId }]);
         } else if (type === 'run-status') {
           const ev = data as { status: string };
           const uiStatus = ev.status === 'done' ? 'success' : ev.status === 'failed' ? 'error' : 'running';
@@ -216,7 +433,6 @@ export function App() {
           ));
           if (uiStatus !== 'running') {
             unsub();
-            // Reload fresh run list + states
             fetchRuns(activeWorkflow).then((records) => {
               setRuns(records.map(apiRunToUiRun));
               const fresh = records.find((r) => r.id === runId);
@@ -232,6 +448,34 @@ export function App() {
       console.error('Failed to start run', err);
     }
   }, [activeWorkflow]);
+
+  const onDeleteRun = useCallback(async (id: string) => {
+    if (!window.confirm('Delete this run?')) return;
+    try {
+      await apiDeleteRun(id);
+      setRuns((prev) => prev.filter((r) => r.id !== id));
+      if (activeRunId === id) {
+        setActiveRunId('');
+        setHistoricNodeStates({});
+        setLiveNodeStates({});
+      }
+    } catch (err) {
+      console.error('Failed to delete run', err);
+    }
+  }, [activeRunId]);
+
+  // ── workflow management ───────────────────────────────────────────────────
+
+  const onCreateWorkflow = useCallback(async () => {
+    try {
+      const doc = await createCanvas('Untitled workflow');
+      const summary = { id: doc.id, name: doc.name, runs: 0 };
+      setWorkflows((prev) => [summaryToWorkflow(summary), ...prev]);
+      setActiveWorkflow(doc.id);
+    } catch (err) {
+      console.error('Failed to create workflow', err);
+    }
+  }, []);
 
   // ── derived selection state ───────────────────────────────────────────────
 
@@ -258,6 +502,8 @@ export function App() {
         runLabel={activeRun?.label}
         workflowName={activeCanvasName}
         onNewRun={handleNewRun}
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
       />
 
       <Sidebar
@@ -267,6 +513,9 @@ export function App() {
         activeRun={activeRunId}
         onSelectWorkflow={setActiveWorkflow}
         onSelectRun={onSelectRun}
+        onNewRun={handleNewRun}
+        onDeleteRun={onDeleteRun}
+        onCreateWorkflow={onCreateWorkflow}
       />
 
       <div className="canvas-cell" style={{ position: 'relative', overflow: 'hidden', minHeight: 0, height: '100%' }}>
@@ -281,6 +530,11 @@ export function App() {
           runState={runState}
           showRun={!!activeRun}
           onNodeMove={onNodeMove}
+          onAddNode={onAddNode}
+          onAddEdge={onAddEdge}
+          onDeleteNode={onDeleteNode}
+          onAddBranch={onAddBranch}
+          viewMode={viewMode}
           zoom={zoom} setZoom={setZoom}
           pan={pan} setPan={setPan}
         />
@@ -302,10 +556,21 @@ export function App() {
           node={selectedNodeWithState}
           run={activeRun}
           sessions={sessions}
+          viewMode={viewMode}
+          logLines={logLines}
           onClose={onClearSelection}
+          onEditNode={onEditNode}
           onToggleUpdateDoc={onToggleUpdateDoc}
           onChangeSession={onChangeSession}
           onAddSessionRequest={onAddSessionRequest}
+          onAddBranch={onAddBranch}
+          onEditBranch={onEditBranch}
+          onDeleteBranch={onDeleteBranch}
+          onAddPath={onAddPath}
+          onEditPath={onEditPath}
+          onDeletePath={onDeletePath}
+          onAddAttachment={onAddAttachment}
+          onDeleteAttachment={onDeleteAttachment}
         />
       )}
       {selection?.kind === 'edge' && selectedEdge && (
@@ -313,8 +578,10 @@ export function App() {
           edge={selectedEdge}
           fromNode={selectedFromNode}
           toNode={selectedToNode}
+          viewMode={viewMode}
           onClose={onClearSelection}
           onEditEdge={onEditEdge}
+          onDeleteEdge={onDeleteEdge}
         />
       )}
 
@@ -329,6 +596,9 @@ export function App() {
           onAssignSession={onChangeSession}
           addSessionPing={addSessionPing}
           logLines={logLines}
+          onAddSession={onAddSession}
+          onDeleteSession={onDeleteSession}
+          onClearLogs={onClearLogs}
         />
       </div>
     </div>

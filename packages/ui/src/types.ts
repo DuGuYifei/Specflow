@@ -31,6 +31,12 @@ export interface Run {
   agent: string;
   active?: boolean;
   errorMsg?: string;
+  nodeOutputs?: Record<string, string>;
+}
+
+export interface LogLine {
+  chunk: string;
+  nodeId?: string;
 }
 
 export interface Branch {

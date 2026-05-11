@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import type { Session, WorkflowNode } from '../types';
+import type { Session, WorkflowNode, LogLine } from '../types';
 import { Icon } from './icon';
 
 interface SessionsBarProps {
@@ -11,7 +11,10 @@ interface SessionsBarProps {
   setActiveSessionId: (id: string) => void;
   onAssignSession: (nodeId: string, sessionId: string) => void;
   addSessionPing: number;
-  logLines?: string[];
+  logLines?: LogLine[];
+  onAddSession: (name: string, agent: string) => void;
+  onDeleteSession: (id: string) => void;
+  onClearLogs: () => void;
 }
 
 export function SessionsBar({
@@ -20,6 +23,7 @@ export function SessionsBar({
   activeSessionId, setActiveSessionId,
   onAssignSession, addSessionPing,
   logLines,
+  onAddSession, onDeleteSession, onClearLogs,
 }: SessionsBarProps) {
   const [tab, setTab] = useState<'logs' | 'settings'>('logs');
   const stepNodes = nodes.filter((n) => n.kind === 'step');
@@ -71,10 +75,9 @@ export function SessionsBar({
         </div>
         <div style={{ flex: 1 }} />
         {tab === 'logs' && (
-          <>
-            <button className="bar-handle" title="Clear logs"><Icon name="trash" size={11} /></button>
-            <button className="bar-handle" title="Pop out"><Icon name="external" size={11} /></button>
-          </>
+          <button className="bar-handle" title="Clear logs" onClick={onClearLogs}>
+            <Icon name="trash" size={11} />
+          </button>
         )}
       </div>
 
@@ -85,6 +88,7 @@ export function SessionsBar({
           setActiveSessionId={setActiveSessionId}
           stepNodes={stepNodes}
           logLines={logLines}
+          onDeleteSession={onDeleteSession}
         />
       )}
       {tab === 'settings' && (
@@ -93,6 +97,8 @@ export function SessionsBar({
           stepNodes={stepNodes}
           onAssignSession={onAssignSession}
           addSessionPing={addSessionPing}
+          onAddSession={onAddSession}
+          onDeleteSession={onDeleteSession}
         />
       )}
     </div>
@@ -106,10 +112,11 @@ interface LogsTabProps {
   activeSession: Session;
   setActiveSessionId: (id: string) => void;
   stepNodes: WorkflowNode[];
-  logLines?: string[];
+  logLines?: LogLine[];
+  onDeleteSession: (id: string) => void;
 }
 
-function LogsTab({ sessions, activeSession, setActiveSessionId, stepNodes, logLines }: LogsTabProps) {
+function LogsTab({ sessions, activeSession, setActiveSessionId, stepNodes, logLines, onDeleteSession }: LogsTabProps) {
   const [sideW, setSideW] = useState(() => {
     try {
       const saved = parseInt(localStorage.getItem('sf-side-w') ?? '', 10);
@@ -155,13 +162,13 @@ function LogsTab({ sessions, activeSession, setActiveSessionId, stepNodes, logLi
     <div className="sessions-body logs">
       <div className="term-pane">
         <div className="term-header">
-          <span className="ses-dot" style={{ width: 8, height: 8, borderRadius: 2, background: activeSession.color }} />
-          <strong style={{ fontSize: 11.5 }}>{activeSession.name}</strong>
+          <span className="ses-dot" style={{ width: 8, height: 8, borderRadius: 2, background: activeSession?.color }} />
+          <strong style={{ fontSize: 11.5 }}>{activeSession?.name}</strong>
           <span className="agent-badge">
-            <span className="dot" style={{ background: activeSession.color }} />{activeSession.agent}
+            <span className="dot" style={{ background: activeSession?.color }} />{activeSession?.agent}
           </span>
           <span style={{ color: 'var(--ink-3)', fontSize: 10.5, fontFamily: 'var(--font-mono)' }}>
-            · {stepNodes.filter((n) => n.kind === 'step' && n.sessionId === activeSession.id).length} nodes
+            · {stepNodes.filter((n) => n.kind === 'step' && n.sessionId === activeSession?.id).length} nodes
           </span>
         </div>
         <div className="term-stream" ref={termRef}>
@@ -169,7 +176,7 @@ function LogsTab({ sessions, activeSession, setActiveSessionId, stepNodes, logLi
             logLines.map((line, i) => (
               <div key={i} className="term-line">
                 <span className="lvl">[out]</span>
-                <span style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{line}</span>
+                <span style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{line.chunk}</span>
               </div>
             ))
           ) : (
@@ -197,7 +204,7 @@ function LogsTab({ sessions, activeSession, setActiveSessionId, stepNodes, logLi
         <div className="term-sidebar-list">
           {sessions.map((s) => {
             const count = stepNodes.filter((n) => n.kind === 'step' && n.sessionId === s.id).length;
-            const isActive = s.id === activeSession.id;
+            const isActive = s.id === activeSession?.id;
             return (
               <div
                 key={s.id}
@@ -207,7 +214,11 @@ function LogsTab({ sessions, activeSession, setActiveSessionId, stepNodes, logLi
                 <span className="ses-dot" style={{ background: s.color }} />
                 <span className="name">{s.name}</span>
                 <span className="count">{count}</span>
-                <button className="ses-del" title="Delete session" onClick={(e) => e.stopPropagation()}>
+                <button
+                  className="ses-del"
+                  title="Delete session"
+                  onClick={(e) => { e.stopPropagation(); onDeleteSession(s.id); }}
+                >
                   <Icon name="x" size={10} />
                 </button>
               </div>
@@ -226,9 +237,11 @@ interface SettingsTabProps {
   stepNodes: WorkflowNode[];
   onAssignSession: (nodeId: string, sessionId: string) => void;
   addSessionPing: number;
+  onAddSession: (name: string, agent: string) => void;
+  onDeleteSession: (id: string) => void;
 }
 
-function SettingsTab({ sessions, stepNodes, onAssignSession, addSessionPing }: SettingsTabProps) {
+function SettingsTab({ sessions, stepNodes, onAssignSession, addSessionPing, onAddSession, onDeleteSession }: SettingsTabProps) {
   const [draftName, setDraftName] = useState('');
   const [draftAgent, setDraftAgent] = useState<'claude-code' | 'codex'>('claude-code');
   const inputRef = useRef<HTMLInputElement>(null);
@@ -239,6 +252,13 @@ function SettingsTab({ sessions, stepNodes, onAssignSession, addSessionPing }: S
       return () => clearTimeout(t);
     }
   }, [addSessionPing]);
+
+  const handleAdd = () => {
+    const name = draftName.trim();
+    if (!name) return;
+    onAddSession(name, draftAgent);
+    setDraftName('');
+  };
 
   return (
     <div className="sessions-body settings">
@@ -252,13 +272,14 @@ function SettingsTab({ sessions, stepNodes, onAssignSession, addSessionPing }: S
           placeholder="session name"
           value={draftName}
           onChange={(e) => setDraftName(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
           style={{ width: 180, height: 26 }}
         />
         <div className="seg" style={{ height: 26 }}>
           <button className={draftAgent === 'claude-code' ? 'active' : ''} onClick={() => setDraftAgent('claude-code')}>Claude</button>
           <button className={draftAgent === 'codex'       ? 'active' : ''} onClick={() => setDraftAgent('codex')}>Codex</button>
         </div>
-        <button className="btn sm primary"><Icon name="plus" size={11} />Add</button>
+        <button className="btn sm primary" onClick={handleAdd}><Icon name="plus" size={11} />Add</button>
         <div style={{ flex: 1 }} />
         <span style={{ fontSize: 10.5, color: 'var(--ink-3)', fontFamily: 'var(--font-mono)' }}>{sessions.length} sessions</span>
       </div>
@@ -270,7 +291,9 @@ function SettingsTab({ sessions, stepNodes, onAssignSession, addSessionPing }: S
             <span className="ses-dot" style={{ background: s.color }} />
             {s.name}
             <span className="agent">{s.agent}</span>
-            <button className="ses-x" title={`Delete ${s.name}`}><Icon name="x" size={10} /></button>
+            <button className="ses-x" title={`Delete ${s.name}`} onClick={() => onDeleteSession(s.id)}>
+              <Icon name="x" size={10} />
+            </button>
           </span>
         ))}
       </div>

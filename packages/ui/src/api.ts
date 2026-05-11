@@ -21,6 +21,7 @@ export interface ApiRunRecord {
   agent: string;
   errorMsg?: string;
   nodeStates: Record<string, RunState>;
+  nodeOutputs?: Record<string, string>;
 }
 
 export interface CanvasSummary {
@@ -49,6 +50,20 @@ export async function saveCanvas(id: string, doc: CanvasDoc): Promise<void> {
   });
 }
 
+export async function createCanvas(name: string): Promise<CanvasDoc> {
+  const res = await fetch('/api/canvases', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) throw new Error(`Failed to create canvas: ${res.status}`);
+  return res.json();
+}
+
+export async function deleteCanvas(id: string): Promise<void> {
+  await fetch(`/api/canvases/${id}`, { method: 'DELETE' });
+}
+
 export async function runCanvas(id: string, initialInput?: string): Promise<{ runId: string }> {
   const res = await fetch(`/api/canvases/${id}/run`, {
     method: 'POST',
@@ -69,6 +84,10 @@ export async function fetchRun(id: string): Promise<ApiRunRecord> {
   const res = await fetch(`/api/runs/${id}`);
   if (!res.ok) throw new Error(`Run ${id} not found`);
   return res.json();
+}
+
+export async function deleteRun(id: string): Promise<void> {
+  await fetch(`/api/runs/${id}`, { method: 'DELETE' });
 }
 
 export type SseEventType = 'hello' | 'node-status' | 'terminal' | 'run-status';
@@ -106,6 +125,7 @@ export function apiRunToUiRun(rec: ApiRunRecord): Run {
     duration: rec.duration ?? '—',
     agent: rec.agent,
     errorMsg: rec.errorMsg,
+    nodeOutputs: rec.nodeOutputs,
   };
 }
 

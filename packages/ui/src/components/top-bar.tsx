@@ -7,9 +7,11 @@ interface TopBarProps {
   runLabel?: string;
   workflowName?: string;
   onNewRun?: () => void;
+  viewMode: 'edit' | 'run';
+  onViewModeChange: (m: 'edit' | 'run') => void;
 }
 
-export function TopBar({ theme, onThemeChange, runLabel, workflowName, onNewRun }: TopBarProps) {
+export function TopBar({ theme, onThemeChange, runLabel, workflowName, onNewRun, viewMode, onViewModeChange }: TopBarProps) {
   return (
     <div className="topbar">
       <div className="brand">
@@ -28,8 +30,18 @@ export function TopBar({ theme, onThemeChange, runLabel, workflowName, onNewRun 
         )}
       </div>
       <div className="topbar-spacer" />
-      <button className="topbar-tab active"><Icon name="play-circle" size={13} />Run view</button>
-      <button className="topbar-tab"><Icon name="edit" size={13} />Edit workflow</button>
+      <button
+        className={`topbar-tab${viewMode === 'run' ? ' active' : ''}`}
+        onClick={() => onViewModeChange('run')}
+      >
+        <Icon name="play-circle" size={13} />Run view
+      </button>
+      <button
+        className={`topbar-tab${viewMode === 'edit' ? ' active' : ''}`}
+        onClick={() => onViewModeChange('edit')}
+      >
+        <Icon name="edit" size={13} />Edit workflow
+      </button>
       <div style={{ width: 1, alignSelf: 'stretch', background: 'var(--line)', margin: '0 6px' }} />
       <div className="theme-toggle">
         <button
@@ -47,7 +59,7 @@ export function TopBar({ theme, onThemeChange, runLabel, workflowName, onNewRun 
           <Icon name="moon" size={12} />
         </button>
       </div>
-      <button className="btn sm"><Icon name="rotate" size={11} />Re-run</button>
+      <button className="btn sm" onClick={onNewRun}><Icon name="rotate" size={11} />Re-run</button>
       <button className="btn sm primary" onClick={onNewRun}><Icon name="play" size={10} />New run</button>
     </div>
   );

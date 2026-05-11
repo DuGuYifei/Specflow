@@ -1,4 +1,4 @@
-import { readdir, readFile, writeFile } from "node:fs/promises";
+import { readdir, readFile, writeFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { parse, stringify } from "yaml";
 import type { CanvasDoc } from "./canvas-doc";
@@ -18,6 +18,7 @@ export interface RunRecord {
   agent: string;
   errorMsg?: string;
   nodeStates: Record<string, RunState>;
+  nodeOutputs: Record<string, string>;
   canvasSnapshot: CanvasDoc;
 }
 
@@ -42,6 +43,7 @@ export async function listRuns(workflowId: string | undefined, root: string): Pr
     try {
       const raw = await readFile(join(dir, file), "utf8");
       const rec = parse(raw) as RunRecord;
+      if (!rec.nodeOutputs) rec.nodeOutputs = {};
       if (!workflowId || rec.workflowId === workflowId) {
         results.push(rec);
       }
@@ -55,11 +57,21 @@ export async function listRuns(workflowId: string | undefined, root: string): Pr
 
 export async function loadRun(id: string, root: string): Promise<RunRecord> {
   const raw = await readFile(runPath(id, root), "utf8");
-  return parse(raw) as RunRecord;
+  const rec = parse(raw) as RunRecord;
+  if (!rec.nodeOutputs) rec.nodeOutputs = {};
+  return rec;
 }
 
 export async function saveRun(record: RunRecord, root: string): Promise<void> {
   await writeFile(runPath(record.id, root), stringify(record), "utf8");
+}
+
+export async function deleteRun(id: string, root: string): Promise<void> {
+  try {
+    await unlink(runPath(id, root));
+  } catch {
+    // already gone — ok
+  }
 }
 
 export function formatDuration(startedAt: string, completedAt: string): string {

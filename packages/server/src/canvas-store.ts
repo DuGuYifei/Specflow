@@ -40,3 +40,12 @@ export async function loadCanvas(id: string, root: string): Promise<CanvasDoc> {
 export async function saveCanvas(id: string, doc: CanvasDoc, root: string): Promise<void> {
   await writeFile(canvasPath(id, root), stringify(doc), "utf8");
 }
+
+export async function deleteCanvas(id: string, root: string): Promise<void> {
+  const { unlink } = await import("node:fs/promises");
+  try {
+    await unlink(canvasPath(id, root));
+  } catch {
+    // already gone — ok
+  }
+}
