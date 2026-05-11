@@ -10,11 +10,12 @@ interface SidebarProps {
   onSelectWorkflow: (id: string) => void;
   onSelectRun: (id: string) => void;
   onNewRun: () => void;
+  onRerunRun: (id: string) => void;
   onDeleteRun: (id: string) => void;
   onCreateWorkflow: () => void;
 }
 
-export function Sidebar({ workflows, runs, activeWorkflow, activeRun, onSelectWorkflow, onSelectRun, onNewRun, onDeleteRun, onCreateWorkflow }: SidebarProps) {
+export function Sidebar({ workflows, runs, activeWorkflow, activeRun, onSelectWorkflow, onSelectRun, onNewRun, onRerunRun, onDeleteRun, onCreateWorkflow }: SidebarProps) {
   const [query, setQuery] = useState('');
   const searchRef = useRef<HTMLInputElement>(null);
   const wf = workflows.find((w) => w.id === activeWorkflow) || workflows[0];
@@ -100,11 +101,8 @@ export function Sidebar({ workflows, runs, activeWorkflow, activeRun, onSelectWo
                 <span className={`status-dot ${r.status}`} />
                 <span className="label">{r.label}</span>
                 <div className="actions" onClick={(e) => e.stopPropagation()}>
-                  <button className="btn sm icon" title="Re-run" onClick={onNewRun}>
+                  <button className="btn sm icon" title="Re-run this snapshot" onClick={() => onRerunRun(r.id)}>
                     <Icon name="rotate" size={11} />
-                  </button>
-                  <button className="btn sm icon" title="Edit workflow" onClick={() => onSelectWorkflow(activeWorkflow)}>
-                    <Icon name="edit" size={11} />
                   </button>
                   <button className="btn sm icon" title="Delete" onClick={() => onDeleteRun(r.id)}>
                     <Icon name="trash" size={11} />

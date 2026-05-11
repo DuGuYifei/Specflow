@@ -7,11 +7,12 @@ interface TopBarProps {
   runLabel?: string;
   workflowName?: string;
   onNewRun?: () => void;
-  viewMode: 'edit' | 'run';
-  onViewModeChange: (m: 'edit' | 'run') => void;
+  onRerun?: () => void;
+  view: 'edit' | 'run';
+  onExitRunView: () => void;
 }
 
-export function TopBar({ theme, onThemeChange, runLabel, workflowName, onNewRun, viewMode, onViewModeChange }: TopBarProps) {
+export function TopBar({ theme, onThemeChange, runLabel, workflowName, onNewRun, onRerun, view, onExitRunView }: TopBarProps) {
   return (
     <div className="topbar">
       <div className="brand">
@@ -22,7 +23,7 @@ export function TopBar({ theme, onThemeChange, runLabel, workflowName, onNewRun,
         <span>Acme</span><span className="sep">/</span>
         <span>Workflows</span><span className="sep">/</span>
         <span className="current">{workflowName ?? 'Loading…'}</span>
-        {runLabel && (
+        {runLabel && view === 'run' && (
           <>
             <span className="sep">/</span>
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>{runLabel}</span>
@@ -30,18 +31,24 @@ export function TopBar({ theme, onThemeChange, runLabel, workflowName, onNewRun,
         )}
       </div>
       <div className="topbar-spacer" />
+
+      {/* Tabs become state indicators. "Run view" is auto-active when a run is selected;
+          "Edit workflow" is the only escape back to editing. */}
       <button
-        className={`topbar-tab${viewMode === 'run' ? ' active' : ''}`}
-        onClick={() => onViewModeChange('run')}
+        className={`topbar-tab${view === 'run' ? ' active' : ''}`}
+        disabled={view !== 'run'}
+        title={view === 'run' ? 'Viewing run snapshot (read-only)' : 'Click a run in the sidebar to view it'}
       >
         <Icon name="play-circle" size={13} />Run view
       </button>
       <button
-        className={`topbar-tab${viewMode === 'edit' ? ' active' : ''}`}
-        onClick={() => onViewModeChange('edit')}
+        className={`topbar-tab${view === 'edit' ? ' active' : ''}`}
+        onClick={onExitRunView}
+        title="Return to the live workflow"
       >
         <Icon name="edit" size={13} />Edit workflow
       </button>
+
       <div style={{ width: 1, alignSelf: 'stretch', background: 'var(--line)', margin: '0 6px' }} />
       <div className="theme-toggle">
         <button
@@ -59,8 +66,17 @@ export function TopBar({ theme, onThemeChange, runLabel, workflowName, onNewRun,
           <Icon name="moon" size={12} />
         </button>
       </div>
-      <button className="btn sm" onClick={onNewRun}><Icon name="rotate" size={11} />Re-run</button>
-      <button className="btn sm primary" onClick={onNewRun}><Icon name="play" size={10} />New run</button>
+
+      {view === 'run' && onRerun && (
+        <button className="btn sm" onClick={onRerun} title="Re-run this run's snapshot">
+          <Icon name="rotate" size={11} />Re-run
+        </button>
+      )}
+      {view === 'edit' && (
+        <button className="btn sm primary" onClick={onNewRun}>
+          <Icon name="play" size={10} />New run
+        </button>
+      )}
     </div>
   );
 }

@@ -257,10 +257,83 @@ input, textarea, select { font-family: inherit; font-size: inherit; color: inher
   font-size: 12px;
 }
 .canvas-toolbar button:hover { background: var(--line-2); color: var(--ink); }
+.canvas-toolbar button.mode-active {
+  background: var(--ink);
+  color: var(--bg);
+}
+.canvas-toolbar button.mode-active:hover { background: var(--ink); color: var(--bg); opacity: 0.92; }
 .canvas-toolbar .zoom-label {
   font-family: var(--font-mono); font-size: 11px;
   color: var(--ink-2);
   display: inline-flex; align-items: center; padding: 0 8px;
+}
+
+/* Empty-state hint */
+.canvas-empty-hint {
+  position: absolute;
+  inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  pointer-events: none;
+  z-index: 1;
+}
+.canvas-empty-hint .hint-card {
+  background: var(--bg-elev);
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+  padding: 18px 22px;
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  max-width: 360px;
+  box-shadow: var(--shadow-sm);
+}
+.canvas-empty-hint strong { font-size: 13px; color: var(--ink); }
+.canvas-empty-hint .hint-line { font-size: 11px; color: var(--ink-2); text-align: center; }
+.canvas-empty-hint .hint-line.muted { color: var(--ink-3); }
+
+/* Port-drag affordance: highlight all input ports while dragging an edge */
+.canvas-wrap.dragging-edge { cursor: cell; }
+.canvas-wrap.dragging-edge .port.in {
+  transform: scale(1.4);
+  border-color: oklch(0.55 0.13 145);
+  background: oklch(0.94 0.04 145);
+}
+.canvas-wrap.dragging-edge .gate-port-in {
+  outline: 2px solid oklch(0.55 0.13 145);
+  outline-offset: 1px;
+}
+
+/* Ghost-preview placement */
+.canvas-wrap.placing-node { cursor: none; }
+.canvas-wrap.placing-node .canvas-stage { cursor: none; }
+.ghost-node {
+  position: absolute;
+  opacity: 0.6;
+  pointer-events: none;
+  border: 1.5px dashed var(--ink-2);
+  border-radius: 10px;
+  background: var(--bg-elev);
+  z-index: 4;
+}
+.ghost-node .ghost-head {
+  padding: 6px 10px 4px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-3);
+}
+.ghost-node .ghost-title {
+  padding: 0 10px 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-2);
+}
+.ghost-node.ghost-end {
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 10px;
+  border-radius: 14px;
+  font-size: 11px;
+  color: var(--ink-2);
 }
 
 .canvas-meta {
@@ -373,13 +446,31 @@ input, textarea, select { font-family: inherit; font-size: inherit; color: inher
   border: 1.5px solid var(--ink-4);
   border-radius: 50%;
   pointer-events: auto;
-  cursor: crosshair;
-  transition: transform 120ms, border-color 120ms;
+  transition: transform 120ms, border-color 120ms, background-color 120ms;
 }
 .node:hover .port { border-color: var(--ink); }
-.node .port:hover { transform: scale(1.3); background: var(--ink); }
-.node .port.in { left: -5px; top: 50%; margin-top: -5px; }
-.node .port.out { right: -5px; top: 50%; margin-top: -5px; }
+.node .port.in  { left: -5px; top: 50%; margin-top: -5px; cursor: cell; }
+.node .port.out { right: -5px; top: 50%; margin-top: -5px; cursor: grab; }
+.node .port.out:hover {
+  transform: scale(1.5);
+  background: var(--ink);
+  border-color: var(--ink);
+}
+.node .port.in:hover { transform: scale(1.3); background: var(--ink); }
+.node:hover .port.out::after {
+  content: '';
+  position: absolute;
+  inset: -8px;
+  border-radius: 50%;
+  border: 1px solid var(--ink-4);
+  opacity: 0.4;
+  animation: pulse-port 1.6s ease-out infinite;
+  pointer-events: none;
+}
+@keyframes pulse-port {
+  0%   { transform: scale(0.5); opacity: 0.5; }
+  100% { transform: scale(1.4); opacity: 0; }
+}
 
 .node.locked .lock-badge {
   display: inline-flex;

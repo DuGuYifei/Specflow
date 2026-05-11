@@ -3,7 +3,7 @@ import type { WorkflowNode, Edge, Session, Workflow, Run, Selection, RunStateMap
 import {
   fetchCanvases, fetchCanvas, saveCanvas, runCanvas,
   fetchRuns, fetchRun, subscribeToRun,
-  createCanvas, deleteRun as apiDeleteRun,
+  createCanvas, deleteRun as apiDeleteRun, rerunRun as apiRerunRun,
   apiRunToUiRun, summaryToWorkflow,
   type SseEventType,
 } from './api';
@@ -48,7 +48,14 @@ export function App() {
   const [activeSessionId, setActiveSessionId] = useState('');
   const [addSessionPing, setAddSessionPing]   = useState(0);
   const [theme, setTheme]                     = useState<Theme>('light');
-  const [viewMode, setViewMode]               = useState<'edit' | 'run'>('edit');
+
+  // viewMode is derived from selection: viewing a run → run view (readonly).
+  const view: 'edit' | 'run' = activeRunId ? 'run' : 'edit';
+
+  // displayDoc: render the run's snapshot when in run view, else the live doc.
+  const displayNodes: WorkflowNode[]  = (activeRun?.canvasSnapshot?.nodes  as WorkflowNode[]) ?? nodes;
+  const displayEdges: Edge[]          = (activeRun?.canvasSnapshot?.edges  as Edge[])         ?? edges;
+  const displaySessions: Session[]    = (activeRun?.canvasSnapshot?.sessions as Session[])    ?? sessions;
 
   const nodesRef    = useRef(nodes);
   const edgesRef    = useRef(edges);
@@ -82,12 +89,11 @@ export function App() {
     fetchRuns(activeWorkflow).then((records) => {
       const uiRuns = records.map(apiRunToUiRun);
       setRuns(uiRuns);
-      if (records[0]) {
-        setActiveRunId(records[0].id);
-        setHistoricNodeStates(records[0].nodeStates);
-        setLiveNodeStates({});
-      }
     }).catch(console.error);
+    // Clicking a workflow always returns to workflow-edit (no run selected).
+    setActiveRunId('');
+    setHistoricNodeStates({});
+    setLiveNodeStates({});
   }, [activeWorkflow]);
 
   // ── debounced save ────────────────────────────────────────────────────────
@@ -392,7 +398,18 @@ export function App() {
     setLiveNodeStates({});
     fetchRun(id).then((rec) => {
       setHistoricNodeStates(rec.nodeStates);
+      // Hydrate the active run with its snapshot for read-only display.
+      setRuns((prev) => prev.map((r) =>
+        r.id === id ? { ...r, canvasSnapshot: rec.canvasSnapshot, nodeStates: rec.nodeStates, nodeOutputs: rec.nodeOutputs } : r,
+      ));
     }).catch(console.error);
+  }, []);
+
+  const onExitRunView = useCallback(() => {
+    setActiveRunId('');
+    setHistoricNodeStates({});
+    setLiveNodeStates({});
+    setSelection(null);
   }, []);
 
   const handleNewRun = useCallback(async () => {
@@ -405,15 +422,22 @@ export function App() {
       setHistoricNodeStates({});
       setLogLines([]);
 
-      const placeholder: Run = {
-        id: runId,
-        label: 'New run…',
-        ticket: '',
-        status: 'running',
-        time: 'just now',
-        duration: '—',
-        agent: sessionsRef.current[0]?.agent ?? 'mock',
-      };
+      // Fetch the freshly-saved record so the snapshot is available to the run view.
+      let placeholder: Run;
+      try {
+        const initial = await fetchRun(runId);
+        placeholder = apiRunToUiRun(initial);
+      } catch {
+        placeholder = {
+          id: runId,
+          label: 'New run…',
+          ticket: '',
+          status: 'running',
+          time: 'just now',
+          duration: '—',
+          agent: sessionsRef.current[0]?.agent ?? 'mock',
+        };
+      }
       setRuns((prev) => [placeholder, ...prev]);
       setActiveRunId(runId);
       setBarExpanded(true);
@@ -449,6 +473,49 @@ export function App() {
     }
   }, [activeWorkflow]);
 
+  const handleRerun = useCallback(async (runId: string) => {
+    try {
+      const { runId: newRunId } = await apiRerunRun(runId);
+      const initial = await fetchRun(newRunId);
+      const placeholder = apiRunToUiRun(initial);
+      setRuns((prev) => [placeholder, ...prev]);
+      setActiveRunId(newRunId);
+      setLiveNodeStates(initial.nodeStates ?? {});
+      setHistoricNodeStates({});
+      setLogLines([]);
+      setBarExpanded(true);
+
+      const unsub = subscribeToRun(newRunId, (type: SseEventType, data: unknown) => {
+        if (type === 'node-status') {
+          const ev = data as { nodeId: string; status: string };
+          setLiveNodeStates((prev) => ({ ...prev, [ev.nodeId]: ev.status as import('./types').RunState }));
+        } else if (type === 'terminal') {
+          const ev = data as { chunk: string; nodeId?: string };
+          setLogLines((prev) => [...prev.slice(-500), { chunk: ev.chunk, nodeId: ev.nodeId }]);
+        } else if (type === 'run-status') {
+          const ev = data as { status: string };
+          const uiStatus = ev.status === 'done' ? 'success' : ev.status === 'failed' ? 'error' : 'running';
+          setRuns((prev) => prev.map((r) =>
+            r.id === newRunId ? { ...r, status: uiStatus as RunStatus } : r,
+          ));
+          if (uiStatus !== 'running') {
+            unsub();
+            fetchRuns(activeWorkflow).then((records) => {
+              setRuns(records.map(apiRunToUiRun));
+              const fresh = records.find((r) => r.id === newRunId);
+              if (fresh) {
+                setHistoricNodeStates(fresh.nodeStates);
+                setLiveNodeStates({});
+              }
+            }).catch(console.error);
+          }
+        }
+      });
+    } catch (err) {
+      console.error('Failed to re-run', err);
+    }
+  }, [activeWorkflow]);
+
   const onDeleteRun = useCallback(async (id: string) => {
     if (!window.confirm('Delete this run?')) return;
     try {
@@ -479,10 +546,10 @@ export function App() {
 
   // ── derived selection state ───────────────────────────────────────────────
 
-  const selectedNode     = selection?.kind === 'node' ? nodes.find((n) => n.id === selection.id) : null;
-  const selectedEdge     = selection?.kind === 'edge' ? edges.find((e) => e.id === selection.id) : null;
-  const selectedFromNode = selectedEdge ? nodes.find((n) => n.id === selectedEdge.from) : undefined;
-  const selectedToNode   = selectedEdge ? nodes.find((n) => n.id === selectedEdge.to)   : undefined;
+  const selectedNode     = selection?.kind === 'node' ? displayNodes.find((n) => n.id === selection.id) : null;
+  const selectedEdge     = selection?.kind === 'edge' ? displayEdges.find((e) => e.id === selection.id) : null;
+  const selectedFromNode = selectedEdge ? displayNodes.find((n) => n.id === selectedEdge.from) : undefined;
+  const selectedToNode   = selectedEdge ? displayNodes.find((n) => n.id === selectedEdge.to)   : undefined;
 
   const selectedNodeWithState = selectedNode
     ? { ...selectedNode, runState: runState[selectedNode.id] }
@@ -502,8 +569,9 @@ export function App() {
         runLabel={activeRun?.label}
         workflowName={activeCanvasName}
         onNewRun={handleNewRun}
-        viewMode={viewMode}
-        onViewModeChange={setViewMode}
+        onRerun={activeRunId ? () => handleRerun(activeRunId) : undefined}
+        view={view}
+        onExitRunView={onExitRunView}
       />
 
       <Sidebar
@@ -514,15 +582,16 @@ export function App() {
         onSelectWorkflow={setActiveWorkflow}
         onSelectRun={onSelectRun}
         onNewRun={handleNewRun}
+        onRerunRun={handleRerun}
         onDeleteRun={onDeleteRun}
         onCreateWorkflow={onCreateWorkflow}
       />
 
       <div className="canvas-cell" style={{ position: 'relative', overflow: 'hidden', minHeight: 0, height: '100%' }}>
         <Canvas
-          nodes={nodes}
-          edges={edges}
-          sessions={sessions}
+          nodes={displayNodes}
+          edges={displayEdges}
+          sessions={displaySessions}
           selection={selection}
           onSelectNode={onSelectNode}
           onSelectEdge={onSelectEdge}
@@ -534,7 +603,7 @@ export function App() {
           onAddEdge={onAddEdge}
           onDeleteNode={onDeleteNode}
           onAddBranch={onAddBranch}
-          viewMode={viewMode}
+          viewMode={view}
           zoom={zoom} setZoom={setZoom}
           pan={pan} setPan={setPan}
         />
@@ -555,8 +624,8 @@ export function App() {
         <NodePanel
           node={selectedNodeWithState}
           run={activeRun}
-          sessions={sessions}
-          viewMode={viewMode}
+          sessions={displaySessions}
+          viewMode={view}
           logLines={logLines}
           onClose={onClearSelection}
           onEditNode={onEditNode}
@@ -578,7 +647,7 @@ export function App() {
           edge={selectedEdge}
           fromNode={selectedFromNode}
           toNode={selectedToNode}
-          viewMode={viewMode}
+          viewMode={view}
           onClose={onClearSelection}
           onEditEdge={onEditEdge}
           onDeleteEdge={onDeleteEdge}
@@ -587,8 +656,8 @@ export function App() {
 
       <div className="bottom-bar-cell">
         <SessionsBar
-          sessions={sessions}
-          nodes={nodes}
+          sessions={displaySessions}
+          nodes={displayNodes}
           expanded={barExpanded}
           setExpanded={setBarExpanded}
           activeSessionId={activeSessionId}

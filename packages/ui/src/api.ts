@@ -22,6 +22,7 @@ export interface ApiRunRecord {
   errorMsg?: string;
   nodeStates: Record<string, RunState>;
   nodeOutputs?: Record<string, string>;
+  canvasSnapshot?: CanvasDoc;
 }
 
 export interface CanvasSummary {
@@ -90,6 +91,16 @@ export async function deleteRun(id: string): Promise<void> {
   await fetch(`/api/runs/${id}`, { method: 'DELETE' });
 }
 
+export async function rerunRun(id: string): Promise<{ runId: string }> {
+  const res = await fetch(`/api/runs/${id}/rerun`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({}),
+  });
+  if (!res.ok) throw new Error(`Failed to re-run: ${res.status}`);
+  return res.json();
+}
+
 export type SseEventType = 'hello' | 'node-status' | 'terminal' | 'run-status';
 
 export function subscribeToRun(
@@ -117,6 +128,7 @@ export function subscribeToRun(
 export function apiRunToUiRun(rec: ApiRunRecord): Run {
   return {
     id: rec.id,
+    workflowId: rec.workflowId,
     label: rec.label,
     ticket: rec.ticket ?? '',
     status: rec.status,
@@ -126,6 +138,8 @@ export function apiRunToUiRun(rec: ApiRunRecord): Run {
     agent: rec.agent,
     errorMsg: rec.errorMsg,
     nodeOutputs: rec.nodeOutputs,
+    canvasSnapshot: rec.canvasSnapshot,
+    nodeStates: rec.nodeStates,
   };
 }
 

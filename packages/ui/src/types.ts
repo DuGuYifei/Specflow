@@ -19,8 +19,17 @@ export interface Workflow {
   active?: boolean;
 }
 
+export interface RunSnapshot {
+  id: string;
+  name: string;
+  sessions: Session[];
+  nodes: WorkflowNode[];
+  edges: Edge[];
+}
+
 export interface Run {
   id: string;
+  workflowId?: string;
   label: string;
   ticket: string;
   status: RunStatus;
@@ -32,6 +41,8 @@ export interface Run {
   active?: boolean;
   errorMsg?: string;
   nodeOutputs?: Record<string, string>;
+  canvasSnapshot?: RunSnapshot;
+  nodeStates?: RunStateMap;
 }
 
 export interface LogLine {

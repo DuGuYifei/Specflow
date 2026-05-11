@@ -80,12 +80,16 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
     });
   }
 
-  async function handleRun(workflowId: string, initialInput: string): Promise<Response> {
-    let doc;
-    try {
-      doc = await loadCanvas(workflowId, root);
-    } catch {
-      return Response.json({ error: "Canvas not found" }, { status: 404 });
+  async function handleRun(workflowId: string, initialInput: string, snapshotDoc?: CanvasDoc): Promise<Response> {
+    let doc: CanvasDoc;
+    if (snapshotDoc) {
+      doc = snapshotDoc;
+    } else {
+      try {
+        doc = await loadCanvas(workflowId, root);
+      } catch {
+        return Response.json({ error: "Canvas not found" }, { status: 404 });
+      }
     }
 
     const workflow = canvasToWorkflow(doc);
@@ -265,6 +269,21 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
         await deleteRun(id, root);
         return Response.json({ ok: true });
       }
+    }
+
+    // POST /api/runs/:id/rerun — re-execute the snapshot of an existing run
+    const rerunMatch = pathname.match(/^\/api\/runs\/([^/]+)\/rerun$/);
+    if (rerunMatch && request.method === "POST") {
+      const id = rerunMatch[1];
+      let prior;
+      try {
+        prior = await loadRun(id, root);
+      } catch {
+        return Response.json({ error: "Run not found" }, { status: 404 });
+      }
+      let body: { initialInput?: string } = {};
+      try { body = await request.json(); } catch { /* ok */ }
+      return handleRun(prior.workflowId, body.initialInput ?? "", prior.canvasSnapshot);
     }
 
     // GET /api/runs/:id/events  (SSE)
