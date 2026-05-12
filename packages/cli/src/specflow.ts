@@ -23,11 +23,35 @@ try {
   if (args[0] === "run") {
     await runWorkflowCommand(args.slice(1));
   } else {
-    await startSpecflowServer();
+    await serveCommand();
   }
 } catch (error) {
   console.error(error instanceof Error ? error.message : String(error));
   process.exit(1);
+}
+
+async function serveCommand(): Promise<void> {
+  const server = await startSpecflowServer();
+  let stopping = false;
+
+  const stop = (signal: string) => {
+    if (stopping) return;
+    stopping = true;
+    console.log(`\nStopping Specflow (${signal})...`);
+    server.stop();
+    process.exit(0);
+  };
+
+  process.once("SIGINT",  () => stop("SIGINT"));
+  process.once("SIGTERM", () => stop("SIGTERM"));
+  process.once("SIGHUP",  () => stop("SIGHUP"));
+  process.once("exit",    () => {
+    if (!stopping) server.stop();
+  });
+
+  await new Promise<void>(() => {
+    // Keep the CLI process alive until a signal arrives.
+  });
 }
 
 async function runWorkflowCommand(args: string[]): Promise<void> {

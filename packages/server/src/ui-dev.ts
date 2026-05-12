@@ -14,6 +14,7 @@ const uiRoot = resolve(currentDir, "../../ui");
 const viteBin = resolve(repoRoot, "node_modules/vite/bin/vite.js");
 
 export async function createDevUiProxy(): Promise<DevUiProxy> {
+  let stderr = "";
   const vite = spawn("bun", [
     viteBin,
     "--host",
@@ -30,9 +31,18 @@ export async function createDevUiProxy(): Promise<DevUiProxy> {
   });
 
   vite.stdout?.on("data", (chunk) => process.stdout.write(chunk));
-  vite.stderr?.on("data", (chunk) => process.stderr.write(chunk));
+  vite.stderr?.on("data", (chunk) => {
+    const text = String(chunk);
+    stderr = `${stderr}${text}`.slice(-4000);
+    process.stderr.write(chunk);
+  });
 
-  await waitForDevUi();
+  try {
+    await waitForDevUi(vite, () => stderr);
+  } catch (error) {
+    stopChild(vite);
+    throw error;
+  }
 
   return {
     fetch(request) {
@@ -52,10 +62,15 @@ export async function createDevUiProxy(): Promise<DevUiProxy> {
   };
 }
 
-async function waitForDevUi() {
+async function waitForDevUi(child: ChildProcess, getStderr: () => string) {
   const deadline = Date.now() + 10_000;
 
   while (Date.now() < deadline) {
+    if (child.exitCode != null || child.signalCode != null) {
+      const details = getStderr().trim();
+      throw new Error(details ? `UI dev server exited early:\n${details}` : "UI dev server exited early.");
+    }
+
     try {
       const response = await fetch(`http://127.0.0.1:${DEV_UI_PORT}/`);
       if (response.ok) {
@@ -70,7 +85,11 @@ async function waitForDevUi() {
 }
 
 function stopChild(child: ChildProcess) {
-  if (!child.killed) {
-    child.kill();
-  }
+  if (child.exitCode != null || child.signalCode != null) return;
+  child.kill("SIGTERM");
+  setTimeout(() => {
+    if (child.exitCode == null && child.signalCode == null) {
+      child.kill("SIGKILL");
+    }
+  }, 1000).unref?.();
 }
