@@ -430,10 +430,11 @@ export function App() {
     setActiveRunId(id);
     setLiveNodeStates({});
     fetchRun(id).then((rec) => {
-      setHistoricNodeStates(rec.nodeStates);
+      const uiRun = apiRunToUiRun(rec);
+      setHistoricNodeStates(uiRun.nodeStates ?? {});
       // Hydrate the active run with its snapshot for read-only display.
       setRuns((prev) => prev.map((r) =>
-        r.id === id ? { ...r, canvasSnapshot: rec.canvasSnapshot, nodeStates: rec.nodeStates, nodeOutputs: rec.nodeOutputs } : r,
+        r.id === id ? { ...r, canvasSnapshot: uiRun.canvasSnapshot, nodeStates: uiRun.nodeStates, nodeOutputs: uiRun.nodeOutputs } : r,
       ));
     }).catch(console.error);
   }, []);

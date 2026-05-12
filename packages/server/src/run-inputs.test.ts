@@ -1,8 +1,8 @@
 import { describe, expect, it } from "bun:test";
 import { prepareCanvasRun } from "./run-inputs";
-import type { CanvasDoc, CanvasStepNode } from "./canvas-doc";
+import type { AgentFlowDoc, AgentFlowStepNode } from "./canvas-doc";
 
-const doc: CanvasDoc = {
+const doc: AgentFlowDoc = {
   id: "simple",
   name: "Simple",
   sessions: [{ id: "s1", name: "mock", color: "blue", agent: "mock" }],
@@ -11,9 +11,6 @@ const doc: CanvasDoc = {
       kind: "input",
       id: "in1",
       num: "IN",
-      x: 0,
-      y: 0,
-      w: 200,
       title: "Value",
       variableName: "specflow_value",
       sessionId: null,
@@ -22,9 +19,6 @@ const doc: CanvasDoc = {
       kind: "step",
       id: "n1",
       num: "01",
-      x: 0,
-      y: 0,
-      w: 220,
       title: "Add one",
       desc: "1 + <specflow_value> = ?",
       sessionId: "s1",
@@ -58,8 +52,8 @@ describe("prepareCanvasRun", () => {
   });
 });
 
-function findStep(input: CanvasDoc, id: string): CanvasStepNode {
-  const node = input.nodes.find((n): n is CanvasStepNode => n.kind === "step" && n.id === id);
+function findStep(input: AgentFlowDoc, id: string): AgentFlowStepNode {
+  const node = input.nodes.find((n): n is AgentFlowStepNode => n.kind === "step" && n.id === id);
   if (!node) throw new Error(`Missing step ${id}`);
   return node;
 }

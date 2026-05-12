@@ -2,11 +2,11 @@
 
 import { resolve } from "node:path";
 import {
-  executeCanvasDoc,
-  loadCanvasFile,
+  executeAgentFlowDoc,
+  loadAgentFlowFile,
   prepareCanvasRun,
   startSpecflowServer,
-  type CanvasDoc,
+  type AgentFlowDoc,
   type RunInputVariable,
 } from "@specflow/server";
 
@@ -57,7 +57,7 @@ async function serveCommand(): Promise<void> {
 async function runWorkflowCommand(args: string[]): Promise<void> {
   const opts = parseRunArgs(args);
   const filePath = resolve(process.cwd(), opts.file);
-  const doc = await loadCanvasFile(filePath);
+  const doc = await loadAgentFlowFile(filePath);
   const normalizedValues = normalizeVariableValues(doc, opts.values);
   const prepared = prepareCanvasRun(doc, {
     initialInput: opts.initialInput,
@@ -91,7 +91,7 @@ async function runWorkflowCommand(args: string[]): Promise<void> {
       .map((n) => [n.id, `${n.num} ${n.title}`]),
   );
 
-  const run = await executeCanvasDoc({
+  const run = await executeAgentFlowDoc({
     doc: prepared.doc,
     initialInput: prepared.initialInput,
     cwd: process.cwd(),
@@ -172,7 +172,7 @@ function assignDefine(target: Record<string, string>, raw: string): void {
   target[raw.slice(0, eq)] = raw.slice(eq + 1);
 }
 
-function normalizeVariableValues(doc: CanvasDoc, values: Record<string, string>): Record<string, string> {
+function normalizeVariableValues(doc: AgentFlowDoc, values: Record<string, string>): Record<string, string> {
   const names = new Set(doc.nodes.filter((n) => n.kind === "input").map((n) => n.variableName));
   const normalized: Record<string, string> = {};
   for (const [key, value] of Object.entries(values)) {
@@ -182,7 +182,7 @@ function normalizeVariableValues(doc: CanvasDoc, values: Record<string, string>)
   return normalized;
 }
 
-function printRunPlan(filePath: string, doc: CanvasDoc, variables: RunInputVariable[]): void {
+function printRunPlan(filePath: string, doc: AgentFlowDoc, variables: RunInputVariable[]): void {
   const runtimeNodes = doc.nodes.filter((n) => n.kind === "step" || n.kind === "gate");
   console.log(`Workflow: ${doc.name} (${doc.id})`);
   console.log(`File: ${filePath}`);
@@ -230,5 +230,5 @@ function indentBlock(label: string, value: string): string {
 }
 
 function printRunUsage(): void {
-  console.error("Usage: specflow run <canvas.yaml> [-Dname=value ...] [--input text] [--yes]");
+  console.error("Usage: specflow run <agentflow.yaml> [-Dname=value ...] [--input text] [--yes]");
 }

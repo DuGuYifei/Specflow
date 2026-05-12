@@ -32,6 +32,7 @@ export interface RunSnapshot {
   sessions: Session[];
   nodes: WorkflowNode[];
   edges: Edge[];
+  variables?: Variable[];
 }
 
 export interface Run {

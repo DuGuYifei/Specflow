@@ -1,7 +1,8 @@
 import { readdir, readFile, writeFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { parse, stringify } from "yaml";
-import type { CanvasDoc } from "./canvas-doc";
+import type { AgentFlowDoc, CanvasDoc, CanvasLayoutDoc } from "./canvas-doc";
+import { splitCanvasDoc } from "./canvas-store";
 
 export type RunState = "running" | "success" | "error" | "pending";
 
@@ -19,7 +20,8 @@ export interface RunRecord {
   errorMsg?: string;
   nodeStates: Record<string, RunState>;
   nodeOutputs: Record<string, string>;
-  canvasSnapshot: CanvasDoc;
+  agentflowSnapshot: AgentFlowDoc;
+  canvasSnapshot: CanvasLayoutDoc;
   initialInput: string;
   variableValues: Record<string, string>;
 }
@@ -45,9 +47,7 @@ export async function listRuns(workflowId: string | undefined, root: string): Pr
     try {
       const raw = await readFile(join(dir, file), "utf8");
       const rec = parse(raw) as RunRecord;
-      if (!rec.nodeOutputs) rec.nodeOutputs = {};
-      if (!rec.initialInput) rec.initialInput = "";
-      if (!rec.variableValues) rec.variableValues = {};
+      normalizeRunRecord(rec);
       if (!workflowId || rec.workflowId === workflowId) {
         results.push(rec);
       }
@@ -62,9 +62,7 @@ export async function listRuns(workflowId: string | undefined, root: string): Pr
 export async function loadRun(id: string, root: string): Promise<RunRecord> {
   const raw = await readFile(runPath(id, root), "utf8");
   const rec = parse(raw) as RunRecord;
-  if (!rec.nodeOutputs) rec.nodeOutputs = {};
-  if (!rec.initialInput) rec.initialInput = "";
-  if (!rec.variableValues) rec.variableValues = {};
+  normalizeRunRecord(rec);
   return rec;
 }
 
@@ -87,4 +85,21 @@ export function formatDuration(startedAt: string, completedAt: string): string {
   const m = Math.floor((totalSec % 3600) / 60);
   const s = totalSec % 60;
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
+function normalizeRunRecord(rec: RunRecord): void {
+  if (!rec.nodeOutputs) rec.nodeOutputs = {};
+  if (!rec.initialInput) rec.initialInput = "";
+  if (!rec.variableValues) rec.variableValues = {};
+
+  const maybeLegacy = rec as RunRecord & {
+    agentflowSnapshot?: AgentFlowDoc;
+    canvasSnapshot?: CanvasLayoutDoc | CanvasDoc;
+  };
+  if (!maybeLegacy.agentflowSnapshot && maybeLegacy.canvasSnapshot && "id" in maybeLegacy.canvasSnapshot) {
+    const legacySnapshot = maybeLegacy.canvasSnapshot as CanvasDoc;
+    const { agentflow, layout } = splitCanvasDoc(legacySnapshot);
+    maybeLegacy.agentflowSnapshot = agentflow;
+    maybeLegacy.canvasSnapshot = layout;
+  }
 }

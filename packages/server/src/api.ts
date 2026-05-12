@@ -2,10 +2,17 @@ import { WorkflowExecutor } from "@specflow/bridge";
 import type { SpecflowBridge } from "@specflow/bridge";
 import type { NodeStatusEvent, RunStatusEvent } from "@specflow/bridge";
 import { canvasToWorkflow } from "./canvas-to-workflow";
-import { listCanvases, loadCanvas, saveCanvas, deleteCanvas } from "./canvas-store";
+import {
+  listCanvases,
+  loadCanvas,
+  loadAgentFlow,
+  loadOrCreateCanvasLayout,
+  saveCanvas,
+  deleteCanvas,
+} from "./canvas-store";
 import { formatDuration, listRuns, loadRun, saveRun, deleteRun, type RunRecord, type RunState } from "./run-store";
 import { prepareCanvasRun } from "./run-inputs";
-import type { CanvasDoc } from "./canvas-doc";
+import type { AgentFlowDoc, CanvasDoc, CanvasLayoutDoc } from "./canvas-doc";
 import type { CanvasSession } from "./canvas-doc";
 
 // ── simple in-process event bus ───────────────────────────────────────────────
@@ -86,20 +93,23 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
     workflowId: string,
     initialInput: string,
     variableValues: Record<string, string>,
-    snapshotDoc?: CanvasDoc,
+    snapshot?: { agentflow: AgentFlowDoc; layout: CanvasLayoutDoc },
   ): Promise<Response> {
-    let doc: CanvasDoc;
-    if (snapshotDoc) {
-      doc = snapshotDoc;
+    let agentflow: AgentFlowDoc;
+    let layout: CanvasLayoutDoc;
+    if (snapshot) {
+      agentflow = snapshot.agentflow;
+      layout = snapshot.layout;
     } else {
       try {
-        doc = await loadCanvas(workflowId, root);
+        agentflow = await loadAgentFlow(workflowId, root);
+        layout = await loadOrCreateCanvasLayout(agentflow, root);
       } catch {
-        return Response.json({ error: "Canvas not found" }, { status: 404 });
+        return Response.json({ error: "Agentflow not found" }, { status: 404 });
       }
     }
 
-    const prepared = prepareCanvasRun(doc, { initialInput, variableValues });
+    const prepared = prepareCanvasRun(agentflow, { initialInput, variableValues });
     if (prepared.missingVariables.length > 0) {
       return Response.json({
         error: "Missing required variables",
@@ -116,7 +126,7 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
     const label = `Run #${existingCount + 1}`;
 
     const initialNodeStates: Record<string, RunState> = {};
-    for (const n of doc.nodes) {
+    for (const n of agentflow.nodes) {
       initialNodeStates[n.id] = "pending";
     }
 
@@ -126,10 +136,11 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
       label,
       status: "running",
       startedAt: new Date().toISOString(),
-      agent: doc.sessions[0]?.agent ?? "mock",
+      agent: agentflow.sessions[0]?.agent ?? "mock",
       nodeStates: initialNodeStates,
       nodeOutputs: {},
-      canvasSnapshot: doc,        // store pre-substitution snapshot
+      agentflowSnapshot: agentflow, // store pre-substitution snapshots
+      canvasSnapshot: layout,
       initialInput,
       variableValues,
     };
@@ -309,7 +320,10 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
         prior.workflowId,
         body.initialInput ?? prior.initialInput,
         body.variableValues ?? prior.variableValues,
-        prior.canvasSnapshot,
+        {
+          agentflow: prior.agentflowSnapshot,
+          layout: prior.canvasSnapshot,
+        },
       );
     }
 

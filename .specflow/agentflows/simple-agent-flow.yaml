@@ -9,9 +9,6 @@ nodes:
   - kind: input
     id: in1
     num: IN
-    x: 40
-    y: 80
-    w: 200
     title: Input value
     variableName: specflow_value
     description: Value used by the first step
@@ -19,9 +16,6 @@ nodes:
   - kind: step
     id: n1
     num: "01"
-    x: 300
-    y: 60
-    w: 240
     title: Add one
     desc: 1 + <specflow_value> = ?
     sessionId: s1
@@ -29,19 +23,15 @@ nodes:
   - kind: step
     id: n2
     num: "02"
-    x: 600
-    y: 60
-    w: 260
     title: Add two
-    desc: "Previous output: <specflow_input>\n+ 2 = ?"
+    desc: |-
+      Previous output: <specflow_input>
+      + 2 = ?
     sessionId: s1
     updateDoc: false
   - kind: end
     id: end1
     num: END
-    x: 920
-    y: 82
-    w: 120
     title: Done
     sessionId: null
 edges:

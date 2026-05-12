@@ -5,7 +5,7 @@ import type {
   TaggedOutputEdge,
   Workflow,
 } from "@specflow/workflow";
-import type { CanvasDoc, CanvasEdge, CanvasSession, CanvasStepNode } from "./canvas-doc";
+import type { AgentFlowDoc, AgentFlowStepNode, CanvasEdge, CanvasSession } from "./canvas-doc";
 
 export const MOCK_AGENT_ID = "agent-mock";
 
@@ -13,7 +13,7 @@ function agentIdForProvider(provider: CanvasSession["agent"]): string {
   return `agent-${provider}`;
 }
 
-export function canvasToWorkflow(doc: CanvasDoc): Workflow {
+export function canvasToWorkflow(doc: AgentFlowDoc): Workflow {
   const endNodeIds = new Set(
     doc.nodes.filter((n) => n.kind === "end").map((n) => n.id),
   );
@@ -60,7 +60,6 @@ export function canvasToWorkflow(doc: CanvasDoc): Workflow {
           decisionCriteria: n.gateDesc ?? "",
           inputVariable: "specflow_input",
           branches: n.branches.map((b) => ({ id: b.id, label: b.label, color: b.color })),
-          position: { x: n.x, y: n.y },
         } satisfies GateNode;
       }
       throw new Error(`Unknown node kind: ${(n as { kind: string }).kind}`);
@@ -82,7 +81,7 @@ export function canvasToWorkflow(doc: CanvasDoc): Workflow {
   };
 }
 
-function buildAgentNode(n: CanvasStepNode, doc: CanvasDoc): AgentNode {
+function buildAgentNode(n: AgentFlowStepNode, doc: AgentFlowDoc): AgentNode {
   const session = doc.sessions.find((s) => s.id === n.sessionId);
   return {
     id: n.id,
@@ -104,11 +103,10 @@ function buildAgentNode(n: CanvasStepNode, doc: CanvasDoc): AgentNode {
       kind: "file",
       path: p,
     })),
-    position: { x: n.x, y: n.y },
   };
 }
 
-function buildEdge(e: CanvasEdge, doc: CanvasDoc): PassthroughEdge | TaggedOutputEdge {
+function buildEdge(e: CanvasEdge, doc: AgentFlowDoc): PassthroughEdge | TaggedOutputEdge {
   // Gate-branch edge or same-session edge → passthrough
   if (e.branch || e.sameSession) {
     return {

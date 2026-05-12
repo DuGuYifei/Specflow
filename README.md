@@ -62,6 +62,10 @@ Specflow UI: http://localhost:5173/
 
 The server proxies UI requests to Vite so React updates stay fast. In production the server serves the embedded static UI from the compiled binary.
 
+## Workspace Files
+
+Specflow stores workflow-as-code files in `.specflow/agentflows/*.yaml`. The browser canvas layout is generated into `.specflow/canvas/*.json` and is ignored by default, so users can author or review agentflows without also hand-writing UI coordinates.
+
 ## Scripts
 
 ```sh

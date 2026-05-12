@@ -9,6 +9,24 @@ export interface CanvasDoc {
   variables?: Variable[];
 }
 
+export type AgentFlowNode = Omit<WorkflowNode, 'x' | 'y' | 'w'>;
+
+export interface AgentFlowDoc {
+  id: string;
+  name: string;
+  sessions: Session[];
+  nodes: AgentFlowNode[];
+  edges: Edge[];
+  variables?: Variable[];
+}
+
+export interface CanvasLayoutDoc {
+  workflowId: string;
+  version: 1;
+  nodes: Array<{ nodeId: string; x: number; y: number; w: number }>;
+  viewport?: { x: number; y: number; zoom: number };
+}
+
 export interface ApiRunRecord {
   id: string;
   workflowId: string;
@@ -23,7 +41,8 @@ export interface ApiRunRecord {
   errorMsg?: string;
   nodeStates: Record<string, RunState>;
   nodeOutputs?: Record<string, string>;
-  canvasSnapshot?: CanvasDoc;
+  agentflowSnapshot?: AgentFlowDoc;
+  canvasSnapshot?: CanvasLayoutDoc | CanvasDoc;
   initialInput?: string;
   variableValues?: Record<string, string>;
 }
@@ -135,6 +154,7 @@ export function subscribeToRun(
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 export function apiRunToUiRun(rec: ApiRunRecord): Run {
+  const canvasSnapshot = combineSnapshot(rec.agentflowSnapshot, rec.canvasSnapshot);
   return {
     id: rec.id,
     workflowId: rec.workflowId,
@@ -147,11 +167,45 @@ export function apiRunToUiRun(rec: ApiRunRecord): Run {
     agent: rec.agent,
     errorMsg: rec.errorMsg,
     nodeOutputs: rec.nodeOutputs,
-    canvasSnapshot: rec.canvasSnapshot,
+    canvasSnapshot,
     nodeStates: rec.nodeStates,
     initialInput: rec.initialInput,
     variableValues: rec.variableValues,
   };
+}
+
+function combineSnapshot(
+  agentflow: AgentFlowDoc | undefined,
+  layoutOrLegacy: CanvasLayoutDoc | CanvasDoc | undefined,
+): CanvasDoc | undefined {
+  if (!layoutOrLegacy) return undefined;
+  if ('id' in layoutOrLegacy) return layoutOrLegacy;
+  if (!agentflow) return undefined;
+
+  const layoutByNode = new Map(layoutOrLegacy.nodes.map((node) => [node.nodeId, node]));
+  return {
+    id: agentflow.id,
+    name: agentflow.name,
+    sessions: agentflow.sessions,
+    nodes: agentflow.nodes.map((node) => {
+      const layout = layoutByNode.get(node.id);
+      return {
+        ...node,
+        x: layout?.x ?? 0,
+        y: layout?.y ?? 0,
+        w: layout?.w ?? defaultWidth(node.kind),
+      } as WorkflowNode;
+    }),
+    edges: agentflow.edges,
+    variables: agentflow.variables,
+  };
+}
+
+function defaultWidth(kind: WorkflowNode['kind']): number {
+  if (kind === 'gate') return 200;
+  if (kind === 'input') return 200;
+  if (kind === 'end') return 140;
+  return 220;
 }
 
 export function summaryToWorkflow(s: CanvasSummary): Workflow {

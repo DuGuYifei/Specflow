@@ -1,4 +1,4 @@
-import type { CanvasDoc } from "./canvas-doc";
+import type { AgentFlowDoc } from "./canvas-doc";
 
 export interface RunInputVariable {
   name: string;
@@ -9,7 +9,7 @@ export interface RunInputVariable {
 }
 
 export interface PreparedCanvasRun {
-  doc: CanvasDoc;
+  doc: AgentFlowDoc;
   initialInput: string;
   variables: RunInputVariable[];
   effectiveValues: Record<string, string>;
@@ -17,7 +17,7 @@ export interface PreparedCanvasRun {
 }
 
 export function prepareCanvasRun(
-  doc: CanvasDoc,
+  doc: AgentFlowDoc,
   input: {
     initialInput?: string;
     variableValues?: Record<string, string>;

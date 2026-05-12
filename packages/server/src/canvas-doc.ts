@@ -94,3 +94,43 @@ export interface CanvasDoc {
   edges: CanvasEdge[];
   variables?: CanvasVariable[];
 }
+
+export type AgentFlowStepNode = Omit<CanvasStepNode, "x" | "y" | "w">;
+export type AgentFlowGateNode = Omit<CanvasGateNode, "x" | "y" | "w">;
+export type AgentFlowEndNode = Omit<CanvasEndNode, "x" | "y" | "w">;
+export type AgentFlowInputNode = Omit<CanvasInputNode, "x" | "y" | "w">;
+
+export type AgentFlowNode =
+  | AgentFlowStepNode
+  | AgentFlowGateNode
+  | AgentFlowEndNode
+  | AgentFlowInputNode;
+
+export interface AgentFlowDoc {
+  id: string;
+  name: string;
+  sessions: CanvasSession[];
+  nodes: AgentFlowNode[];
+  edges: CanvasEdge[];
+  variables?: CanvasVariable[];
+}
+
+export interface CanvasNodeLayout {
+  nodeId: string;
+  x: number;
+  y: number;
+  w: number;
+}
+
+export interface CanvasViewport {
+  x: number;
+  y: number;
+  zoom: number;
+}
+
+export interface CanvasLayoutDoc {
+  workflowId: string;
+  version: 1;
+  nodes: CanvasNodeLayout[];
+  viewport?: CanvasViewport;
+}

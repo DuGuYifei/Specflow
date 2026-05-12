@@ -1,18 +1,33 @@
-import { readdir, readFile, writeFile } from "node:fs/promises";
+import { readdir, readFile, writeFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { parse, stringify } from "yaml";
-import type { CanvasDoc } from "./canvas-doc";
+import type {
+  AgentFlowDoc,
+  AgentFlowNode,
+  CanvasDoc,
+  CanvasLayoutDoc,
+  CanvasNode,
+  CanvasNodeLayout,
+} from "./canvas-doc";
+
+function agentflowsDir(root: string) {
+  return join(root, ".specflow", "agentflows");
+}
 
 function canvasDir(root: string) {
   return join(root, ".specflow", "canvas");
 }
 
+function agentflowPath(id: string, root: string) {
+  return join(agentflowsDir(root), `${id}.yaml`);
+}
+
 function canvasPath(id: string, root: string) {
-  return join(canvasDir(root), `${id}.yaml`);
+  return join(canvasDir(root), `${id}.json`);
 }
 
 export async function listCanvases(root: string): Promise<{ id: string; name: string }[]> {
-  const dir = canvasDir(root);
+  const dir = agentflowsDir(root);
   let files: string[];
   try {
     files = await readdir(dir);
@@ -23,7 +38,7 @@ export async function listCanvases(root: string): Promise<{ id: string; name: st
   for (const file of files.filter((f) => f.endsWith(".yaml"))) {
     try {
       const raw = await readFile(join(dir, file), "utf8");
-      const doc = parse(raw) as CanvasDoc;
+      const doc = parse(raw) as AgentFlowDoc;
       results.push({ id: doc.id, name: doc.name });
     } catch {
       // skip malformed
@@ -33,19 +48,216 @@ export async function listCanvases(root: string): Promise<{ id: string; name: st
 }
 
 export async function loadCanvas(id: string, root: string): Promise<CanvasDoc> {
-  const raw = await readFile(canvasPath(id, root), "utf8");
-  return parse(raw) as CanvasDoc;
+  const agentflow = await loadAgentFlow(id, root);
+  const layout = await loadOrCreateCanvasLayout(agentflow, root);
+  return combineAgentFlowAndLayout(agentflow, layout);
+}
+
+export async function loadAgentFlow(id: string, root: string): Promise<AgentFlowDoc> {
+  const raw = await readFile(agentflowPath(id, root), "utf8");
+  return parse(raw) as AgentFlowDoc;
+}
+
+export async function loadOrCreateCanvasLayout(
+  agentflow: AgentFlowDoc,
+  root: string,
+): Promise<CanvasLayoutDoc> {
+  try {
+    const raw = await readFile(canvasPath(agentflow.id, root), "utf8");
+    const layout = JSON.parse(raw) as CanvasLayoutDoc;
+    if (layout.workflowId === agentflow.id) return normalizeCanvasLayout(agentflow, layout);
+  } catch {
+    // Missing or malformed layout is regenerated below.
+  }
+  const generated = generateCanvasLayout(agentflow);
+  await saveCanvasLayout(agentflow.id, generated, root);
+  return generated;
 }
 
 export async function saveCanvas(id: string, doc: CanvasDoc, root: string): Promise<void> {
-  await writeFile(canvasPath(id, root), stringify(doc), "utf8");
+  const { agentflow, layout } = splitCanvasDoc({ ...doc, id });
+  await Promise.all([
+    writeFile(agentflowPath(id, root), stringify(agentflow), "utf8"),
+    saveCanvasLayout(id, layout, root),
+  ]);
+}
+
+export async function saveAgentFlowAndLayout(
+  id: string,
+  agentflow: AgentFlowDoc,
+  layout: CanvasLayoutDoc,
+  root: string,
+): Promise<void> {
+  await Promise.all([
+    writeFile(agentflowPath(id, root), stringify(agentflow), "utf8"),
+    saveCanvasLayout(id, layout, root),
+  ]);
+}
+
+export async function saveCanvasLayout(id: string, layout: CanvasLayoutDoc, root: string): Promise<void> {
+  await writeFile(canvasPath(id, root), `${JSON.stringify(layout, null, 2)}\n`, "utf8");
 }
 
 export async function deleteCanvas(id: string, root: string): Promise<void> {
-  const { unlink } = await import("node:fs/promises");
-  try {
-    await unlink(canvasPath(id, root));
-  } catch {
-    // already gone — ok
+  await Promise.all([
+    unlink(agentflowPath(id, root)).catch(() => {}),
+    unlink(canvasPath(id, root)).catch(() => {}),
+  ]);
+}
+
+export function splitCanvasDoc(doc: CanvasDoc): { agentflow: AgentFlowDoc; layout: CanvasLayoutDoc } {
+  const nodes: AgentFlowNode[] = doc.nodes.map((node) => stripLayout(node));
+  const layout: CanvasLayoutDoc = {
+    workflowId: doc.id,
+    version: 1,
+    nodes: doc.nodes.map((node) => ({
+      nodeId: node.id,
+      x: node.x,
+      y: node.y,
+      w: node.w,
+    })),
+  };
+  return {
+    agentflow: {
+      id: doc.id,
+      name: doc.name,
+      sessions: doc.sessions,
+      nodes,
+      edges: doc.edges,
+      variables: doc.variables,
+    },
+    layout,
+  };
+}
+
+export function combineAgentFlowAndLayout(
+  agentflow: AgentFlowDoc,
+  layout: CanvasLayoutDoc,
+): CanvasDoc {
+  const layoutByNode = new Map(layout.nodes.map((node) => [node.nodeId, node]));
+  const generated = generateCanvasLayout(agentflow);
+  const generatedByNode = new Map(generated.nodes.map((node) => [node.nodeId, node]));
+  return {
+    id: agentflow.id,
+    name: agentflow.name,
+    sessions: agentflow.sessions,
+    nodes: agentflow.nodes.map((node) => {
+      const nodeLayout = layoutByNode.get(node.id) ?? generatedByNode.get(node.id);
+      return {
+        ...node,
+        x: nodeLayout?.x ?? 0,
+        y: nodeLayout?.y ?? 0,
+        w: nodeLayout?.w ?? defaultWidth(node.kind),
+      } as CanvasNode;
+    }),
+    edges: agentflow.edges,
+    variables: agentflow.variables,
+  };
+}
+
+export function generateCanvasLayout(agentflow: AgentFlowDoc): CanvasLayoutDoc {
+  const ignoredEdges = new Set(agentflow.edges.filter((edge) => edge.loopback).map((edge) => edge.id));
+  const incoming = new Map<string, string[]>();
+  const outgoing = new Map<string, string[]>();
+  for (const node of agentflow.nodes) {
+    incoming.set(node.id, []);
+    outgoing.set(node.id, []);
   }
+  for (const edge of agentflow.edges) {
+    if (ignoredEdges.has(edge.id)) continue;
+    if (!incoming.has(edge.to) || !outgoing.has(edge.from)) continue;
+    incoming.get(edge.to)!.push(edge.from);
+    outgoing.get(edge.from)!.push(edge.to);
+  }
+
+  const rank = new Map<string, number>();
+  const visiting = new Set<string>();
+  const byId = new Map(agentflow.nodes.map((node) => [node.id, node]));
+
+  const computeRank = (nodeId: string): number => {
+    const existing = rank.get(nodeId);
+    if (existing != null) return existing;
+    if (visiting.has(nodeId)) return 0;
+    visiting.add(nodeId);
+    const node = byId.get(nodeId);
+    const parents = incoming.get(nodeId) ?? [];
+    const value = node?.kind === "input" || parents.length === 0
+      ? 0
+      : Math.max(...parents.map((parentId) => computeRank(parentId) + 1));
+    visiting.delete(nodeId);
+    rank.set(nodeId, value);
+    return value;
+  };
+
+  for (const node of agentflow.nodes) computeRank(node.id);
+
+  const columns = new Map<number, AgentFlowNode[]>();
+  for (const node of agentflow.nodes) {
+    const r = rank.get(node.id) ?? 0;
+    const column = columns.get(r) ?? [];
+    column.push(node);
+    columns.set(r, column);
+  }
+
+  const layouts: CanvasNodeLayout[] = [];
+  const sortedRanks = [...columns.keys()].sort((a, b) => a - b);
+  for (const r of sortedRanks) {
+    const column = columns.get(r)!;
+    column.sort(compareNodesForLayout);
+    for (let index = 0; index < column.length; index += 1) {
+      const node = column[index]!;
+      layouts.push({
+        nodeId: node.id,
+        x: 60 + r * 280,
+        y: 80 + index * 180,
+        w: defaultWidth(node.kind),
+      });
+    }
+  }
+
+  return {
+    workflowId: agentflow.id,
+    version: 1,
+    nodes: layouts,
+  };
+}
+
+function normalizeCanvasLayout(agentflow: AgentFlowDoc, layout: CanvasLayoutDoc): CanvasLayoutDoc {
+  const knownNodeIds = new Set(agentflow.nodes.map((node) => node.id));
+  const generated = generateCanvasLayout(agentflow);
+  const layoutByNode = new Map(layout.nodes.map((node) => [node.nodeId, node]));
+  const nodes = generated.nodes.map((fallback) => {
+    const existing = layoutByNode.get(fallback.nodeId);
+    if (!existing || !knownNodeIds.has(existing.nodeId)) return fallback;
+    return {
+      nodeId: existing.nodeId,
+      x: existing.x,
+      y: existing.y,
+      w: existing.w || fallback.w,
+    };
+  });
+  return {
+    workflowId: agentflow.id,
+    version: 1,
+    nodes,
+    viewport: layout.viewport,
+  };
+}
+
+function stripLayout(node: CanvasNode): AgentFlowNode {
+  const { x: _x, y: _y, w: _w, ...rest } = node;
+  return rest;
+}
+
+function defaultWidth(kind: AgentFlowNode["kind"]): number {
+  if (kind === "gate") return 200;
+  if (kind === "input") return 200;
+  if (kind === "end") return 140;
+  return 220;
+}
+
+function compareNodesForLayout(a: AgentFlowNode, b: AgentFlowNode): number {
+  return (a.num || "").localeCompare(b.num || "", undefined, { numeric: true }) ||
+    a.title.localeCompare(b.title) ||
+    a.id.localeCompare(b.id);
 }

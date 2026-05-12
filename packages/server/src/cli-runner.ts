@@ -2,15 +2,15 @@ import { readFile } from "node:fs/promises";
 import { parse } from "yaml";
 import { WorkflowExecutor, type NodeStatusEvent, type RunStatusEvent } from "@specflow/bridge";
 import type { WorkflowRun } from "@specflow/workflow";
-import type { CanvasDoc } from "./canvas-doc";
+import type { AgentFlowDoc } from "./canvas-doc";
 import { canvasToWorkflow } from "./canvas-to-workflow";
 
-export async function loadCanvasFile(filePath: string): Promise<CanvasDoc> {
-  return parse(await readFile(filePath, "utf8")) as CanvasDoc;
+export async function loadAgentFlowFile(filePath: string): Promise<AgentFlowDoc> {
+  return parse(await readFile(filePath, "utf8")) as AgentFlowDoc;
 }
 
-export async function executeCanvasDoc(input: {
-  doc: CanvasDoc;
+export async function executeAgentFlowDoc(input: {
+  doc: AgentFlowDoc;
   initialInput: string;
   cwd: string;
   onNodeStatus?: (event: NodeStatusEvent) => void;
