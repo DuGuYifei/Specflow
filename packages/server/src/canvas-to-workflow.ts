@@ -5,35 +5,49 @@ import type {
   TaggedOutputEdge,
   Workflow,
 } from "@specflow/workflow";
-import type { CanvasDoc, CanvasEdge, CanvasStepNode } from "./canvas-doc";
+import type { CanvasDoc, CanvasEdge, CanvasSession, CanvasStepNode } from "./canvas-doc";
 
 export const MOCK_AGENT_ID = "agent-mock";
+
+function agentIdForProvider(provider: CanvasSession["agent"]): string {
+  return `agent-${provider}`;
+}
 
 export function canvasToWorkflow(doc: CanvasDoc): Workflow {
   const endNodeIds = new Set(
     doc.nodes.filter((n) => n.kind === "end").map((n) => n.id),
   );
 
+  const inputNodeIds = new Set(
+    doc.nodes.filter((n) => n.kind === "input").map((n) => n.id),
+  );
+
   const loopbackEdgeIds = new Set(
     doc.edges.filter((e) => e.loopback).map((e) => e.id),
   );
 
-  const agents: Workflow["agents"] = [
-    { id: MOCK_AGENT_ID, kind: "provider", name: "Mock", provider: "mock" },
-  ];
+  const providers = new Set<CanvasSession["agent"]>(doc.sessions.map((s) => s.agent));
+  providers.add("mock");
+
+  const agents: Workflow["agents"] = [...providers].map((provider) => ({
+    id: agentIdForProvider(provider),
+    kind: "provider",
+    name: provider === "claude-code" ? "Claude" : provider === "codex" ? "Codex" : "Mock",
+    provider,
+  }));
 
   const sessions: Workflow["sessions"] = doc.sessions.map((s) => ({
     id: s.id,
     name: s.name,
-    agentId: MOCK_AGENT_ID,
+    agentId: agentIdForProvider(s.agent),
     createdAt: new Date().toISOString(),
   }));
 
   const nodes: Workflow["nodes"] = doc.nodes
-    .filter((n) => n.kind !== "end")
+    .filter((n) => n.kind !== "end" && n.kind !== "input")
     .map((n) => {
       if (n.kind === "step") {
-        return buildAgentNode(n);
+        return buildAgentNode(n, doc);
       }
       if (n.kind === "gate") {
         return {
@@ -55,6 +69,7 @@ export function canvasToWorkflow(doc: CanvasDoc): Workflow {
   const edges: Workflow["edges"] = doc.edges
     .filter((e) => !loopbackEdgeIds.has(e.id))
     .filter((e) => !endNodeIds.has(e.to) && !endNodeIds.has(e.from))
+    .filter((e) => !inputNodeIds.has(e.from))   // variable injection edges are not workflow edges
     .map((e) => buildEdge(e, doc));
 
   return {
@@ -67,14 +82,15 @@ export function canvasToWorkflow(doc: CanvasDoc): Workflow {
   };
 }
 
-function buildAgentNode(n: CanvasStepNode): AgentNode {
+function buildAgentNode(n: CanvasStepNode, doc: CanvasDoc): AgentNode {
+  const session = doc.sessions.find((s) => s.id === n.sessionId);
   return {
     id: n.id,
     kind: "agent",
     title: n.title,
     description: n.desc,
     promptTemplate: { template: n.desc ?? "" },
-    agentId: MOCK_AGENT_ID,
+    agentId: session ? agentIdForProvider(session.agent) : MOCK_AGENT_ID,
     sessionId: n.sessionId ?? "",
     updateSpecDoc: n.updateDoc,
     attachments: (n.attachments ?? []).map((a) => ({
@@ -106,7 +122,8 @@ function buildEdge(e: CanvasEdge, doc: CanvasDoc): PassthroughEdge | TaggedOutpu
 
   // Cross-session tagged edge
   const toNode = doc.nodes.find((n) => n.id === e.to);
-  const toSessionId = toNode && toNode.kind !== "end" ? toNode.sessionId : undefined;
+  const toSessionId = toNode && toNode.kind !== "end" && toNode.kind !== "input" ? toNode.sessionId : undefined;
+  const toSession = doc.sessions.find((s) => s.id === toSessionId);
 
   const tag = e.tag ?? e.id;
   return {
@@ -121,7 +138,7 @@ function buildEdge(e: CanvasEdge, doc: CanvasDoc): PassthroughEdge | TaggedOutpu
     },
     handoff: e.prompt
       ? {
-          agentId: MOCK_AGENT_ID,
+          agentId: toSession ? agentIdForProvider(toSession.agent) : MOCK_AGENT_ID,
           sessionId: toSessionId ?? undefined,
           promptTemplate: { template: e.prompt },
         }

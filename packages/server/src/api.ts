@@ -4,7 +4,9 @@ import type { NodeStatusEvent, RunStatusEvent } from "@specflow/bridge";
 import { canvasToWorkflow } from "./canvas-to-workflow";
 import { listCanvases, loadCanvas, saveCanvas, deleteCanvas } from "./canvas-store";
 import { formatDuration, listRuns, loadRun, saveRun, deleteRun, type RunRecord, type RunState } from "./run-store";
+import { prepareCanvasRun } from "./run-inputs";
 import type { CanvasDoc } from "./canvas-doc";
+import type { CanvasSession } from "./canvas-doc";
 
 // ── simple in-process event bus ───────────────────────────────────────────────
 
@@ -35,7 +37,7 @@ class EventBus {
 export function createApiHandler(bridge: SpecflowBridge, root: string) {
   const bus = new EventBus();
 
-  const DEFAULT_SESSION = {
+  const DEFAULT_SESSION: CanvasSession = {
     id: "s1",
     name: "main",
     color: "oklch(0.7 0.13 250)",
@@ -80,7 +82,12 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
     });
   }
 
-  async function handleRun(workflowId: string, initialInput: string, snapshotDoc?: CanvasDoc): Promise<Response> {
+  async function handleRun(
+    workflowId: string,
+    initialInput: string,
+    variableValues: Record<string, string>,
+    snapshotDoc?: CanvasDoc,
+  ): Promise<Response> {
     let doc: CanvasDoc;
     if (snapshotDoc) {
       doc = snapshotDoc;
@@ -92,7 +99,8 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
       }
     }
 
-    const workflow = canvasToWorkflow(doc);
+    const prepared = prepareCanvasRun(doc, { initialInput, variableValues });
+    const workflow = canvasToWorkflow(prepared.doc);
     const runId = crypto.randomUUID();
     const existingCount = (await listRuns(workflowId, root)).length;
     const label = `Run #${existingCount + 1}`;
@@ -111,7 +119,9 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
       agent: doc.sessions[0]?.agent ?? "mock",
       nodeStates: initialNodeStates,
       nodeOutputs: {},
-      canvasSnapshot: doc,
+      canvasSnapshot: doc,        // store pre-substitution snapshot
+      initialInput,
+      variableValues,
     };
 
     await saveRun(record, root);
@@ -168,12 +178,13 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
     };
 
     const executor = new WorkflowExecutor({
+      cwd: root,
       terminalEvents: bridge.terminalEvents,
       onNodeStatus,
       onRunStatus,
     });
 
-    void executor.run(workflow, initialInput).catch(() => { /* handled via onRunStatus */ });
+    void executor.run(workflow, prepared.initialInput).catch(() => { /* handled via onRunStatus */ });
 
     return Response.json({ runId });
   }
@@ -241,9 +252,9 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
     const runMatch = pathname.match(/^\/api\/canvases\/([^/]+)\/run$/);
     if (runMatch && request.method === "POST") {
       const id = runMatch[1];
-      let body: { initialInput?: string } = {};
+      let body: { initialInput?: string; variableValues?: Record<string, string> } = {};
       try { body = await request.json(); } catch { /* ok */ }
-      return handleRun(id, body.initialInput ?? "");
+      return handleRun(id, body.initialInput ?? "", body.variableValues ?? {});
     }
 
     // GET /api/runs  (optional ?workflowId=)
@@ -281,9 +292,15 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
       } catch {
         return Response.json({ error: "Run not found" }, { status: 404 });
       }
-      let body: { initialInput?: string } = {};
+      let body: { initialInput?: string; variableValues?: Record<string, string> } = {};
       try { body = await request.json(); } catch { /* ok */ }
-      return handleRun(prior.workflowId, body.initialInput ?? "", prior.canvasSnapshot);
+      // Fall back to the prior run's values when not overridden.
+      return handleRun(
+        prior.workflowId,
+        body.initialInput ?? prior.initialInput,
+        body.variableValues ?? prior.variableValues,
+        prior.canvasSnapshot,
+      );
     }
 
     // GET /api/runs/:id/events  (SSE)

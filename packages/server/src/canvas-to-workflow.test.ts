@@ -51,16 +51,20 @@ const wf1Canvas: CanvasDoc = {
 };
 
 describe("canvasToWorkflow", () => {
-  it("has one mock agent", () => {
+  it("creates provider agents from canvas sessions plus mock fallback", () => {
     const wf = canvasToWorkflow(wf1Canvas);
-    expect(wf.agents).toHaveLength(1);
-    expect(wf.agents[0].id).toBe(MOCK_AGENT_ID);
+    expect(wf.agents.map((a) => a.id).sort()).toEqual([
+      "agent-claude-code",
+      "agent-codex",
+      MOCK_AGENT_ID,
+    ]);
   });
 
-  it("preserves all 5 sessions bound to mock agent", () => {
+  it("preserves all 5 sessions bound to their selected provider agent", () => {
     const wf = canvasToWorkflow(wf1Canvas);
     expect(wf.sessions).toHaveLength(5);
-    expect(wf.sessions.every((s) => s.agentId === MOCK_AGENT_ID)).toBe(true);
+    expect(wf.sessions.find((s) => s.id === "s1")?.agentId).toBe("agent-claude-code");
+    expect(wf.sessions.find((s) => s.id === "s3")?.agentId).toBe("agent-codex");
   });
 
   it("drops the end node, keeps 12 runtime nodes", () => {
@@ -86,6 +90,18 @@ describe("canvasToWorkflow", () => {
     expect(e2?.kind).toBe("tagged-output");
     if (e2?.kind === "tagged-output") {
       expect(e2.outputTag.identifier).toBe("component_tree");
+      expect(e2.handoff?.agentId).toBe("agent-claude-code");
+      expect(e2.handoff?.sessionId).toBe("s2");
+    }
+  });
+
+  it("agent nodes use the provider selected on their session", () => {
+    const wf = canvasToWorkflow(wf1Canvas);
+    const review = wf.nodes.find((n) => n.id === "n2c");
+    expect(review?.kind).toBe("agent");
+    if (review?.kind === "agent") {
+      expect(review.agentId).toBe("agent-codex");
+      expect(review.sessionId).toBe("s3");
     }
   });
 

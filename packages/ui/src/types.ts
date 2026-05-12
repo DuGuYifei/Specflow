@@ -1,4 +1,11 @@
 export type Theme = 'light' | 'dark';
+
+export interface Variable {
+  name: string;           // always prefixed: "specflow_branch"
+  defaultValue?: string;
+  description?: string;
+}
+
 export type Density = 'comfortable' | 'compact';
 export type RunStatus = 'running' | 'success' | 'error' | 'idle' | 'pending';
 export type RunState = 'running' | 'success' | 'error' | 'pending';
@@ -8,7 +15,7 @@ export interface Session {
   id: string;
   name: string;
   color: string;
-  agent: string;
+  agent: 'mock' | 'claude-code' | 'codex';
 }
 
 export interface Workflow {
@@ -43,6 +50,8 @@ export interface Run {
   nodeOutputs?: Record<string, string>;
   canvasSnapshot?: RunSnapshot;
   nodeStates?: RunStateMap;
+  initialInput?: string;
+  variableValues?: Record<string, string>;
 }
 
 export interface LogLine {
@@ -96,7 +105,21 @@ export interface EndNode {
   sessionId: null;
 }
 
-export type WorkflowNode = StepNode | GateNode | EndNode;
+export interface InputNode {
+  kind: 'input';
+  id: string;
+  num: string;
+  x: number;
+  y: number;
+  w: number;
+  title: string;
+  variableName: string;    // stored prefixed: "specflow_component_tree"
+  defaultValue?: string;
+  description?: string;
+  sessionId: null;
+}
+
+export type WorkflowNode = StepNode | GateNode | EndNode | InputNode;
 
 export interface Edge {
   id: string;

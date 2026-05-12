@@ -20,6 +20,8 @@ export interface RunRecord {
   nodeStates: Record<string, RunState>;
   nodeOutputs: Record<string, string>;
   canvasSnapshot: CanvasDoc;
+  initialInput: string;
+  variableValues: Record<string, string>;
 }
 
 function runsDir(root: string) {
@@ -44,6 +46,8 @@ export async function listRuns(workflowId: string | undefined, root: string): Pr
       const raw = await readFile(join(dir, file), "utf8");
       const rec = parse(raw) as RunRecord;
       if (!rec.nodeOutputs) rec.nodeOutputs = {};
+      if (!rec.initialInput) rec.initialInput = "";
+      if (!rec.variableValues) rec.variableValues = {};
       if (!workflowId || rec.workflowId === workflowId) {
         results.push(rec);
       }
@@ -59,6 +63,8 @@ export async function loadRun(id: string, root: string): Promise<RunRecord> {
   const raw = await readFile(runPath(id, root), "utf8");
   const rec = parse(raw) as RunRecord;
   if (!rec.nodeOutputs) rec.nodeOutputs = {};
+  if (!rec.initialInput) rec.initialInput = "";
+  if (!rec.variableValues) rec.variableValues = {};
   return rec;
 }
 

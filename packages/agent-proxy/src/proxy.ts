@@ -25,21 +25,47 @@ export interface AgentTerminalEvent {
 export async function runAgentCommand(
   request: AgentCommandRequest,
 ): Promise<AgentCommandResult> {
-  const output =
-    request.provider === "mock"
-      ? createMockAgentOutput(request.prompt)
-      : `Agent proxy placeholder for ${request.provider}`;
+  if (request.provider === "mock") {
+    const output = createMockAgentOutput(request.prompt);
+    request.onTerminalEvent?.({
+      stream: "stdout",
+      chunk: output,
+    });
 
-  request.onTerminalEvent?.({
-    stream: "stdout",
-    chunk: output,
+    return {
+      provider: request.provider,
+      exitCode: 0,
+      output,
+    };
+  }
+
+  const command = request.provider === "claude-code" ? "claude" : "codex";
+  const proc = Bun.spawn([command, request.prompt], {
+    cwd: request.cwd,
+    stdout: "pipe",
+    stderr: "pipe",
   });
 
-  return {
-    provider: request.provider,
-    exitCode: 0,
-    output,
+  let output = "";
+  const readStream = async (
+    stream: ReadableStream<Uint8Array>,
+    name: AgentTerminalStream,
+  ) => {
+    const decoder = new TextDecoder();
+    for await (const chunk of stream) {
+      const text = decoder.decode(chunk, { stream: true });
+      output += text;
+      request.onTerminalEvent?.({ stream: name, chunk: text });
+    }
   };
+
+  await Promise.all([
+    readStream(proc.stdout, "stdout"),
+    readStream(proc.stderr, "stderr"),
+  ]);
+
+  const exitCode = await proc.exited;
+  return { provider: request.provider, exitCode, output };
 }
 
 function createMockAgentOutput(prompt: string): string {

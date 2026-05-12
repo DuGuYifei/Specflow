@@ -1,4 +1,4 @@
-import type { Session, WorkflowNode, Edge, Workflow, Run, RunState } from './types';
+import type { Session, WorkflowNode, Edge, Workflow, Run, RunState, Variable } from './types';
 
 export interface CanvasDoc {
   id: string;
@@ -6,6 +6,7 @@ export interface CanvasDoc {
   sessions: Session[];
   nodes: WorkflowNode[];
   edges: Edge[];
+  variables?: Variable[];
 }
 
 export interface ApiRunRecord {
@@ -23,6 +24,8 @@ export interface ApiRunRecord {
   nodeStates: Record<string, RunState>;
   nodeOutputs?: Record<string, string>;
   canvasSnapshot?: CanvasDoc;
+  initialInput?: string;
+  variableValues?: Record<string, string>;
 }
 
 export interface CanvasSummary {
@@ -65,11 +68,14 @@ export async function deleteCanvas(id: string): Promise<void> {
   await fetch(`/api/canvases/${id}`, { method: 'DELETE' });
 }
 
-export async function runCanvas(id: string, initialInput?: string): Promise<{ runId: string }> {
+export async function runCanvas(
+  id: string,
+  opts?: { initialInput?: string; variableValues?: Record<string, string> },
+): Promise<{ runId: string }> {
   const res = await fetch(`/api/canvases/${id}/run`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ initialInput }),
+    body: JSON.stringify({ initialInput: opts?.initialInput, variableValues: opts?.variableValues }),
   });
   if (!res.ok) throw new Error(`Failed to start run: ${res.status}`);
   return res.json();
@@ -91,11 +97,14 @@ export async function deleteRun(id: string): Promise<void> {
   await fetch(`/api/runs/${id}`, { method: 'DELETE' });
 }
 
-export async function rerunRun(id: string): Promise<{ runId: string }> {
+export async function rerunRun(
+  id: string,
+  opts?: { initialInput?: string; variableValues?: Record<string, string> },
+): Promise<{ runId: string }> {
   const res = await fetch(`/api/runs/${id}/rerun`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({}),
+    body: JSON.stringify({ initialInput: opts?.initialInput, variableValues: opts?.variableValues }),
   });
   if (!res.ok) throw new Error(`Failed to re-run: ${res.status}`);
   return res.json();
@@ -140,6 +149,8 @@ export function apiRunToUiRun(rec: ApiRunRecord): Run {
     nodeOutputs: rec.nodeOutputs,
     canvasSnapshot: rec.canvasSnapshot,
     nodeStates: rec.nodeStates,
+    initialInput: rec.initialInput,
+    variableValues: rec.variableValues,
   };
 }
 

@@ -1,3 +1,5 @@
+import type { AgentProvider } from "@specflow/shared";
+
 export interface CanvasBranch {
   id: string;
   label: string;
@@ -8,7 +10,7 @@ export interface CanvasSession {
   id: string;
   name: string;
   color: string;
-  agent: string;
+  agent: AgentProvider;
 }
 
 export interface CanvasStepNode {
@@ -51,7 +53,21 @@ export interface CanvasEndNode {
   sessionId: null;
 }
 
-export type CanvasNode = CanvasStepNode | CanvasGateNode | CanvasEndNode;
+export interface CanvasInputNode {
+  kind: "input";
+  id: string;
+  num: string;
+  x: number;
+  y: number;
+  w: number;
+  title: string;
+  variableName: string;
+  defaultValue?: string;
+  description?: string;
+  sessionId: null;
+}
+
+export type CanvasNode = CanvasStepNode | CanvasGateNode | CanvasEndNode | CanvasInputNode;
 
 export interface CanvasEdge {
   id: string;
@@ -64,10 +80,17 @@ export interface CanvasEdge {
   sameSession?: boolean;
 }
 
+export interface CanvasVariable {
+  name: string;
+  defaultValue?: string;
+  description?: string;
+}
+
 export interface CanvasDoc {
   id: string;
   name: string;
   sessions: CanvasSession[];
   nodes: CanvasNode[];
   edges: CanvasEdge[];
+  variables?: CanvasVariable[];
 }

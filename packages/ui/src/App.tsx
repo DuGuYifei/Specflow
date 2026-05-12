@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import type { WorkflowNode, Edge, Session, Workflow, Run, Selection, RunStateMap, Theme, RunStatus, LogLine } from './types';
+import type { WorkflowNode, Edge, Session, Workflow, Run, Selection, RunStateMap, Theme, RunStatus, LogLine, InputNode } from './types';
 import {
   fetchCanvases, fetchCanvas, saveCanvas, runCanvas,
   fetchRuns, fetchRun, subscribeToRun,
@@ -13,6 +13,7 @@ import { Canvas } from './components/canvas';
 import { NodePanel } from './components/node-panel';
 import { ConnectionPanel } from './components/connection-panel';
 import { SessionsBar } from './components/sessions-bar';
+import { RunConfigPanel } from './components/run-config-panel';
 
 const SESSION_COLORS = [
   'oklch(0.7 0.13 250)',
@@ -45,9 +46,20 @@ export function App() {
   const [zoom, setZoom]                       = useState(1);
   const [pan, setPan]                         = useState({ x: 0, y: 0 });
   const [barExpanded, setBarExpanded]         = useState(false);
+  const [barHeight, setBarHeight]             = useState(() => {
+    try {
+      const saved = parseInt(localStorage.getItem('sf-bar-h') ?? '', 10);
+      return Number.isFinite(saved) ? Math.min(600, Math.max(120, saved)) : 252;
+    } catch { return 252; }
+  });
   const [activeSessionId, setActiveSessionId] = useState('');
   const [addSessionPing, setAddSessionPing]   = useState(0);
   const [theme, setTheme]                     = useState<Theme>('light');
+
+  // Run config panel state
+  const [runConfigOpen, setRunConfigOpen]     = useState(false);
+  const [runConfigVars, setRunConfigVars]     = useState<Record<string, string>>({});
+  const [runConfigBusy, setRunConfigBusy]     = useState(false);
 
   // viewMode is derived from selection: viewing a run → run view (readonly).
   const view: 'edit' | 'run' = activeRunId ? 'run' : 'edit';
@@ -57,12 +69,24 @@ export function App() {
   const displayEdges: Edge[]          = (activeRun?.canvasSnapshot?.edges  as Edge[])         ?? edges;
   const displaySessions: Session[]    = (activeRun?.canvasSnapshot?.sessions as Session[])    ?? sessions;
 
-  const nodesRef    = useRef(nodes);
-  const edgesRef    = useRef(edges);
-  const sessionsRef = useRef(sessions);
-  useEffect(() => { nodesRef.current    = nodes;    }, [nodes]);
-  useEffect(() => { edgesRef.current    = edges;    }, [edges]);
-  useEffect(() => { sessionsRef.current = sessions; }, [sessions]);
+  // Variables are derived from InputNodes — both in edit and run view.
+  const variables = useMemo(
+    () => nodes.filter((n): n is InputNode => n.kind === 'input')
+              .map((n) => ({ name: n.variableName, defaultValue: n.defaultValue, description: n.description })),
+    [nodes],
+  );
+  const displayVariables = useMemo(
+    () => displayNodes.filter((n): n is InputNode => n.kind === 'input')
+                      .map((n) => ({ name: n.variableName, defaultValue: n.defaultValue, description: n.description })),
+    [displayNodes],
+  );
+
+  const nodesRef     = useRef(nodes);
+  const edgesRef     = useRef(edges);
+  const sessionsRef  = useRef(sessions);
+  useEffect(() => { nodesRef.current     = nodes;     }, [nodes]);
+  useEffect(() => { edgesRef.current     = edges;     }, [edges]);
+  useEffect(() => { sessionsRef.current  = sessions;  }, [sessions]);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -148,7 +172,7 @@ export function App() {
   const onChangeSession = useCallback((id: string, sid: string) => {
     setNodes((ns) => {
       const updated = ns.map((n) => {
-        if (n.id !== id || n.kind === 'end') return n;
+        if (n.id !== id || n.kind === 'end' || n.kind === 'input') return n;
         return { ...n, sessionId: sid };
       });
       nodesRef.current = updated;
@@ -328,7 +352,7 @@ export function App() {
 
   // ── session management ────────────────────────────────────────────────────
 
-  const onAddSession = useCallback((name: string, agent: string) => {
+  const onAddSession = useCallback((name: string, agent: Session['agent']) => {
     setSessions((ss) => {
       const id = `s${Date.now()}`;
       const color = SESSION_COLORS[ss.length % SESSION_COLORS.length];
@@ -360,14 +384,23 @@ export function App() {
     scheduleSave();
   }, [scheduleSave]);
 
+  // ── variable management (InputNode-derived) ───────────────────────────────
+
+  // Variables are declared via InputNodes on the canvas. Editing a variable
+  // default value from the SessionsBar patches the InputNode directly.
+  const onEditVariable = useCallback((name: string, patch: Partial<{ defaultValue?: string; description?: string }>) => {
+    const inputNode = nodesRef.current.find((n): n is InputNode => n.kind === 'input' && n.variableName === name);
+    if (inputNode) onEditNode(inputNode.id, patch);
+  }, [onEditNode]);
+
   // ── logs ──────────────────────────────────────────────────────────────────
 
   const onClearLogs = useCallback(() => setLogLines([]), []);
 
   // ── selection ─────────────────────────────────────────────────────────────
 
-  const onSelectNode     = (id: string) => setSelection({ kind: 'node', id });
-  const onSelectEdge     = (id: string) => setSelection({ kind: 'edge', id });
+  const onSelectNode     = (id: string) => { setRunConfigOpen(false); setSelection({ kind: 'node', id }); };
+  const onSelectEdge     = (id: string) => { setRunConfigOpen(false); setSelection({ kind: 'edge', id }); };
   const onClearSelection = ()            => setSelection(null);
 
   const onAddSessionRequest = useCallback(() => {
@@ -412,9 +445,23 @@ export function App() {
     setSelection(null);
   }, []);
 
-  const handleNewRun = useCallback(async () => {
+  const onOpenNewRun = useCallback(() => {
+    const defaults: Record<string, string> = {};
+    for (const n of nodesRef.current) {
+      if (n.kind === 'input') defaults[n.variableName] = n.defaultValue ?? '';
+    }
+    setRunConfigVars(defaults);
+    setRunConfigBusy(false);
+    setActiveRunId('');
+    setHistoricNodeStates({});
+    setLiveNodeStates({});
+    setSelection(null);
+    setRunConfigOpen(true);
+  }, []);
+
+  const startRun = useCallback(async (initialInput: string, variableValues: Record<string, string>) => {
     try {
-      const { runId } = await runCanvas(activeWorkflow);
+      const { runId } = await runCanvas(activeWorkflow, { initialInput, variableValues });
 
       const pending: RunStateMap = {};
       for (const n of nodesRef.current) pending[n.id] = 'pending';
@@ -422,7 +469,6 @@ export function App() {
       setHistoricNodeStates({});
       setLogLines([]);
 
-      // Fetch the freshly-saved record so the snapshot is available to the run view.
       let placeholder: Run;
       try {
         const initial = await fetchRun(runId);
@@ -430,7 +476,7 @@ export function App() {
       } catch {
         placeholder = {
           id: runId,
-          label: 'New run…',
+          label: 'Starting run...',
           ticket: '',
           status: 'running',
           time: 'just now',
@@ -472,6 +518,13 @@ export function App() {
       console.error('Failed to start run', err);
     }
   }, [activeWorkflow]);
+
+  const onStartConfiguredRun = useCallback(async () => {
+    setRunConfigBusy(true);
+    setRunConfigOpen(false);
+    await startRun('', runConfigVars);
+    setRunConfigBusy(false);
+  }, [startRun, runConfigVars]);
 
   const handleRerun = useCallback(async (runId: string) => {
     try {
@@ -555,8 +608,9 @@ export function App() {
     ? { ...selectedNode, runState: runState[selectedNode.id] }
     : null;
 
-  const barH     = barExpanded ? 252 : 32;
-  const rootClass = ['app', 'two-col-left', 'has-bottom-bar', selection ? '' : 'no-right'].filter(Boolean).join(' ');
+  const hasRightPanel = !!selection;
+  const barH     = barExpanded ? barHeight : 32;
+  const rootClass = ['app', 'two-col-left', 'has-bottom-bar', hasRightPanel ? '' : 'no-right'].filter(Boolean).join(' ');
 
   return (
     <div
@@ -568,7 +622,7 @@ export function App() {
         onThemeChange={setTheme}
         runLabel={activeRun?.label}
         workflowName={activeCanvasName}
-        onNewRun={handleNewRun}
+        onNewRun={onOpenNewRun}
         onRerun={activeRunId ? () => handleRerun(activeRunId) : undefined}
         view={view}
         onExitRunView={onExitRunView}
@@ -581,7 +635,7 @@ export function App() {
         activeRun={activeRunId}
         onSelectWorkflow={setActiveWorkflow}
         onSelectRun={onSelectRun}
-        onNewRun={handleNewRun}
+        onNewRun={onOpenNewRun}
         onRerunRun={handleRerun}
         onDeleteRun={onDeleteRun}
         onCreateWorkflow={onCreateWorkflow}
@@ -620,11 +674,25 @@ export function App() {
         )}
       </div>
 
-      {selection?.kind === 'node' && selectedNodeWithState && (
+      {runConfigOpen && (
+        <RunConfigPanel
+          workflowName={activeCanvasName}
+          variables={variables}
+          values={runConfigVars}
+          setValue={(name, value) => setRunConfigVars((prev) => ({ ...prev, [name]: value }))}
+          onCancel={() => setRunConfigOpen(false)}
+          onStart={onStartConfiguredRun}
+          busy={runConfigBusy}
+        />
+      )}
+
+      {!runConfigOpen && selection?.kind === 'node' && selectedNodeWithState && (
         <NodePanel
           node={selectedNodeWithState}
           run={activeRun}
           sessions={displaySessions}
+          nodes={displayNodes}
+          edges={displayEdges}
           viewMode={view}
           logLines={logLines}
           onClose={onClearSelection}
@@ -642,7 +710,7 @@ export function App() {
           onDeleteAttachment={onDeleteAttachment}
         />
       )}
-      {selection?.kind === 'edge' && selectedEdge && (
+      {!runConfigOpen && selection?.kind === 'edge' && selectedEdge && (
         <ConnectionPanel
           edge={selectedEdge}
           fromNode={selectedFromNode}
@@ -660,6 +728,11 @@ export function App() {
           nodes={displayNodes}
           expanded={barExpanded}
           setExpanded={setBarExpanded}
+          barHeight={barHeight}
+          setBarHeight={(h) => {
+            setBarHeight(h);
+            try { localStorage.setItem('sf-bar-h', String(h)); } catch { /* ignore */ }
+          }}
           activeSessionId={activeSessionId}
           setActiveSessionId={setActiveSessionId}
           onAssignSession={onChangeSession}
@@ -668,6 +741,9 @@ export function App() {
           onAddSession={onAddSession}
           onDeleteSession={onDeleteSession}
           onClearLogs={onClearLogs}
+          variables={displayVariables}
+          onEditVariable={onEditVariable}
+          readonly={view === 'run'}
         />
       </div>
     </div>

@@ -1,12 +1,29 @@
-import { useState } from 'react';
-import type { WorkflowNode, Run, Session, RunState, GateNode, StepNode, LogLine } from '../types';
+import { useState, useRef } from 'react';
+import type { WorkflowNode, Edge, Run, Session, RunState, GateNode, StepNode, InputNode, LogLine } from '../types';
 import { Icon } from './icon';
 import { RightPanel } from './right-panel';
+
+function insertAtCaret(
+  el: HTMLTextAreaElement | null,
+  token: string,
+  write: (next: string) => void,
+) {
+  if (!el) return;
+  const { selectionStart: s, selectionEnd: e, value } = el;
+  const next = value.slice(0, s) + token + value.slice(e);
+  write(next);
+  requestAnimationFrame(() => {
+    el.focus();
+    el.setSelectionRange(s + token.length, s + token.length);
+  });
+}
 
 interface NodePanelProps {
   node: WorkflowNode & { runState?: RunState };
   run?: Run;
   sessions: Session[];
+  nodes: WorkflowNode[];
+  edges: Edge[];
   viewMode: 'edit' | 'run';
   logLines: LogLine[];
   onClose: () => void;
@@ -24,18 +41,21 @@ interface NodePanelProps {
   onDeleteAttachment: (nodeId: string, index: number) => void;
 }
 
-export function NodePanel({ node, run, sessions, viewMode, logLines, onClose, onEditNode, onToggleUpdateDoc, onChangeSession, onAddSessionRequest, onAddBranch, onEditBranch, onDeleteBranch, onAddPath, onEditPath, onDeletePath, onAddAttachment, onDeleteAttachment }: NodePanelProps) {
+export function NodePanel({ node, run, sessions, nodes, edges, viewMode, logLines, onClose, onEditNode, onToggleUpdateDoc, onChangeSession, onAddSessionRequest, onAddBranch, onEditBranch, onDeleteBranch, onAddPath, onEditPath, onDeletePath, onAddAttachment, onDeleteAttachment }: NodePanelProps) {
   const [tab, setTab] = useState('overview');
   const readonly = viewMode === 'run';
 
+  if (node.kind === 'input') {
+    return <InputPanelContent node={node} readonly={readonly} onClose={onClose} onEditNode={onEditNode} />;
+  }
   if (node.kind === 'gate') {
-    return <GatePanelContent node={node} sessions={sessions} readonly={readonly} tab={tab} setTab={setTab} onClose={onClose} onEditNode={onEditNode} onChangeSession={onChangeSession} onAddBranch={onAddBranch} onEditBranch={onEditBranch} onDeleteBranch={onDeleteBranch} />;
+    return <GatePanelContent node={node} sessions={sessions} nodes={nodes} edges={edges} readonly={readonly} onClose={onClose} onEditNode={onEditNode} onChangeSession={onChangeSession} onAddBranch={onAddBranch} onEditBranch={onEditBranch} onDeleteBranch={onDeleteBranch} />;
   }
   if (node.kind === 'end') {
     return <EndPanelContent node={node} readonly={readonly} onClose={onClose} onEditNode={onEditNode} />;
   }
 
-  return <StepPanelContent node={node} run={run} sessions={sessions} readonly={readonly} logLines={logLines} tab={tab} setTab={setTab} onClose={onClose} onEditNode={onEditNode} onToggleUpdateDoc={onToggleUpdateDoc} onChangeSession={onChangeSession} onAddSessionRequest={onAddSessionRequest} onAddPath={onAddPath} onEditPath={onEditPath} onDeletePath={onDeletePath} onAddAttachment={onAddAttachment} onDeleteAttachment={onDeleteAttachment} />;
+  return <StepPanelContent node={node} run={run} sessions={sessions} nodes={nodes} edges={edges} readonly={readonly} logLines={logLines} tab={tab} setTab={setTab} onClose={onClose} onEditNode={onEditNode} onToggleUpdateDoc={onToggleUpdateDoc} onChangeSession={onChangeSession} onAddSessionRequest={onAddSessionRequest} onAddPath={onAddPath} onEditPath={onEditPath} onDeletePath={onDeletePath} onAddAttachment={onAddAttachment} onDeleteAttachment={onDeleteAttachment} />;
 }
 
 // ── step ──────────────────────────────────────────────────────────────────────
@@ -44,6 +64,8 @@ interface StepPanelContentProps {
   node: StepNode & { runState?: RunState };
   run?: Run;
   sessions: Session[];
+  nodes: WorkflowNode[];
+  edges: Edge[];
   readonly: boolean;
   logLines: LogLine[];
   tab: string;
@@ -60,7 +82,7 @@ interface StepPanelContentProps {
   onDeleteAttachment: (nodeId: string, index: number) => void;
 }
 
-function StepPanelContent({ node, run, sessions, readonly, logLines, tab, setTab, onClose, onEditNode, onToggleUpdateDoc, onChangeSession, onAddSessionRequest, onAddPath, onEditPath, onDeletePath, onAddAttachment, onDeleteAttachment }: StepPanelContentProps) {
+function StepPanelContent({ node, run, sessions, nodes, edges, readonly, logLines, tab, setTab, onClose, onEditNode, onToggleUpdateDoc, onChangeSession, onAddSessionRequest, onAddPath, onEditPath, onDeletePath, onAddAttachment, onDeleteAttachment }: StepPanelContentProps) {
   const session = sessions.find((s) => s.id === node.sessionId);
   const nodeLogLines = logLines.filter((l) => !l.nodeId || l.nodeId === node.id);
 
@@ -92,7 +114,7 @@ function StepPanelContent({ node, run, sessions, readonly, logLines, tab, setTab
 
   return (
     <RightPanel label={label} title={node.title} onClose={onClose} tabs={tabs} activeTab={tab} onTabChange={setTab}>
-      {tab === 'overview'    && <StepOverview node={node} run={run} session={session} sessions={sessions} readonly={readonly} onEditNode={onEditNode} onToggleUpdateDoc={onToggleUpdateDoc} onChangeSession={onChangeSession} onAddSessionRequest={onAddSessionRequest} onAddPath={onAddPath} onEditPath={onEditPath} onDeletePath={onDeletePath} onAddAttachment={onAddAttachment} onDeleteAttachment={onDeleteAttachment} />}
+      {tab === 'overview'    && <StepOverview node={node} run={run} session={session} sessions={sessions} nodes={nodes} edges={edges} readonly={readonly} onEditNode={onEditNode} onToggleUpdateDoc={onToggleUpdateDoc} onChangeSession={onChangeSession} onAddSessionRequest={onAddSessionRequest} onAddPath={onAddPath} onEditPath={onEditPath} onDeletePath={onDeletePath} onAddAttachment={onAddAttachment} onDeleteAttachment={onDeleteAttachment} />}
       {tab === 'logs'        && <NodeLogs lines={nodeLogLines} />}
       {tab === 'output'      && <NodeOutput output={run?.nodeOutputs?.[node.id]} />}
       {tab === 'attachments' && <NodeAttachments node={node} readonly={readonly} onAddAttachment={onAddAttachment} onDeleteAttachment={onDeleteAttachment} />}
@@ -106,6 +128,8 @@ interface StepOverviewProps {
   run?: Run;
   session: Session | undefined;
   sessions: Session[];
+  nodes: WorkflowNode[];
+  edges: Edge[];
   readonly: boolean;
   onEditNode: (id: string, patch: Record<string, unknown>) => void;
   onToggleUpdateDoc: (id: string) => void;
@@ -118,7 +142,14 @@ interface StepOverviewProps {
   onDeleteAttachment: (nodeId: string, index: number) => void;
 }
 
-function StepOverview({ node, run, sessions, readonly, onEditNode, onToggleUpdateDoc, onChangeSession, onAddSessionRequest, onAddPath, onEditPath, onDeletePath, onAddAttachment, onDeleteAttachment }: StepOverviewProps) {
+function StepOverview({ node, run, sessions, nodes, edges, readonly, onEditNode, onToggleUpdateDoc, onChangeSession, onAddSessionRequest, onAddPath, onEditPath, onDeletePath, onAddAttachment, onDeleteAttachment }: StepOverviewProps) {
+  const descRef = useRef<HTMLTextAreaElement>(null);
+
+  const incomingInputNodes = edges
+    .filter((e) => e.to === node.id)
+    .map((e) => nodes.find((n) => n.id === e.from))
+    .filter((n): n is InputNode => n?.kind === 'input');
+
   return (
     <>
       {run && (
@@ -147,7 +178,27 @@ function StepOverview({ node, run, sessions, readonly, onEditNode, onToggleUpdat
         Description
         <span style={{ color: 'var(--ink-4)', fontWeight: 400, marginLeft: 'auto', fontFamily: 'var(--font-mono)' }}>what to do</span>
       </div>
+      {!readonly && incomingInputNodes.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 4 }}>
+          {incomingInputNodes.map((n) => (
+            <button
+              key={n.id}
+              className="btn sm ghost"
+              style={{ fontFamily: 'var(--font-mono)', fontSize: 10 }}
+              title={[
+                'Click to insert',
+                n.defaultValue ? `default: ${n.defaultValue}` : '',
+                n.description ?? '',
+              ].filter(Boolean).join('\n')}
+              onClick={() => insertAtCaret(descRef.current, `<${n.variableName}>`, (next) => onEditNode(node.id, { desc: next }))}
+            >
+              {'<'}{n.variableName}{'>'}
+            </button>
+          ))}
+        </div>
+      )}
       <textarea
+        ref={descRef}
         className="textarea"
         rows={5}
         value={node.desc}
@@ -348,9 +399,9 @@ function NodePaths({ node, readonly, onAddPath, onEditPath, onDeletePath }: { no
 interface GatePanelContentProps {
   node: GateNode;
   sessions: Session[];
+  nodes: WorkflowNode[];
+  edges: Edge[];
   readonly: boolean;
-  tab: string;
-  setTab: (t: string) => void;
   onClose: () => void;
   onEditNode: (id: string, patch: Record<string, unknown>) => void;
   onChangeSession: (id: string, sid: string) => void;
@@ -359,8 +410,14 @@ interface GatePanelContentProps {
   onDeleteBranch: (gateId: string, branchId: string) => void;
 }
 
-function GatePanelContent({ node, sessions, readonly, onClose, onEditNode, onChangeSession, onAddBranch, onEditBranch, onDeleteBranch }: GatePanelContentProps) {
+function GatePanelContent({ node, sessions, nodes, edges, readonly, onClose, onEditNode, onChangeSession, onAddBranch, onEditBranch, onDeleteBranch }: GatePanelContentProps) {
   const session = sessions.find((s) => s.id === node.sessionId);
+  const gateDescRef = useRef<HTMLTextAreaElement>(null);
+
+  const incomingInputNodes = edges
+    .filter((e) => e.to === node.id)
+    .map((e) => nodes.find((n) => n.id === e.from))
+    .filter((n): n is InputNode => n?.kind === 'input');
 
   const label = (
     <>
@@ -378,11 +435,31 @@ function GatePanelContent({ node, sessions, readonly, onClose, onEditNode, onCha
   return (
     <RightPanel label={label} title={node.title} onClose={onClose}>
       <div className="code-hint" style={{ background: 'var(--bg-elev)', borderColor: 'var(--line)', marginBottom: 12 }}>
-        <strong>Gate node.</strong> Reads the input from the previous step and chooses one branch.
+        <strong>Decision node.</strong> Reads the previous result and chooses one branch.
       </div>
 
       <div className="section-title">Decision criteria</div>
+      {!readonly && incomingInputNodes.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 4 }}>
+          {incomingInputNodes.map((n) => (
+            <button
+              key={n.id}
+              className="btn sm ghost"
+              style={{ fontFamily: 'var(--font-mono)', fontSize: 10 }}
+              title={[
+                'Click to insert',
+                n.defaultValue ? `default: ${n.defaultValue}` : '',
+                n.description ?? '',
+              ].filter(Boolean).join('\n')}
+              onClick={() => insertAtCaret(gateDescRef.current, `<${n.variableName}>`, (next) => onEditNode(node.id, { gateDesc: next }))}
+            >
+              {'<'}{n.variableName}{'>'}
+            </button>
+          ))}
+        </div>
+      )}
       <textarea
+        ref={gateDescRef}
         className="textarea"
         rows={5}
         value={node.gateDesc ?? ''}
@@ -440,6 +517,73 @@ function GatePanelContent({ node, sessions, readonly, onClose, onEditNode, onCha
           </button>
         ))}
       </div>
+    </RightPanel>
+  );
+}
+
+// ── input ─────────────────────────────────────────────────────────────────────
+
+interface InputPanelContentProps {
+  node: InputNode;
+  readonly: boolean;
+  onClose: () => void;
+  onEditNode: (id: string, patch: Record<string, unknown>) => void;
+}
+
+function InputPanelContent({ node, readonly, onClose, onEditNode }: InputPanelContentProps) {
+  const rawName = node.variableName.startsWith('specflow_')
+    ? node.variableName.slice('specflow_'.length)
+    : node.variableName;
+
+  const handleNameChange = (raw: string) => {
+    const sanitized = raw.replace(/[^A-Za-z0-9_]/g, '');
+    if (sanitized) onEditNode(node.id, { variableName: `specflow_${sanitized}` });
+  };
+
+  return (
+    <RightPanel label={<><Icon name="tag" size={11} />Run input · {node.num}</>} title={node.title} onClose={onClose}>
+      <div className="code-hint" style={{ background: 'var(--bg-elev)', borderColor: 'var(--line)', marginBottom: 12 }}>
+        <strong>Run input.</strong> Declares a value that can be overridden before a run starts. Connect it to a step to make <code>&lt;{node.variableName}&gt;</code> available there.
+      </div>
+
+      <div className="section-title">Title</div>
+      <input
+        className="input"
+        value={node.title}
+        disabled={readonly}
+        onChange={(e) => onEditNode(node.id, { title: e.target.value })}
+      />
+
+      <div className="section-title">Variable name</div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-3)', padding: '0 6px', background: 'var(--bg-elev)', border: '1px solid var(--line)', borderRight: 'none', borderRadius: '4px 0 0 4px', height: 28, display: 'flex', alignItems: 'center' }}>specflow_</span>
+        <input
+          className="input"
+          style={{ borderRadius: '0 4px 4px 0', fontFamily: 'var(--font-mono)' }}
+          value={rawName}
+          disabled={readonly}
+          placeholder="var_name"
+          onChange={(e) => handleNameChange(e.target.value)}
+        />
+      </div>
+
+      <div className="section-title">Default value</div>
+      <input
+        className="input"
+        value={node.defaultValue ?? ''}
+        disabled={readonly}
+        placeholder="Value used when not overridden at run time"
+        onChange={(e) => onEditNode(node.id, { defaultValue: e.target.value || undefined })}
+      />
+
+      <div className="section-title">Description</div>
+      <input
+        className="input"
+        value={node.description ?? ''}
+        disabled={readonly}
+        placeholder="Optional hint shown on hover"
+        onChange={(e) => onEditNode(node.id, { description: e.target.value || undefined })}
+      />
     </RightPanel>
   );
 }

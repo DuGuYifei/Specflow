@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import type { Session, WorkflowNode, LogLine } from '../types';
+import type { Session, WorkflowNode, LogLine, Variable } from '../types';
 import { Icon } from './icon';
 
 interface SessionsBarProps {
@@ -7,31 +7,58 @@ interface SessionsBarProps {
   nodes: WorkflowNode[];
   expanded: boolean;
   setExpanded: (b: boolean) => void;
+  barHeight: number;
+  setBarHeight: (h: number) => void;
   activeSessionId: string;
   setActiveSessionId: (id: string) => void;
   onAssignSession: (nodeId: string, sessionId: string) => void;
   addSessionPing: number;
   logLines?: LogLine[];
-  onAddSession: (name: string, agent: string) => void;
+  onAddSession: (name: string, agent: Session['agent']) => void;
   onDeleteSession: (id: string) => void;
   onClearLogs: () => void;
+  variables: Variable[];
+  onEditVariable: (name: string, patch: Partial<Variable>) => void;
+  readonly?: boolean;
 }
 
 export function SessionsBar({
   sessions, nodes,
   expanded, setExpanded,
+  barHeight, setBarHeight,
   activeSessionId, setActiveSessionId,
   onAssignSession, addSessionPing,
   logLines,
   onAddSession, onDeleteSession, onClearLogs,
+  variables, onEditVariable,
+  readonly,
 }: SessionsBarProps) {
-  const [tab, setTab] = useState<'logs' | 'settings'>('logs');
+  const [tab, setTab] = useState<'logs' | 'settings' | 'vars'>('logs');
+  const barHeightRef = useRef(barHeight);
   const stepNodes = nodes.filter((n) => n.kind === 'step');
   const activeSession = sessions.find((s) => s.id === activeSessionId) || sessions[0];
+
+  useEffect(() => { barHeightRef.current = barHeight; }, [barHeight]);
 
   useEffect(() => {
     if (addSessionPing) setTab('settings');
   }, [addSessionPing]);
+
+  const onResizeDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const startY = e.clientY;
+    const startH = barHeightRef.current;
+    const onMove = (ev: MouseEvent) => {
+      const dy = startY - ev.clientY;
+      setBarHeight(Math.min(600, Math.max(120, startH + dy)));
+    };
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
 
   if (!expanded) {
     return (
@@ -59,7 +86,13 @@ export function SessionsBar({
   }
 
   return (
-    <div className="sessions-bar" style={{ height: 252 }}>
+    <div className="sessions-bar" style={{ height: barHeight }}>
+      {/* resize handle — drag up to grow, drag down to shrink */}
+      <div
+        className="bar-resize-handle"
+        onMouseDown={onResizeDown}
+        title="Drag to resize"
+      />
       <div className="sessions-head">
         <button className="bar-handle" onClick={() => setExpanded(false)} style={{ marginRight: 4 }}>
           <Icon name="chevron-down" size={12} />
@@ -71,6 +104,10 @@ export function SessionsBar({
           <button className={`bar-tab${tab === 'settings' ? ' active' : ''}`} onClick={() => setTab('settings')}>
             <Icon name="settings" size={11} />Sessions
             <span className="count">{sessions.length}</span>
+          </button>
+          <button className={`bar-tab${tab === 'vars' ? ' active' : ''}`} onClick={() => setTab('vars')}>
+            <Icon name="tag" size={11} />Variables
+            {variables.length > 0 && <span className="count">{variables.length}</span>}
           </button>
         </div>
         <div style={{ flex: 1 }} />
@@ -99,6 +136,13 @@ export function SessionsBar({
           addSessionPing={addSessionPing}
           onAddSession={onAddSession}
           onDeleteSession={onDeleteSession}
+        />
+      )}
+      {tab === 'vars' && (
+        <VariablesTab
+          variables={variables}
+          onEditVariable={onEditVariable}
+          readonly={readonly}
         />
       )}
     </div>
@@ -181,7 +225,7 @@ function LogsTab({ sessions, activeSession, setActiveSessionId, stepNodes, logLi
             ))
           ) : (
             <>
-              <div className="term-line"><span className="ts">—</span><span className="lvl">[sys]</span><span>No run output yet · click New run to start</span></div>
+              <div className="term-line"><span className="ts">-</span><span className="lvl">[sys]</span><span>No run output yet. Click Start run when the workflow is ready.</span></div>
               <div className="term-line">
                 <span className="ts">—</span>
                 <span style={{ color: 'var(--ink-3)' }}>·</span>
@@ -237,13 +281,69 @@ interface SettingsTabProps {
   stepNodes: WorkflowNode[];
   onAssignSession: (nodeId: string, sessionId: string) => void;
   addSessionPing: number;
-  onAddSession: (name: string, agent: string) => void;
+  onAddSession: (name: string, agent: Session['agent']) => void;
   onDeleteSession: (id: string) => void;
+}
+
+// ── variables tab ─────────────────────────────────────────────────────────────
+
+interface VariablesTabProps {
+  variables: Variable[];
+  onEditVariable: (name: string, patch: Partial<Variable>) => void;
+  readonly?: boolean;
+}
+
+function VariablesTab({ variables, onEditVariable, readonly }: VariablesTabProps) {
+  if (variables.length === 0) {
+    return (
+      <div className="sessions-body settings">
+        <div style={{ padding: '12px 16px', color: 'var(--ink-3)', fontSize: 11, fontFamily: 'var(--font-mono)', lineHeight: 1.6 }}>
+          No input variables declared.<br />
+          Add a <strong>Run input</strong> node on the canvas and connect it to a step; its variable will appear here for editing.
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="sessions-body settings">
+      <div className="assn-list" style={{ overflow: 'auto', flex: 1 }}>
+        <div className="assn-list-head">
+          <span>Variable (from canvas)</span>
+          <span>Default value</span>
+          <span>Description</span>
+        </div>
+        {variables.map((v) => (
+          <div key={v.name} className="assn-row" style={{ gap: 8, alignItems: 'center' }}>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--ink-2)', flexShrink: 0, minWidth: 120 }}>
+              &lt;{v.name}&gt;
+            </span>
+            <input
+              className="input"
+              value={v.defaultValue ?? ''}
+              disabled={readonly}
+              placeholder="—"
+              onChange={(e) => onEditVariable(v.name, { defaultValue: e.target.value || undefined })}
+              style={{ flex: 1, minWidth: 80 }}
+            />
+            <input
+              className="input"
+              value={v.description ?? ''}
+              disabled={readonly}
+              placeholder="—"
+              onChange={(e) => onEditVariable(v.name, { description: e.target.value || undefined })}
+              style={{ flex: 2 }}
+            />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function SettingsTab({ sessions, stepNodes, onAssignSession, addSessionPing, onAddSession, onDeleteSession }: SettingsTabProps) {
   const [draftName, setDraftName] = useState('');
-  const [draftAgent, setDraftAgent] = useState<'claude-code' | 'codex'>('claude-code');
+  const [draftAgent, setDraftAgent] = useState<Session['agent']>('claude-code');
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -264,7 +364,7 @@ function SettingsTab({ sessions, stepNodes, onAssignSession, addSessionPing, onA
     <div className="sessions-body settings">
       <div className="add-session-row">
         <span style={{ fontSize: 11, color: 'var(--ink-3)', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 600, marginRight: 4 }}>
-          New session
+          New agent session
         </span>
         <input
           ref={inputRef}
@@ -278,6 +378,7 @@ function SettingsTab({ sessions, stepNodes, onAssignSession, addSessionPing, onA
         <div className="seg" style={{ height: 26 }}>
           <button className={draftAgent === 'claude-code' ? 'active' : ''} onClick={() => setDraftAgent('claude-code')}>Claude</button>
           <button className={draftAgent === 'codex'       ? 'active' : ''} onClick={() => setDraftAgent('codex')}>Codex</button>
+          <button className={draftAgent === 'mock'        ? 'active' : ''} onClick={() => setDraftAgent('mock')}>Mock</button>
         </div>
         <button className="btn sm primary" onClick={handleAdd}><Icon name="plus" size={11} />Add</button>
         <div style={{ flex: 1 }} />

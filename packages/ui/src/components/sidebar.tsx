@@ -87,7 +87,7 @@ export function Sidebar({ workflows, runs, activeWorkflow, activeRun, onSelectWo
             <div className="col-sub">{wf?.name}</div>
           </div>
           <button className="btn sm primary" title="Start a new run" onClick={onNewRun}>
-            <Icon name="play" size={10} />New
+            <Icon name="play-circle" size={12} />Start
           </button>
         </div>
         <div className="col-list">
@@ -101,7 +101,7 @@ export function Sidebar({ workflows, runs, activeWorkflow, activeRun, onSelectWo
                 <span className={`status-dot ${r.status}`} />
                 <span className="label">{r.label}</span>
                 <div className="actions" onClick={(e) => e.stopPropagation()}>
-                  <button className="btn sm icon" title="Re-run this snapshot" onClick={() => onRerunRun(r.id)}>
+                  <button className="btn sm icon" title="Run this snapshot again" onClick={() => onRerunRun(r.id)}>
                     <Icon name="rotate" size={11} />
                   </button>
                   <button className="btn sm icon" title="Delete" onClick={() => onDeleteRun(r.id)}>

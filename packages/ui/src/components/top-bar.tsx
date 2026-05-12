@@ -32,22 +32,15 @@ export function TopBar({ theme, onThemeChange, runLabel, workflowName, onNewRun,
       </div>
       <div className="topbar-spacer" />
 
-      {/* Tabs become state indicators. "Run view" is auto-active when a run is selected;
-          "Edit workflow" is the only escape back to editing. */}
-      <button
-        className={`topbar-tab${view === 'run' ? ' active' : ''}`}
-        disabled={view !== 'run'}
-        title={view === 'run' ? 'Viewing run snapshot (read-only)' : 'Click a run in the sidebar to view it'}
-      >
-        <Icon name="play-circle" size={13} />Run view
-      </button>
-      <button
-        className={`topbar-tab${view === 'edit' ? ' active' : ''}`}
-        onClick={onExitRunView}
-        title="Return to the live workflow"
-      >
-        <Icon name="edit" size={13} />Edit workflow
-      </button>
+      {view === 'run' && (
+        <button
+          className="topbar-tab active"
+          onClick={onExitRunView}
+          title="Return to the live workflow"
+        >
+          <Icon name="edit" size={13} />Back to design
+        </button>
+      )}
 
       <div style={{ width: 1, alignSelf: 'stretch', background: 'var(--line)', margin: '0 6px' }} />
       <div className="theme-toggle">
@@ -68,13 +61,13 @@ export function TopBar({ theme, onThemeChange, runLabel, workflowName, onNewRun,
       </div>
 
       {view === 'run' && onRerun && (
-        <button className="btn sm" onClick={onRerun} title="Re-run this run's snapshot">
-          <Icon name="rotate" size={11} />Re-run
+        <button className="btn sm" onClick={onRerun} title="Start a new run from this saved snapshot">
+          <Icon name="rotate" size={11} />Run again
         </button>
       )}
       {view === 'edit' && (
         <button className="btn sm primary" onClick={onNewRun}>
-          <Icon name="play" size={10} />New run
+          <Icon name="play-circle" size={12} />Start run
         </button>
       )}
     </div>

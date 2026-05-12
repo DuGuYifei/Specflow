@@ -1,5 +1,5 @@
 import { useRef, useState, useMemo, useEffect, useCallback } from 'react';
-import type { WorkflowNode, Edge, Session, Selection, RunStateMap, GateNode } from '../types';
+import type { WorkflowNode, Edge, Session, Selection, RunStateMap, GateNode, InputNode } from '../types';
 import type { IconName } from './icon';
 import { Icon } from './icon';
 
@@ -14,12 +14,14 @@ function nodeAnchorOut(n: WorkflowNode, branch?: string): { x: number; y: number
     const t = (i + 1) / (total + 1);
     return { x: n.x + n.w, y: n.y + h * t };
   }
+  if (n.kind === 'input') return { x: n.x + (n.w || 200), y: n.y + 36 };
   return { x: n.x + (n.w || 220), y: n.y + 60 };
 }
 
 function nodeAnchorIn(n: WorkflowNode): { x: number; y: number } {
   if (n.kind === 'gate') return { x: n.x, y: n.y + 110 / 2 };
   if (n.kind === 'end')  return { x: n.x - 2, y: n.y + 18 };
+  if (n.kind === 'input') return { x: n.x, y: n.y + 36 }; // should not happen; InputNode has no input
   return { x: n.x, y: n.y + 60 };
 }
 
@@ -37,7 +39,7 @@ function edgeMid(from: { x: number; y: number }, to: { x: number; y: number }, l
   return { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 };
 }
 
-const NODE_H: Record<string, number> = { step: 120, gate: 110, end: 36 };
+const NODE_H: Record<string, number> = { step: 120, gate: 110, end: 36, input: 72 };
 
 // ── node cards ────────────────────────────────────────────────────────────────
 
@@ -177,9 +179,46 @@ function EndCard({ n, selected, onMouseDown, onSelect }: EndCardProps) {
   );
 }
 
+interface InputCardProps {
+  n: InputNode;
+  selected: boolean;
+  onMouseDown: (e: React.MouseEvent, id: string) => void;
+  onSelect: (id: string) => void;
+}
+
+function InputCard({ n, selected, onMouseDown, onSelect }: InputCardProps) {
+  const cls = ['input-node'];
+  if (selected) cls.push('selected');
+
+  return (
+    <div
+      className={cls.join(' ')}
+      style={{ left: n.x, top: n.y, width: n.w || 200 }}
+      onMouseDown={(e) => onMouseDown(e, n.id)}
+      onClick={(e) => { e.stopPropagation(); onSelect(n.id); }}
+    >
+      <div className="input-node-head">
+        <Icon name="tag" size={10} />
+        <span className="node-id">{n.num}</span>
+        <span style={{ flex: 1 }}>{n.title}</span>
+      </div>
+      <div className="input-node-var">
+        <span className="var-chip">&lt;{n.variableName}&gt;</span>
+        {n.defaultValue && (
+          <span style={{ color: 'var(--ink-4)', fontSize: 9.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {n.defaultValue}
+          </span>
+        )}
+      </div>
+      {/* output-only port */}
+      <div className="port out" data-port="out" data-node={n.id} />
+    </div>
+  );
+}
+
 // ── canvas ────────────────────────────────────────────────────────────────────
 
-export type CanvasMode = 'pan' | 'add-step' | 'add-gate' | 'add-end';
+export type CanvasMode = 'pan' | 'add-step' | 'add-gate' | 'add-end' | 'add-input';
 
 interface CanvasProps {
   nodes: WorkflowNode[];
@@ -368,9 +407,10 @@ export function Canvas({
           if (toId && toId !== dragInfo.fromId) {
             const fromN = nodesRef.current.find((n) => n.id === dragInfo.fromId);
             const toN   = nodesRef.current.find((n) => n.id === toId);
-            if (fromN && toN) {
+            if (fromN && toN && toN.kind !== 'input') {
               const sameSession =
                 fromN.kind !== 'gate' && toN.kind !== 'gate' && toN.kind !== 'end' &&
+                fromN.kind !== 'input' &&
                 fromN.sessionId != null && fromN.sessionId === toN.sessionId;
               onAddEdge({
                 id: `e${Date.now()}`,
@@ -399,7 +439,7 @@ export function Canvas({
 
   const onCanvasMouseDown = (e: React.MouseEvent) => {
     const target = e.target as Element;
-    if (target.closest('.node, .gate-wrap, .end-node, .edge-tag, .canvas-toolbar, .edge-hover-target')) return;
+    if (target.closest('.node, .gate-wrap, .end-node, .input-node, .edge-tag, .canvas-toolbar, .edge-hover-target')) return;
 
     // In add-mode and edit view: place node at click
     if (mode !== 'pan' && isEdit) {
@@ -413,6 +453,8 @@ export function Canvas({
         newNode = { kind: 'step', id, num, x: pos.x - 110, y: pos.y - 60, w: 220, title: 'Untitled', desc: '', sessionId: firstSession, updateDoc: false };
       } else if (mode === 'add-gate') {
         newNode = { kind: 'gate', id, num, x: pos.x - 110, y: pos.y - 55, w: 220, title: 'Decision', sessionId: firstSession, branches: [{ id: 'pass', label: 'pass', color: 'oklch(0.55 0.13 145)' }, { id: 'fix', label: 'fix', color: 'var(--err)' }] };
+      } else if (mode === 'add-input') {
+        newNode = { kind: 'input', id, num, x: pos.x - 100, y: pos.y - 36, w: 200, title: 'Run input', variableName: `specflow_var${nodesRef.current.filter((n) => n.kind === 'input').length + 1}`, sessionId: null };
       } else {
         newNode = { kind: 'end', id, num, x: pos.x - 30, y: pos.y - 18, w: 80, title: 'Done', sessionId: null };
       }
@@ -596,6 +638,21 @@ export function Canvas({
           const to   = nodeAnchorIn(toN);
           const m    = edgeMid(from, to, e.loopback);
 
+          // InputNode→Step edge: show the variable name chip
+          if (fromN.kind === 'input') {
+            return (
+              <div
+                key={`tag-${e.id}`}
+                className="edge-tag edge-tag-var"
+                style={{ left: m.x, top: m.y }}
+                title={`Injects <${fromN.variableName}> into the target step`}
+                onClick={(ev) => { ev.stopPropagation(); onSelectEdge(e.id); }}
+              >
+                <Icon name="tag" size={9} />&lt;{fromN.variableName}&gt;
+              </div>
+            );
+          }
+
           if (e.sameSession) {
             return (
               <div
@@ -636,6 +693,12 @@ export function Canvas({
           );
           if (n.kind === 'end') return (
             <EndCard
+              key={n.id} n={n} selected={selected}
+              onMouseDown={onNodeMouseDown} onSelect={onSelectNode}
+            />
+          );
+          if (n.kind === 'input') return (
+            <InputCard
               key={n.id} n={n} selected={selected}
               onMouseDown={onNodeMouseDown} onSelect={onSelectNode}
             />
@@ -689,6 +752,7 @@ export function Canvas({
           {toolbarModeBtn('add-step', 'plus', 'Add step (click canvas to place, Shift+click to chain)')}
           {toolbarModeBtn('add-gate', 'route', 'Add gate')}
           {toolbarModeBtn('add-end', 'check', 'Add end')}
+          {toolbarModeBtn('add-input', 'tag', 'Add run input')}
           <div className="divider" />
           <button onClick={() => setZoom(Math.max(0.3, zoom - 0.1))} title="Zoom out">
             <Icon name="zoom-out" size={13} />
@@ -736,6 +800,14 @@ function GhostNode({ mode, pos }: { mode: CanvasMode; pos: { x: number; y: numbe
       <div className="ghost-node ghost-gate" style={{ left: pos.x - 110, top: pos.y - 55, width: 220, height: 110 }}>
         <div className="ghost-head"><Icon name="route" size={10} /> gate · 2 branches</div>
         <div className="ghost-title">Decision</div>
+      </div>
+    );
+  }
+  if (mode === 'add-input') {
+    return (
+      <div className="ghost-node ghost-input" style={{ left: pos.x - 100, top: pos.y - 36, width: 200 }}>
+        <div className="ghost-head"><Icon name="tag" size={10} /> run input</div>
+        <div className="ghost-title">&lt;specflow_var&gt;</div>
       </div>
     );
   }

@@ -25,8 +25,8 @@ nodes:
   - kind: step
     id: n1
     num: "01"
-    x: 60
-    y: 240
+    x: 26
+    y: -77
     w: 230
     title: Ticket
     desc: Capture the incoming ticket — title, description, attached screenshots.
@@ -40,8 +40,8 @@ nodes:
   - kind: step
     id: n2a
     num: 02·a
-    x: 340
-    y: 80
+    x: 465
+    y: -142
     w: 220
     title: Parse image components
     desc: Vision pass over the ticket screenshot. Identify named components and
@@ -53,8 +53,8 @@ nodes:
   - kind: step
     id: n2b
     num: 02·b
-    x: 600
-    y: 80
+    x: 852.1449263842359
+    y: -90.3016497764697
     w: 220
     title: Generate HTML
     desc: Synthesize draft HTML reproducing the parsed component tree using the
@@ -66,8 +66,8 @@ nodes:
   - kind: step
     id: n2c
     num: 02·c
-    x: 860
-    y: 80
+    x: 428
+    y: 132
     w: 220
     title: Agent reviews component
     desc: Reviewer agent diffs draft HTML against the source image and surfaces
