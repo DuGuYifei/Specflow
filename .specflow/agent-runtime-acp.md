@@ -10,7 +10,7 @@ The architecture must support:
 
 - Built-in ACP agents installed from the ACP registry, currently `codex-acp` and `claude-acp`.
 - Custom ACP agents registered by project/user JSON.
-- A reserved future headless command-template runtime.
+- A headless command-template runtime for non-ACP direct command agents.
 - Multiple workflow sessions running in the same workflow run.
 - Real-time terminal logging to the UI.
 - Recording both Specflow session ids and real ACP CLI session ids.
@@ -51,7 +51,7 @@ Agent server configuration is represented by `AgentServerSettings`:
 
 - `registry`: ACP registry agent. The command is resolved from the registry metadata and downloaded/cached lazily.
 - `custom`: user-provided ACP command and args.
-- `headless`: reserved for future command-template execution. The type exists in schema, but runtime execution intentionally throws.
+- `headless`: direct command-template execution. `argsTemplate` supports `{prompt}` and `{{prompt}}` interpolation.
 
 Configuration load order:
 
@@ -239,7 +239,7 @@ Implemented:
 
 Not complete:
 
-- Headless command-template agents are reserved but not implemented.
+- Run cancellation does not yet have a server/UI control surface.
 
 ## Resume Design Direction
 
@@ -286,6 +286,7 @@ Current test coverage includes:
 - Agent-proxy restore selection against fake ACP agents advertising load-only, resume-only, both, and neither capability sets.
 - Server restore API streaming and audit persistence against the fake ACP restore fixture.
 - Agent-proxy rejects configured default modes/models/options that are not advertised by the initialized ACP session.
+- Headless runtime execution for success, non-zero exit, env merge, and cancellation.
 
 Coverage still needed:
 

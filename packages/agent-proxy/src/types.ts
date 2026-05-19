@@ -43,6 +43,7 @@ export interface HeadlessAgentServerSettings extends BaseAgentServerSettings {
   type: "headless";
   command: string;
   argsTemplate: string[];
+  timeoutMs?: number;
 }
 
 export type AgentServerSettings =

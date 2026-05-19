@@ -1,6 +1,7 @@
 import { AgentServerStore } from "./store/agent-server-store";
 import type { AgentRunRequest, AgentRunResult, AgentServerId } from "./types";
 import { AcpAgentSession, runAcpAgent } from "./runtimes/acp/connection";
+import { runHeadlessAgent } from "./runtimes/headless/command";
 
 export interface AgentProxySessionPoolOptions {
   root: string;
@@ -20,8 +21,12 @@ export class AgentProxySessionPool {
   }
 
   async run(request: AgentRunRequest): Promise<AgentRunResult> {
+    const resolved = await this.#resolve(request.agentServerId);
+    if (resolved.source === "headless") {
+      return runHeadlessAgent(resolved, request);
+    }
+
     if (!request.workflowSessionId) {
-      const resolved = await this.#resolve(request.agentServerId);
       return runAcpAgent(resolved, request);
     }
 
@@ -60,6 +65,9 @@ export class AgentProxySessionPool {
 
   async #createSession(request: AgentRunRequest): Promise<AcpAgentSession> {
     const resolved = await this.#resolve(request.agentServerId);
+    if (resolved.source === "headless") {
+      throw new Error(`Headless agent sessions are not pooled: ${request.agentServerId}`);
+    }
     const session = new AcpAgentSession({
       resolved,
       cwd: request.cwd,
@@ -75,11 +83,7 @@ export class AgentProxySessionPool {
   }
 
   async #resolve(agentServerId: AgentServerId) {
-    const resolved = await this.#store.resolve(agentServerId);
-    if (resolved.source === "headless") {
-      throw new Error(`Headless agent runtime is not implemented: ${agentServerId}`);
-    }
-    return resolved;
+    return this.#store.resolve(agentServerId);
   }
 }
 

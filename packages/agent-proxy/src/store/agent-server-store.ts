@@ -2,12 +2,14 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type {
   AgentServerConfigFile,
+  AgentServerCommand,
   AgentServerId,
   AgentServerSettings,
   ResolvedAgentServer,
 } from "../types";
 import { resolveCustomAcpCommand } from "../sources/custom-acp";
 import { resolveRegistryAcpCommand } from "../sources/registry-acp";
+import { expandHome } from "../util";
 
 export interface AgentServerStoreOptions {
   root: string;
@@ -33,12 +35,7 @@ export class AgentServerStore {
     await this.#load();
     const settings = this.#settings!.get(agentServerId);
     if (!settings) throw new Error(`Unknown agent server: ${agentServerId}`);
-    if (settings.type === "headless") {
-      throw new Error(`Headless agent server runtime is reserved but not implemented: ${agentServerId}`);
-    }
-    const command = settings.type === "custom"
-      ? resolveCustomAcpCommand(settings)
-      : await resolveRegistryAcpCommand({ settings, cacheDir: this.#cacheDir });
+    const command = await resolveCommand(settings, this.#cacheDir);
     return { id: agentServerId, source: settings.type, settings, command };
   }
 
@@ -52,6 +49,16 @@ export class AgentServerStore {
       ...Object.entries(local.agentServers ?? local.agent_servers ?? {}),
     ]);
   }
+}
+
+async function resolveCommand(settings: AgentServerSettings, cacheDir: string): Promise<AgentServerCommand> {
+  if (settings.type === "custom") return resolveCustomAcpCommand(settings);
+  if (settings.type === "registry") return resolveRegistryAcpCommand({ settings, cacheDir });
+  return {
+    command: expandHome(settings.command),
+    args: settings.argsTemplate,
+    env: settings.env,
+  };
 }
 
 async function readConfig(path: string): Promise<AgentServerConfigFile> {
@@ -78,6 +85,17 @@ function normalizeConfig(config: AgentServerConfigFile): AgentServerConfigFile {
             defaultConfigOptions: raw.defaultConfigOptions ?? raw.default_config_options,
           } satisfies AgentServerSettings];
         }
+        if (value.type === "headless") {
+          const raw = value as HeadlessRawSettings;
+          return [id, {
+            ...value,
+            argsTemplate: raw.argsTemplate ?? raw.args_template ?? [],
+            timeoutMs: raw.timeoutMs ?? raw.timeout_ms,
+            defaultMode: raw.defaultMode ?? raw.default_mode,
+            defaultModel: raw.defaultModel ?? raw.default_model,
+            defaultConfigOptions: raw.defaultConfigOptions ?? raw.default_config_options,
+          } satisfies AgentServerSettings];
+        }
         const raw = value as AgentServerSettings & { default_mode?: string; default_model?: string; default_config_options?: Record<string, string | boolean> };
         return [id, {
           ...value,
@@ -95,6 +113,14 @@ function normalizeConfig(config: AgentServerConfigFile): AgentServerConfigFile {
 
 type RegistryRawSettings = Extract<AgentServerSettings, { type: "registry" }> & {
   registry_id?: string;
+  default_mode?: string;
+  default_model?: string;
+  default_config_options?: Record<string, string | boolean>;
+};
+
+type HeadlessRawSettings = Extract<AgentServerSettings, { type: "headless" }> & {
+  args_template?: string[];
+  timeout_ms?: number;
   default_mode?: string;
   default_model?: string;
   default_config_options?: Record<string, string | boolean>;

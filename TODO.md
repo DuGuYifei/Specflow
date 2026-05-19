@@ -74,12 +74,12 @@ Implementation order is intentional. Each phase should finish with tests and doc
 
 ### 6. Headless Agent Runtime
 
-- [ ] Define the command-template schema for `headless` agents.
-- [ ] Support prompt interpolation in `argsTemplate`.
-- [ ] Capture stdout/stderr into the same terminal/log pipeline.
-- [ ] Define how headless results map to `AgentRunResult`.
-- [ ] Add cancellation and timeout behavior.
-- [ ] Add tests for successful execution, non-zero exit, env merge, and cancellation.
+- [x] Define the command-template schema for `headless` agents.
+- [x] Support prompt interpolation in `argsTemplate`.
+- [x] Capture stdout/stderr into the same terminal/log pipeline.
+- [x] Define how headless results map to `AgentRunResult`.
+- [x] Add cancellation and timeout behavior.
+- [x] Add tests for successful execution, non-zero exit, env merge, and cancellation.
 
 ### 7. Run Control
 
