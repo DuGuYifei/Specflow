@@ -48,6 +48,28 @@ describe("agent session restore API", () => {
       { type: "restore_attempt", status: "success", selectedPrimitive: "load" },
     ]);
   });
+
+  test("uses resume for continue mode when the indexed ACP agent advertises load and resume", async () => {
+    const root = await setupProject("load,resume");
+    await upsertAgentSessionsFromRun(sampleRun("run1"), root);
+    const [session] = await listAgentSessions(root);
+    expect(session).toBeDefined();
+
+    const handle = createApiHandler(createSpecflowBridge(), root);
+    const response = await handle(new Request(`http://specflow.test/api/agent-sessions/${session!.id}/restore`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ mode: "continue" }),
+    }));
+    const body = await response?.json() as { restoreId: string; status: string };
+    expect(response?.status).toBe(200);
+    expect(body.status).toBe("running");
+
+    const eventResponse = await handle(new Request(`http://specflow.test/api/agent-session-restores/${body.restoreId}/events`));
+    expect(eventResponse?.status).toBe(200);
+    const eventText = await readUntil(eventResponse!, ["\"status\":\"success\""]);
+    expect(eventText).toContain("\"selectedPrimitive\":\"resume\"");
+  });
 });
 
 async function setupProject(restoreCapabilities: string): Promise<string> {

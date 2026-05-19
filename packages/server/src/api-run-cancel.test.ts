@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp } from "node:fs/promises";
+import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
@@ -12,8 +12,6 @@ import type { CanvasDoc } from "./canvas-doc";
 describe("run cancellation API", () => {
   test("cancels an active headless run and persists cancelled status", async () => {
     const root = await mkdtemp(join(tmpdir(), "specflow-run-cancel-"));
-    await mkdir(join(root, ".specflow", "agentflows"), { recursive: true });
-    await mkdir(join(root, ".specflow", "canvas"), { recursive: true });
     await upsertLocalAgentServer(root, "slow-headless", {
       type: "headless",
       command: process.execPath,

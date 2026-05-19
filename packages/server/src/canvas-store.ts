@@ -1,4 +1,4 @@
-import { readdir, readFile, writeFile, unlink } from "node:fs/promises";
+import { mkdir, readdir, readFile, writeFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { parse, stringify } from "yaml";
 import type {
@@ -76,6 +76,7 @@ export async function loadOrCreateCanvasLayout(
 
 export async function saveCanvas(id: string, doc: CanvasDoc, root: string): Promise<void> {
   const { agentflow, layout } = splitCanvasDoc({ ...doc, id });
+  await mkdir(agentflowsDir(root), { recursive: true });
   await Promise.all([
     writeFile(agentflowPath(id, root), stringify(agentflow), "utf8"),
     saveCanvasLayout(id, layout, root),
@@ -88,6 +89,7 @@ export async function saveAgentFlowAndLayout(
   layout: CanvasLayoutDoc,
   root: string,
 ): Promise<void> {
+  await mkdir(agentflowsDir(root), { recursive: true });
   await Promise.all([
     writeFile(agentflowPath(id, root), stringify(agentflow), "utf8"),
     saveCanvasLayout(id, layout, root),
@@ -95,6 +97,7 @@ export async function saveAgentFlowAndLayout(
 }
 
 export async function saveCanvasLayout(id: string, layout: CanvasLayoutDoc, root: string): Promise<void> {
+  await mkdir(canvasDir(root), { recursive: true });
   await writeFile(canvasPath(id, root), `${JSON.stringify(layout, null, 2)}\n`, "utf8");
 }
 

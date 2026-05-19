@@ -290,9 +290,9 @@ Current test coverage includes:
 - Headless runtime execution for success, non-zero exit, env merge, and cancellation.
 - Bridge run cancellation during active prompts, permission waits, and elicitation waits.
 - Server run cancellation API persistence using a headless child process.
+- Server API terminal SSE replay uses the same run id as the persisted run log.
+- Server restore API covers both inspect/load and continue/resume against fake ACP agents advertising both capabilities.
 
 Coverage still needed:
 
-- Server API integration test proving terminal SSE uses the same run id as the persisted run record.
 - End-to-end UI test for run start and live log display.
-- Restore API tests against fake ACP agents that advertise load and resume.
