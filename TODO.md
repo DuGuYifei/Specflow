@@ -69,7 +69,7 @@ Implementation order is intentional. Each phase should finish with tests and doc
 - [x] Add install/update/remove actions for registry agents.
 - [x] Add custom ACP agent form for command, args, env, defaults, and config options.
 - [x] Store user-local overrides in `.specflow/agent-servers.local.json`.
-- [ ] Validate configured default modes/models/options against initialized ACP agent capabilities.
+- [x] Validate configured default modes/models/options against initialized ACP agent capabilities.
 - [x] Add UI for per-session agent server selection without hardcoding Codex/Claude only.
 
 ### 6. Headless Agent Runtime

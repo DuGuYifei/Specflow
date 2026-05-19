@@ -239,7 +239,6 @@ Implemented:
 
 Not complete:
 
-- Configured default modes/models/options are not validated against initialized ACP capabilities from the management UI yet.
 - Headless command-template agents are reserved but not implemented.
 
 ## Resume Design Direction
@@ -286,6 +285,7 @@ Current test coverage includes:
 - Server ACP session index create/merge/delete behavior.
 - Agent-proxy restore selection against fake ACP agents advertising load-only, resume-only, both, and neither capability sets.
 - Server restore API streaming and audit persistence against the fake ACP restore fixture.
+- Agent-proxy rejects configured default modes/models/options that are not advertised by the initialized ACP session.
 
 Coverage still needed:
 

@@ -41,6 +41,39 @@ describe("runAcpAgent", () => {
       "session_closed",
     ]);
   });
+
+  it("fails when the configured default mode is not advertised by the agent", async () => {
+    const result = await runAcpAgent(resolved({ settings: { defaultMode: "missing-mode" } }), {
+      agentServerId: "fake-acp",
+      cwd: await mkdtemp(join(tmpdir(), "specflow-acp-")),
+      prompt: "hello",
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(result.output).toContain('mode "missing-mode"');
+  });
+
+  it("fails when the configured default model is not advertised by the agent", async () => {
+    const result = await runAcpAgent(resolved({ settings: { defaultModel: "missing-model" } }), {
+      agentServerId: "fake-acp",
+      cwd: await mkdtemp(join(tmpdir(), "specflow-acp-")),
+      prompt: "hello",
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(result.output).toContain('model "missing-model"');
+  });
+
+  it("fails when a configured default config option value is not advertised by the agent", async () => {
+    const result = await runAcpAgent(resolved({ settings: { defaultConfigOptions: { reasoning: "low" } } }), {
+      agentServerId: "fake-acp",
+      cwd: await mkdtemp(join(tmpdir(), "specflow-acp-")),
+      prompt: "hello",
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(result.output).toContain('config option "reasoning" value "low"');
+  });
 });
 
 describe("restoreAcpAgentSession", () => {
@@ -108,7 +141,10 @@ describe("restoreAcpAgentSession", () => {
   });
 });
 
-function resolved(options: { restoreCapabilities?: string } = {}): ResolvedAgentServer {
+function resolved(options: {
+  restoreCapabilities?: string;
+  settings?: Partial<Extract<ResolvedAgentServer["settings"], { type: "custom" }>>;
+} = {}): ResolvedAgentServer {
   return {
     id: "fake-acp",
     source: "custom",
@@ -119,6 +155,7 @@ function resolved(options: { restoreCapabilities?: string } = {}): ResolvedAgent
       defaultMode: "auto",
       defaultModel: "test-model",
       defaultConfigOptions: { reasoning: "high" },
+      ...options.settings,
     },
     command: {
       command: "bun",
