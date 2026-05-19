@@ -1,6 +1,6 @@
 import { WorkflowExecutor } from "@specflow/bridge";
 import type { SpecflowBridge } from "@specflow/bridge";
-import type { NodeStatusEvent, RunStatusEvent } from "@specflow/bridge";
+import type { AgentRestoreMode, AgentRestorePrimitive, NodeStatusEvent, RunStatusEvent } from "@specflow/bridge";
 import { canvasToWorkflow } from "./canvas-to-workflow";
 import {
   listCanvases,
@@ -14,6 +14,7 @@ import { formatDuration, listRuns, loadRun, saveRun, deleteRun, type RunRecord, 
 import {
   listAgentSessions,
   loadAgentSession,
+  recordAgentSessionRestoreAttempt,
   removeRunFromAgentSessions,
   upsertAgentSessionsFromRun,
 } from "./agent-session-store";
@@ -46,10 +47,47 @@ class EventBus {
   }
 }
 
+type RestoreStatus = "requested" | "success" | "failure";
+
+type RestoreStreamEvent =
+  | {
+      type: "restore-status";
+      restoreId: string;
+      agentSessionId: string;
+      runId: string;
+      requestedMode: AgentRestoreMode;
+      selectedPrimitive?: AgentRestorePrimitive;
+      status: RestoreStatus;
+      error?: string;
+      at: string;
+    }
+  | {
+      type: "session-update";
+      restoreId: string;
+      agentSessionId: string;
+      sessionId: string;
+      update: unknown;
+      at: string;
+    }
+  | {
+      type: "terminal";
+      restoreId: string;
+      agentSessionId: string;
+      stream: string;
+      chunk: string;
+      at: string;
+    };
+
+interface RestoreStreamState {
+  events: RestoreStreamEvent[];
+  done: boolean;
+}
+
 // ── API handler factory ───────────────────────────────────────────────────────
 
 export function createApiHandler(bridge: SpecflowBridge, root: string) {
   const bus = new EventBus();
+  const restoreStreams = new Map<string, RestoreStreamState>();
 
   const DEFAULT_SESSION: CanvasSession = {
     id: "s1",
@@ -57,6 +95,64 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
     color: "oklch(0.7 0.13 250)",
     agentServerId: "codex-acp",
   };
+
+  function publishRestoreEvent(event: RestoreStreamEvent): void {
+    const state = restoreStreams.get(event.restoreId) ?? { events: [], done: false };
+    state.events.push(event);
+    if (event.type === "restore-status" && event.status !== "requested") {
+      state.done = true;
+    }
+    restoreStreams.set(event.restoreId, state);
+    bus.emit(`${event.restoreId}:restore`, event);
+  }
+
+  function restoreSseResponse(restoreId: string): Response {
+    const encoder = new TextEncoder();
+    let cleanup = () => {};
+
+    const stream = new ReadableStream({
+      start(controller) {
+        const enqueue = (event: RestoreStreamEvent) =>
+          controller.enqueue(encoder.encode(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`));
+
+        const state = restoreStreams.get(restoreId);
+        if (!state) {
+          controller.enqueue(encoder.encode(`event: error\ndata: ${JSON.stringify({ error: "Restore not found" })}\n\n`));
+          controller.close();
+          return;
+        }
+
+        for (const event of state.events) {
+          enqueue(event);
+        }
+        if (state.done) {
+          controller.close();
+          return;
+        }
+
+        cleanup = bus.on(`${restoreId}:restore`, (event) => {
+          const restoreEvent = event as RestoreStreamEvent;
+          enqueue(restoreEvent);
+          if (restoreEvent.type === "restore-status" && restoreEvent.status !== "requested") {
+            setTimeout(() => {
+              try { controller.close(); } catch { /* already closed */ }
+            }, 200);
+          }
+        });
+      },
+      cancel() {
+        cleanup();
+      },
+    });
+
+    return new Response(stream, {
+      headers: {
+        "content-type": "text/event-stream; charset=utf-8",
+        "cache-control": "no-cache",
+        "x-accel-buffering": "no",
+      },
+    });
+  }
 
   function sseResponse(runId: string): Response {
     const encoder = new TextEncoder();
@@ -302,6 +398,139 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
     return Response.json({ runId });
   }
 
+  async function handleRestore(agentSessionId: string, mode: AgentRestoreMode): Promise<Response> {
+    let session: Awaited<ReturnType<typeof loadAgentSession>>;
+    try {
+      session = await loadAgentSession(root, agentSessionId);
+    } catch {
+      return Response.json({ error: "Agent session not found" }, { status: 404 });
+    }
+
+    const restoreId = crypto.randomUUID();
+    const startedAt = new Date().toISOString();
+    const requestedAttempt = {
+      id: restoreId,
+      requestedMode: mode,
+      status: "requested" as const,
+      startedAt,
+    };
+    await recordAgentSessionRestoreAttempt(root, session.id, requestedAttempt);
+    await appendRunLogEvent(root, {
+      type: "restore_attempt",
+      runId: session.latestRunId,
+      agentSessionId: session.id,
+      agentServerId: session.agentServerId,
+      acpSessionId: session.acpSessionId,
+      requestedMode: mode,
+      status: "requested",
+      at: startedAt,
+    });
+
+    publishRestoreEvent({
+      type: "restore-status",
+      restoreId,
+      agentSessionId: session.id,
+      runId: session.latestRunId,
+      requestedMode: mode,
+      status: "requested",
+      at: startedAt,
+    });
+
+    void bridge.restoreAgentSession({
+      agentServerId: session.agentServerId,
+      sessionId: session.acpSessionId,
+      mode,
+      cwd: root,
+      onTerminalEvent: (event) => {
+        publishRestoreEvent({
+          type: "terminal",
+          restoreId,
+          agentSessionId: session.id,
+          stream: event.stream,
+          chunk: event.chunk,
+          at: new Date().toISOString(),
+        });
+      },
+      onSessionUpdate: (event) => {
+        publishRestoreEvent({
+          type: "session-update",
+          restoreId,
+          agentSessionId: session.id,
+          sessionId: event.sessionId,
+          update: event.update,
+          at: new Date().toISOString(),
+        });
+      },
+    }).then(async (result) => {
+      const completedAt = new Date().toISOString();
+      await recordAgentSessionRestoreAttempt(root, session.id, {
+        ...requestedAttempt,
+        selectedPrimitive: result.selectedPrimitive,
+        status: "success",
+        completedAt,
+      });
+      await appendRunLogEvent(root, {
+        type: "restore_attempt",
+        runId: session.latestRunId,
+        agentSessionId: session.id,
+        agentServerId: session.agentServerId,
+        acpSessionId: session.acpSessionId,
+        requestedMode: mode,
+        selectedPrimitive: result.selectedPrimitive,
+        status: "success",
+        at: completedAt,
+      });
+      publishRestoreEvent({
+        type: "restore-status",
+        restoreId,
+        agentSessionId: session.id,
+        runId: session.latestRunId,
+        requestedMode: mode,
+        selectedPrimitive: result.selectedPrimitive,
+        status: "success",
+        at: completedAt,
+      });
+    }).catch(async (error) => {
+      const completedAt = new Date().toISOString();
+      const message = error instanceof Error ? error.message : String(error);
+      await recordAgentSessionRestoreAttempt(root, session.id, {
+        ...requestedAttempt,
+        status: "failure",
+        completedAt,
+        error: message,
+      });
+      await appendRunLogEvent(root, {
+        type: "restore_attempt",
+        runId: session.latestRunId,
+        agentSessionId: session.id,
+        agentServerId: session.agentServerId,
+        acpSessionId: session.acpSessionId,
+        requestedMode: mode,
+        status: "failure",
+        error: message,
+        at: completedAt,
+      });
+      publishRestoreEvent({
+        type: "restore-status",
+        restoreId,
+        agentSessionId: session.id,
+        runId: session.latestRunId,
+        requestedMode: mode,
+        status: "failure",
+        error: message,
+        at: completedAt,
+      });
+    });
+
+    return Response.json({
+      restoreId,
+      agentSessionId: session.id,
+      runId: session.latestRunId,
+      status: "running",
+      requestedMode: mode,
+    });
+  }
+
   return async function handleApiRequest(request: Request): Promise<Response | null> {
     const url = new URL(request.url);
     const { pathname } = url;
@@ -418,6 +647,28 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
       } catch {
         return Response.json({ error: "Agent session not found" }, { status: 404 });
       }
+    }
+
+    // POST /api/agent-sessions/:id/restore
+    const agentSessionRestoreMatch = pathname.match(/^\/api\/agent-sessions\/([^/]+)\/restore$/);
+    if (agentSessionRestoreMatch && request.method === "POST") {
+      let body: { mode?: AgentRestoreMode } = {};
+      try {
+        body = await request.json();
+      } catch {
+        return Response.json({ error: "Invalid JSON" }, { status: 400 });
+      }
+      const mode = body.mode;
+      if (mode !== "inspect" && mode !== "continue") {
+        return Response.json({ error: "Invalid restore mode" }, { status: 400 });
+      }
+      return handleRestore(agentSessionRestoreMatch[1], mode);
+    }
+
+    // GET /api/agent-session-restores/:id/events
+    const restoreEventsMatch = pathname.match(/^\/api\/agent-session-restores\/([^/]+)\/events$/);
+    if (restoreEventsMatch && request.method === "GET") {
+      return restoreSseResponse(restoreEventsMatch[1]);
     }
 
     // POST /api/runs/:id/interactions/:interactionId/respond

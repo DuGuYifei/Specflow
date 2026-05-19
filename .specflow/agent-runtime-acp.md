@@ -172,6 +172,7 @@ It stores:
 - latest run and invocation references
 - all run ids and invocation ids known for the session
 - per-invocation references including node id or edge id
+- restore attempts with requested mode, selected primitive, status, timing, and error
 
 Server APIs:
 
@@ -179,6 +180,8 @@ Server APIs:
 - `GET /api/agent-sessions?workflowId=<workflow-id>`
 - `GET /api/agent-sessions?agentServerId=<agent-server-id>`
 - `GET /api/agent-sessions/:id`
+- `POST /api/agent-sessions/:id/restore`
+- `GET /api/agent-session-restores/:restoreId/events`
 
 Deleting a run removes that run's invocation references from the session index. Empty session entries are removed.
 
@@ -227,12 +230,12 @@ Implemented:
 - Server exposes the ACP session index API.
 - Agent-proxy can start an ACP CLI for an existing ACP session id and call `session/load` or `session/resume` based on advertised capabilities.
 - Restore mode selection is capability-driven: `inspect` prefers `load`, `continue` prefers `resume`, and each mode falls back to the other primitive when only one is available.
+- Server can start a restore attempt for an indexed ACP session and stream restored `session/update` notifications and terminal output over a restore SSE channel.
+- Server records restore attempts and results in both `.specflow/run-logs/<runId>.jsonl` and `.specflow/agent-sessions.json`.
 
 Not complete:
 
 - There is no UI to browse `.specflow/agent-sessions.json`.
-- There is no server restore API that exposes the agent-proxy restore path.
-- Restored ACP updates and terminal output are not streamed through a restore SSE channel yet.
 - Headless command-template agents are reserved but not implemented.
 
 ## Resume Design Direction
@@ -247,6 +250,8 @@ Historical inspection should prefer `session/load` because it can replay prior m
 Continuing work should prefer `session/resume` when the user wants to reactivate the external session.
 
 The agent-proxy restore selector implements those preferences and falls back to the other primitive when only one is advertised. If neither primitive is advertised, restore fails before calling an ACP session restore method.
+
+The server route is `POST /api/agent-sessions/:id/restore` with `{ "mode": "inspect" | "continue" }`. The response includes a `restoreId`; the active restore stream is `GET /api/agent-session-restores/:restoreId/events`.
 
 If an agent supports only resume and cannot replay history, Specflow can still show its own workflow-side run logs, but it should not pretend those logs are the agent's full conversation transcript.
 
@@ -276,6 +281,7 @@ Current test coverage includes:
 - Server run-store migration/defaulting for `agentInvocations`.
 - Server ACP session index create/merge/delete behavior.
 - Agent-proxy restore selection against fake ACP agents advertising load-only, resume-only, both, and neither capability sets.
+- Server restore API streaming and audit persistence against the fake ACP restore fixture.
 
 Coverage still needed:
 

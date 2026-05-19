@@ -26,6 +26,7 @@ export interface AgentSessionRecord {
   runIds: string[];
   invocationIds: string[];
   invocations: AgentSessionInvocationRef[];
+  restoreAttempts: AgentSessionRestoreAttempt[];
 }
 
 export interface AgentSessionInvocationRef {
@@ -37,6 +38,16 @@ export interface AgentSessionInvocationRef {
   status: AgentInvocation["status"];
   startedAt: string;
   completedAt?: string;
+}
+
+export interface AgentSessionRestoreAttempt {
+  id: string;
+  requestedMode: "inspect" | "continue";
+  selectedPrimitive?: "load" | "resume";
+  status: "requested" | "success" | "failure";
+  startedAt: string;
+  completedAt?: string;
+  error?: string;
 }
 
 export function agentSessionsPath(root: string): string {
@@ -119,6 +130,7 @@ export async function upsertAgentSessionsFromRun(record: RunRecord, root: string
         runIds: [record.id],
         invocationIds: [invocation.id],
         invocations: [ref],
+        restoreAttempts: [],
       });
       continue;
     }
@@ -170,6 +182,28 @@ export async function removeRunFromAgentSessions(runId: string, root: string): P
   await saveAgentSessionIndex({ version: 1, sessions: sortedSessions(sessions) }, root);
 }
 
+export async function recordAgentSessionRestoreAttempt(
+  root: string,
+  sessionId: string,
+  attempt: AgentSessionRestoreAttempt,
+): Promise<AgentSessionRestoreAttempt> {
+  const index = await loadAgentSessionIndex(root);
+  const session = index.sessions.find((candidate) => candidate.id === sessionId);
+  if (!session) {
+    throw new Error(`Agent session "${sessionId}" not found.`);
+  }
+
+  const existingIndex = session.restoreAttempts.findIndex((candidate) => candidate.id === attempt.id);
+  if (existingIndex >= 0) {
+    session.restoreAttempts[existingIndex] = attempt;
+  } else {
+    session.restoreAttempts.push(attempt);
+  }
+  session.restoreAttempts.sort((a, b) => a.startedAt.localeCompare(b.startedAt));
+  await saveAgentSessionIndex(index, root);
+  return attempt;
+}
+
 export async function saveAgentSessionIndex(index: AgentSessionIndex, root: string): Promise<void> {
   const path = agentSessionsPath(root);
   await mkdir(dirname(path), { recursive: true });
@@ -212,6 +246,7 @@ function normalizeAgentSessionRecord(input: AgentSessionRecord): AgentSessionRec
     runIds: unique(input.runIds ?? invocations.map((ref) => ref.runId)),
     invocationIds: unique(input.invocationIds ?? invocations.map((ref) => ref.invocationId)),
     invocations,
+    restoreAttempts: input.restoreAttempts ?? [],
   };
 }
 

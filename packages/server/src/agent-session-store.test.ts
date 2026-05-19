@@ -9,6 +9,7 @@ import {
   agentSessionsPath,
   listAgentSessions,
   loadAgentSessionIndex,
+  recordAgentSessionRestoreAttempt,
   removeRunFromAgentSessions,
   upsertAgentSessionsFromRun,
 } from "./agent-session-store";
@@ -34,6 +35,7 @@ describe("agent session store", () => {
       invocationIds: ["inv1", "inv2"],
     });
     expect(raw.sessions[0]?.invocations.map((ref) => ref.nodeId)).toEqual(["n1", "n2"]);
+    expect(raw.sessions[0]?.restoreAttempts).toEqual([]);
   });
 
   it("merges later runs into the same ACP session index entry", async () => {
@@ -72,6 +74,45 @@ describe("agent session store", () => {
     await removeRunFromAgentSessions("run2", root);
     sessions = await listAgentSessions(root);
     expect(sessions).toEqual([]);
+  });
+
+  it("records restore attempts on the session index", async () => {
+    const root = await tempProject();
+    await upsertAgentSessionsFromRun(sampleRun("run1"), root);
+    const [session] = await listAgentSessions(root);
+    expect(session).toBeDefined();
+
+    await recordAgentSessionRestoreAttempt(root, session!.id, {
+      id: "restore-1",
+      requestedMode: "inspect",
+      selectedPrimitive: "load",
+      status: "success",
+      startedAt: "2026-05-19T10:03:00.000Z",
+      completedAt: "2026-05-19T10:03:01.000Z",
+    });
+
+    await recordAgentSessionRestoreAttempt(root, session!.id, {
+      id: "restore-1",
+      requestedMode: "inspect",
+      selectedPrimitive: "load",
+      status: "failure",
+      startedAt: "2026-05-19T10:03:00.000Z",
+      completedAt: "2026-05-19T10:03:02.000Z",
+      error: "failed",
+    });
+
+    const [updated] = await listAgentSessions(root);
+    expect(updated?.restoreAttempts).toEqual([
+      {
+        id: "restore-1",
+        requestedMode: "inspect",
+        selectedPrimitive: "load",
+        status: "failure",
+        startedAt: "2026-05-19T10:03:00.000Z",
+        completedAt: "2026-05-19T10:03:02.000Z",
+        error: "failed",
+      },
+    ]);
   });
 });
 

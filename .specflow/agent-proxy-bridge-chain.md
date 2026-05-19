@@ -163,6 +163,8 @@ For continuing work without replaying history, `session/resume` is the stable pr
 
 The agent-proxy boundary now exposes this as a restore operation for an existing `agentServerId` and ACP `sessionId`. `inspect` prefers `session/load`; `continue` prefers `session/resume`; both modes fall back to the other primitive when it is the only advertised option.
 
+The server exposes that boundary through `POST /api/agent-sessions/:id/restore`. It records a restore attempt in `.specflow/agent-sessions.json` and `.specflow/run-logs/<runId>.jsonl`, starts the ACP CLI, and streams restored ACP `session/update` notifications plus terminal output through `GET /api/agent-session-restores/:restoreId/events`. The streamed ACP updates are live restore-view data, not a durable Specflow transcript copy.
+
 The future UI flow should be:
 
 1. User opens a historical run.

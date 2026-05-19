@@ -1,6 +1,18 @@
+import {
+  restoreAgentSession,
+  type AgentRestoreRequest,
+  type AgentRestoreResult,
+} from "@specflow/agent-proxy";
 import { RunInteractionStore, TerminalEventStore, WorkflowExecutor } from "./execution";
 import { createBridgeRuntime, type BridgeRuntime } from "./runtime";
 import { SessionRegistry } from "./sessions";
+
+export type {
+  AgentRestoreMode,
+  AgentRestorePrimitive,
+  AgentRestoreRequest,
+  AgentRestoreResult,
+} from "@specflow/agent-proxy";
 
 export interface SpecflowBridge {
   runtime: BridgeRuntime;
@@ -8,6 +20,7 @@ export interface SpecflowBridge {
   terminalEvents: TerminalEventStore;
   interactions: RunInteractionStore;
   executor: WorkflowExecutor;
+  restoreAgentSession(request: AgentRestoreRequest): Promise<AgentRestoreResult>;
 }
 
 export function createSpecflowBridge(): SpecflowBridge {
@@ -21,5 +34,6 @@ export function createSpecflowBridge(): SpecflowBridge {
     terminalEvents,
     interactions,
     executor,
+    restoreAgentSession,
   };
 }
