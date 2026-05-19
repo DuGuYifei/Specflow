@@ -66,3 +66,8 @@ In development (`bun run dev`), the server proxies all UI requests to Vite's dev
 ## Architectural decisions
 
 Detailed rationale for key decisions is in [`docs/decisions/`](../../docs/decisions/).
+
+## Runtime Notes
+
+- ACP agent runtime architecture and remaining implementation plan: [`agent-runtime-acp.md`](./agent-runtime-acp.md).
+- Bridge to agent-proxy call chain: [`agent-proxy-bridge-chain.md`](./agent-proxy-bridge-chain.md).

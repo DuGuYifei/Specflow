@@ -84,6 +84,8 @@ This split avoids overloading run history:
 - Run record: immutable execution fact and audit trail.
 - Session index: browse/search/resume entrypoint across runs.
 
+ACP conversation history itself belongs to the ACP agent CLI. Specflow should not duplicate the ACP transcript as its canonical state. It stores the external session id and enough audit/log metadata to explain workflow execution, then asks the ACP agent to load or resume the session when historical inspection or continuation is needed.
+
 The index is updated after a workflow run completes and its `agentInvocations` have been written back to the run record. Deleting a run removes that run's invocation references from the index; empty session entries are removed.
 
 The server exposes the index through:
@@ -133,9 +135,9 @@ ACP clients must check advertised capabilities before resuming:
 - Use `session/load` only when `InitializeResponse.agentCapabilities.loadSession` is true.
 - Use `session/resume` only when `InitializeResponse.agentCapabilities.sessionCapabilities.resume` is present.
 
-For historical inspection, `session/load` is preferable because it asks the agent to replay prior messages via `session/update`.
+For historical inspection, `session/load` is preferable because it asks the agent to replay its own prior messages via `session/update`.
 
-For continuing work without replaying history, `session/resume` is the stable primitive. If an agent supports only resume, Specflow can still build a local transcript view from persisted terminal/session updates in a later log store.
+For continuing work without replaying history, `session/resume` is the stable primitive. If an agent supports only resume, Specflow can still show workflow-side runtime logs from its own run log store, but those logs are not a full ACP transcript.
 
 The future UI flow should be:
 
@@ -144,4 +146,4 @@ The future UI flow should be:
 3. UI reads that invocation's `agentServerId`, `sessionId`, and `acpSessionId`.
 4. UI asks server to restore the external session.
 5. Server starts the corresponding ACP CLI and calls `session/load` or `session/resume` depending on advertised capability.
-6. Replayed or resumed updates stream back to the log panel over SSE.
+6. Replayed or resumed updates stream back to the UI over SSE for the active restore view.
