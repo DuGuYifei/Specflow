@@ -11,6 +11,12 @@ import {
   deleteCanvas,
 } from "./canvas-store";
 import { formatDuration, listRuns, loadRun, saveRun, deleteRun, type RunRecord, type RunState } from "./run-store";
+import {
+  listAgentSessions,
+  loadAgentSession,
+  removeRunFromAgentSessions,
+  upsertAgentSessionsFromRun,
+} from "./agent-session-store";
 import { prepareCanvasRun } from "./run-inputs";
 import type { AgentFlowDoc, CanvasDoc, CanvasLayoutDoc } from "./canvas-doc";
 import type { CanvasSession } from "./canvas-doc";
@@ -139,6 +145,7 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
       agent: agentflow.sessions[0]?.agentServerId ?? agentflow.sessions[0]?.agent ?? "codex-acp",
       nodeStates: initialNodeStates,
       nodeOutputs: {},
+      agentInvocations: [],
       agentflowSnapshot: agentflow, // store pre-substitution snapshots
       canvasSnapshot: layout,
       initialInput,
@@ -205,7 +212,13 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
       onRunStatus,
     });
 
-    void executor.run(workflow, prepared.initialInput).catch(() => { /* handled via onRunStatus */ });
+    void executor.run(workflow, prepared.initialInput, { runId })
+      .then(async (workflowRun) => {
+        record.agentInvocations = workflowRun.agentInvocations;
+        await saveRun(record, root);
+        await upsertAgentSessionsFromRun(record, root);
+      })
+      .catch(() => { /* handled via onRunStatus */ });
 
     return Response.json({ runId });
   }
@@ -299,7 +312,25 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
       }
       if (request.method === "DELETE") {
         await deleteRun(id, root);
+        await removeRunFromAgentSessions(id, root);
         return Response.json({ ok: true });
+      }
+    }
+
+    // GET /api/agent-sessions  (optional ?workflowId=&agentServerId=)
+    if (request.method === "GET" && pathname === "/api/agent-sessions") {
+      const workflowId = url.searchParams.get("workflowId") ?? undefined;
+      const agentServerId = url.searchParams.get("agentServerId") ?? undefined;
+      return Response.json(await listAgentSessions(root, { workflowId, agentServerId }));
+    }
+
+    // GET /api/agent-sessions/:id
+    const agentSessionMatch = pathname.match(/^\/api\/agent-sessions\/([^/]+)$/);
+    if (agentSessionMatch && request.method === "GET") {
+      try {
+        return Response.json(await loadAgentSession(root, agentSessionMatch[1]));
+      } catch {
+        return Response.json({ error: "Agent session not found" }, { status: 404 });
       }
     }
 

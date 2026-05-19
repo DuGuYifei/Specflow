@@ -235,6 +235,49 @@ describe("WorkflowExecutor", () => {
     expect(seen).toEqual([sessionId, sessionId, sessionId]);
   });
 
+  test("records external ACP session metadata on agent invocations", async () => {
+    const executor = new WorkflowExecutor({
+      agentRunner: async (request) => {
+        expect(request.runId).toBe("ui-run-1");
+        request.onTerminalEvent?.({ stream: "stdout", chunk: "done" });
+        return {
+          agentServerId: request.agentServerId,
+          sessionId: "acp-session-123",
+          initializeResponse: {
+            protocolVersion: 1,
+            agentCapabilities: {
+              loadSession: true,
+              sessionCapabilities: { resume: {} },
+            },
+          },
+          exitCode: 0,
+          output: "done",
+        };
+      },
+    });
+
+    const run = await executor.run(
+      createWorkflow({
+        nodes: [agentNode("source", "source")],
+        edges: [],
+      }),
+      "",
+      { runId: "ui-run-1" },
+    );
+
+    expect(run.id).toBe("ui-run-1");
+    expect(run.status).toBe("done");
+    expect(run.agentInvocations[0]).toMatchObject({
+      runId: "ui-run-1",
+      nodeId: "source",
+      agentServerId: "codex-acp",
+      sessionId,
+      acpSessionId: "acp-session-123",
+      acpSupportsLoadSession: true,
+      acpSupportsResumeSession: true,
+    });
+  });
+
   test("fails an agent node when its session belongs to another agent", async () => {
     const workflow = createWorkflow({
       nodes: [agentNode("source", "source")],

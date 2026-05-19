@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { parse, stringify } from "yaml";
 import type { AgentFlowDoc, CanvasDoc, CanvasLayoutDoc } from "./canvas-doc";
 import { splitCanvasDoc } from "./canvas-store";
+import type { AgentInvocation } from "@specflow/workflow";
 
 export type RunState = "running" | "success" | "error" | "pending";
 
@@ -20,6 +21,7 @@ export interface RunRecord {
   errorMsg?: string;
   nodeStates: Record<string, RunState>;
   nodeOutputs: Record<string, string>;
+  agentInvocations: AgentInvocation[];
   agentflowSnapshot: AgentFlowDoc;
   canvasSnapshot: CanvasLayoutDoc;
   initialInput: string;
@@ -89,6 +91,7 @@ export function formatDuration(startedAt: string, completedAt: string): string {
 
 function normalizeRunRecord(rec: RunRecord): void {
   if (!rec.nodeOutputs) rec.nodeOutputs = {};
+  if (!rec.agentInvocations) rec.agentInvocations = [];
   if (!rec.initialInput) rec.initialInput = "";
   if (!rec.variableValues) rec.variableValues = {};
 

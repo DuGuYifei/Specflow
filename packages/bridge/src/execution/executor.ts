@@ -54,6 +54,10 @@ export interface WorkflowExecutorOptions {
 
 export type AgentRunner = (request: AgentCommandRequest) => Promise<AgentCommandResult>;
 
+export interface WorkflowRunOptions {
+  runId?: string;
+}
+
 interface NodeExecutionResult {
   output: string;
   downstreamInput: string;
@@ -86,13 +90,13 @@ export class WorkflowExecutor {
     return this.#terminalEvents;
   }
 
-  async run(workflow: Workflow, initialInput = ""): Promise<WorkflowRun> {
+  async run(workflow: Workflow, initialInput = "", options: WorkflowRunOptions = {}): Promise<WorkflowRun> {
     const sessionPool = this.#agentRunnerOverride
       ? undefined
       : new AgentProxySessionPool({ root: this.#cwd });
     const agentRunner = this.#agentRunnerOverride ?? ((request: AgentCommandRequest) => sessionPool!.run(request));
     const run: WorkflowRun = {
-      id: crypto.randomUUID(),
+      id: options.runId ?? crypto.randomUUID(),
       workflowId: workflow.id,
       status: "running",
       startedAt: new Date().toISOString(),
@@ -309,6 +313,7 @@ export class WorkflowExecutor {
       run: input.run,
       agentId: input.edge.handoff.agentId,
       sessionId: input.edge.handoff.sessionId,
+      edgeId: input.edge.id,
       prompt,
     });
 
@@ -327,12 +332,15 @@ export class WorkflowExecutor {
     nodeRun?: NodeRun;
     agentId: string;
     sessionId?: string;
+    edgeId?: string;
     prompt: string;
   }): AgentInvocation {
     const invocation: AgentInvocation = {
       id: crypto.randomUUID(),
       runId: input.run.id,
       nodeRunId: input.nodeRun?.id,
+      nodeId: input.nodeRun?.nodeId,
+      edgeId: input.edgeId,
       agentId: input.agentId,
       sessionId: input.sessionId,
       prompt: input.prompt,
@@ -372,6 +380,11 @@ export class WorkflowExecutor {
         });
       },
     });
+
+    input.invocation.agentServerId = result.agentServerId;
+    input.invocation.acpSessionId = result.sessionId;
+    input.invocation.acpSupportsLoadSession = result.initializeResponse?.agentCapabilities?.loadSession ?? false;
+    input.invocation.acpSupportsResumeSession = Boolean(result.initializeResponse?.agentCapabilities?.sessionCapabilities?.resume);
 
     if (result.exitCode !== 0) {
       input.invocation.status = "failed";

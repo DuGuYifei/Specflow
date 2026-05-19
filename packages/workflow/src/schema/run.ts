@@ -37,8 +37,14 @@ export interface AgentInvocation {
   id: string;
   runId: string;
   nodeRunId?: string;
+  nodeId?: string;
+  edgeId?: string;
   agentId: string;
+  agentServerId?: string;
   sessionId?: string;
+  acpSessionId?: string;
+  acpSupportsLoadSession?: boolean;
+  acpSupportsResumeSession?: boolean;
   prompt: string;
   status: "running" | "done" | "failed";
   startedAt: string;

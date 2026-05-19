@@ -21,6 +21,7 @@ describe("run store snapshots", () => {
       agent: "codex-acp",
       nodeStates: { n1: "pending" },
       nodeOutputs: {},
+      agentInvocations: [],
       agentflowSnapshot: agentflow,
       canvasSnapshot: layout,
       initialInput: "",
@@ -51,6 +52,7 @@ describe("run store snapshots", () => {
     await writeFile(join(root, ".specflow", "runs", "legacy-run.yaml"), stringify(legacy), "utf8");
 
     const loaded = await loadRun("legacy-run", root);
+    expect(loaded.agentInvocations).toEqual([]);
     expect(loaded.agentflowSnapshot.id).toBe("wf");
     expect(loaded.agentflowSnapshot.nodes[0]).not.toHaveProperty("x");
     expect(loaded.canvasSnapshot.workflowId).toBe("wf");

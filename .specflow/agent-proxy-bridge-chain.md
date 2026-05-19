@@ -10,7 +10,7 @@ This document records how workflow execution reaches ACP agent CLIs.
 
 ## Call Path
 
-1. `WorkflowExecutor.run(workflow, initialInput)` starts a workflow run.
+1. The server creates the persisted run id and calls `WorkflowExecutor.run(workflow, initialInput, { runId })`.
 2. At the start of the run, bridge creates one `AgentProxySessionPool` unless a custom `agentRunner` was injected for tests or alternate runtimes.
 3. For each agent node, bridge renders the node prompt and creates an `AgentInvocation`.
 4. For each tagged edge with a handoff, bridge renders the edge handoff prompt and creates another `AgentInvocation`.
@@ -47,6 +47,52 @@ That means:
 - Invocations without `workflowSessionId` fall back to a one-shot ACP run.
 - At workflow completion or failure, bridge closes the session pool, which closes ACP sessions and kills subprocesses.
 
+## Persisted Session Metadata
+
+There are two different session identifiers and both matter:
+
+- `sessionId` on `AgentInvocation` is the Specflow workflow session id, for example `s1`.
+- `acpSessionId` on `AgentInvocation` is the real session id returned by the ACP agent CLI from `session/new`.
+
+Bridge records the ACP metadata returned by agent-proxy on every `AgentInvocation`:
+
+```yaml
+agentInvocations:
+  - id: ...
+    agentId: agent-server-codex-acp
+    agentServerId: codex-acp
+    sessionId: s1
+    acpSessionId: <codex-or-claude-session-id>
+    acpSupportsLoadSession: true
+    acpSupportsResumeSession: true
+```
+
+The server persists `agentInvocations` in each run record under `.specflow/runs/*.yaml`.
+
+Run records are the right place for auditability: they answer which external ACP session was used for a specific node or edge handoff during a specific run. They should not be the only storage for long-term resume UX.
+
+The server also maintains a separate session index at `.specflow/agent-sessions.json`, keyed by:
+
+```text
+workflowId + specflowSessionId + agentServerId + acpSessionId
+```
+
+That index points back to run ids and invocation ids, and tracks whether the agent advertised `session/load` and/or `session/resume`.
+
+This split avoids overloading run history:
+
+- Run record: immutable execution fact and audit trail.
+- Session index: browse/search/resume entrypoint across runs.
+
+The index is updated after a workflow run completes and its `agentInvocations` have been written back to the run record. Deleting a run removes that run's invocation references from the index; empty session entries are removed.
+
+The server exposes the index through:
+
+- `GET /api/agent-sessions`
+- `GET /api/agent-sessions?workflowId=<workflow-id>`
+- `GET /api/agent-sessions?agentServerId=<agent-server-id>`
+- `GET /api/agent-sessions/:id`
+
 ## ACP Client Capabilities
 
 The client side currently advertises:
@@ -80,3 +126,22 @@ Permission and elicitation requests default to cancelled when no UI hook is inst
 - Terminal events emitted before failure are preserved in `TerminalEventStore`.
 - A failed pooled ACP session is closed and removed from the pool so later calls do not reuse a compromised process.
 
+## Resume Direction
+
+ACP clients must check advertised capabilities before resuming:
+
+- Use `session/load` only when `InitializeResponse.agentCapabilities.loadSession` is true.
+- Use `session/resume` only when `InitializeResponse.agentCapabilities.sessionCapabilities.resume` is present.
+
+For historical inspection, `session/load` is preferable because it asks the agent to replay prior messages via `session/update`.
+
+For continuing work without replaying history, `session/resume` is the stable primitive. If an agent supports only resume, Specflow can still build a local transcript view from persisted terminal/session updates in a later log store.
+
+The future UI flow should be:
+
+1. User opens a historical run.
+2. User selects a node log or edge handoff.
+3. UI reads that invocation's `agentServerId`, `sessionId`, and `acpSessionId`.
+4. UI asks server to restore the external session.
+5. Server starts the corresponding ACP CLI and calls `session/load` or `session/resume` depending on advertised capability.
+6. Replayed or resumed updates stream back to the log panel over SSE.
