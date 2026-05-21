@@ -15,7 +15,6 @@ import {
   listAgentSessions,
   loadAgentSession,
   recordAgentSessionRestoreAttempt,
-  removeRunFromAgentSessions,
   upsertAgentSessionsFromRun,
 } from "./agent-session-store";
 import { appendRunLogEvent, deleteRunLog, listRunLogEvents } from "./run-log-store";
@@ -452,6 +451,7 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
       nodeStates: initialNodeStates,
       nodeOutputs: {},
       agentInvocations: [],
+      agentSessions: [],
       agentflowSnapshot: agentflow, // store pre-substitution snapshots
       canvasSnapshot: layout,
       initialInput,
@@ -857,7 +857,6 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
       }
       if (request.method === "DELETE") {
         await deleteRun(id, root);
-        await removeRunFromAgentSessions(id, root);
         await deleteRunLog(root, id);
         return Response.json({ ok: true });
       }

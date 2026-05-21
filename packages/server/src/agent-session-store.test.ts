@@ -1,16 +1,14 @@
-import { mkdtemp, mkdir, readFile } from "node:fs/promises";
+import { mkdtemp, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "bun:test";
 import { splitCanvasDoc } from "./canvas-store";
 import type { CanvasDoc } from "./canvas-doc";
 import type { RunRecord } from "./run-store";
+import { deleteRun, loadRun } from "./run-store";
 import {
-  agentSessionsPath,
   listAgentSessions,
-  loadAgentSessionIndex,
   recordAgentSessionRestoreAttempt,
-  removeRunFromAgentSessions,
   upsertAgentSessionsFromRun,
 } from "./agent-session-store";
 
@@ -19,9 +17,9 @@ describe("agent session store", () => {
     const root = await tempProject();
     await upsertAgentSessionsFromRun(sampleRun("run1"), root);
 
-    const raw = JSON.parse(await readFile(agentSessionsPath(root), "utf8")) as Awaited<ReturnType<typeof loadAgentSessionIndex>>;
-    expect(raw.sessions).toHaveLength(1);
-    expect(raw.sessions[0]).toMatchObject({
+    const savedRun = await loadRun("run1", root);
+    expect(savedRun.agentSessions).toHaveLength(1);
+    expect(savedRun.agentSessions[0]).toMatchObject({
       workflowId: "wf",
       specflowSessionId: "s1",
       agentId: "agent-server-codex-acp",
@@ -34,11 +32,11 @@ describe("agent session store", () => {
       runIds: ["run1"],
       invocationIds: ["inv1", "inv2"],
     });
-    expect(raw.sessions[0]?.invocations.map((ref) => ref.nodeId)).toEqual(["n1", "n2"]);
-    expect(raw.sessions[0]?.restoreAttempts).toEqual([]);
+    expect(savedRun.agentSessions[0]?.invocations.map((ref) => ref.nodeId)).toEqual(["n1", "n2"]);
+    expect(savedRun.agentSessions[0]?.restoreAttempts).toEqual([]);
   });
 
-  it("merges later runs into the same ACP session index entry", async () => {
+  it("keeps each run's ACP sessions as separate records", async () => {
     const root = await tempProject();
     await upsertAgentSessionsFromRun(sampleRun("run1"), root);
     await upsertAgentSessionsFromRun(sampleRun("run2", {
@@ -48,35 +46,31 @@ describe("agent session store", () => {
     }), root);
 
     const sessions = await listAgentSessions(root, { workflowId: "wf" });
-    expect(sessions).toHaveLength(1);
-    expect(sessions[0]).toMatchObject({
-      latestRunId: "run2",
-      latestInvocationId: "inv3",
-      acpSupportsLoadSession: true,
-      acpSupportsResumeSession: true,
-      runIds: ["run1", "run2"],
-      invocationIds: ["inv1", "inv2", "inv3"],
-    });
+    expect(sessions).toHaveLength(2);
+    expect(sessions.map((session) => session.latestRunId)).toEqual(["run2", "run1"]);
+    expect(sessions.find((session) => session.latestRunId === "run1")?.runIds).toEqual(["run1"]);
+    expect(sessions.find((session) => session.latestRunId === "run2")?.runIds).toEqual(["run2"]);
+    expect(sessions.find((session) => session.latestRunId === "run2")?.acpSupportsResumeSession).toBe(true);
   });
 
-  it("removes deleted run references from the session index", async () => {
+  it("drops agent sessions when their run record is deleted", async () => {
     const root = await tempProject();
     await upsertAgentSessionsFromRun(sampleRun("run1"), root);
     await upsertAgentSessionsFromRun(sampleRun("run2", { invocationIds: ["inv3"] }), root);
 
-    await removeRunFromAgentSessions("run1", root);
+    await deleteRun("run1", root);
 
     let sessions = await listAgentSessions(root);
     expect(sessions).toHaveLength(1);
     expect(sessions[0]?.runIds).toEqual(["run2"]);
     expect(sessions[0]?.invocationIds).toEqual(["inv3"]);
 
-    await removeRunFromAgentSessions("run2", root);
+    await deleteRun("run2", root);
     sessions = await listAgentSessions(root);
     expect(sessions).toEqual([]);
   });
 
-  it("records restore attempts on the session index", async () => {
+  it("records restore attempts on the run-bound agent session", async () => {
     const root = await tempProject();
     await upsertAgentSessionsFromRun(sampleRun("run1"), root);
     const [session] = await listAgentSessions(root);
@@ -163,6 +157,7 @@ function sampleRun(
       completedAt,
       output: "done",
     })),
+    agentSessions: [],
     agentflowSnapshot: agentflow,
     canvasSnapshot: layout,
     initialInput: "",

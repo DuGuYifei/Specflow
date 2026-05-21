@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, expect, it } from "bun:test";
-import { parse, stringify } from "yaml";
+import { stringify } from "yaml";
 import { loadRun, saveRun, type RunRecord } from "./run-store";
 import type { CanvasDoc } from "./canvas-doc";
 import { splitCanvasDoc } from "./canvas-store";
@@ -22,6 +22,7 @@ describe("run store snapshots", () => {
       nodeStates: { n1: "pending" },
       nodeOutputs: {},
       agentInvocations: [],
+      agentSessions: [],
       agentflowSnapshot: agentflow,
       canvasSnapshot: layout,
       initialInput: "",
@@ -29,9 +30,10 @@ describe("run store snapshots", () => {
     };
 
     await saveRun(record, root);
-    const raw = parse(await readFile(join(root, ".specflow", "runs", "run1.yaml"), "utf8")) as RunRecord;
+    const raw = JSON.parse(await readFile(join(root, ".specflow", "runs", "run1.json"), "utf8")) as RunRecord;
     expect(raw.agentflowSnapshot.nodes[0]).not.toHaveProperty("x");
     expect(raw.canvasSnapshot.nodes[0]).toHaveProperty("nodeId");
+    expect(raw.agentSessions).toEqual([]);
   });
 
   it("adapts legacy run records with combined canvasSnapshot", async () => {
@@ -53,6 +55,7 @@ describe("run store snapshots", () => {
 
     const loaded = await loadRun("legacy-run", root);
     expect(loaded.agentInvocations).toEqual([]);
+    expect(loaded.agentSessions).toEqual([]);
     expect(loaded.agentflowSnapshot.id).toBe("wf");
     expect(loaded.agentflowSnapshot.nodes[0]).not.toHaveProperty("x");
     expect(loaded.canvasSnapshot.workflowId).toBe("wf");

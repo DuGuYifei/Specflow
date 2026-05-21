@@ -145,6 +145,7 @@ function sampleRun(id: string): RunRecord {
       completedAt: "2026-05-19T10:01:00.000Z",
       output: "done",
     }],
+    agentSessions: [],
     agentflowSnapshot: {
       id: "wf",
       name: "Workflow",

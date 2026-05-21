@@ -41,6 +41,7 @@ export interface ApiRunRecord {
   errorMsg?: string;
   nodeStates: Record<string, RunState>;
   nodeOutputs?: Record<string, string>;
+  agentSessions?: AgentSessionRecord[];
   agentflowSnapshot?: AgentFlowDoc;
   canvasSnapshot?: CanvasLayoutDoc | CanvasDoc;
   initialInput?: string;

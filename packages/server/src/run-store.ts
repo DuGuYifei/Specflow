@@ -1,9 +1,10 @@
 import { mkdir, readdir, readFile, writeFile, unlink } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { parse, stringify } from "yaml";
+import { parse } from "yaml";
 import type { AgentFlowDoc, CanvasDoc, CanvasLayoutDoc } from "./canvas-doc";
 import { splitCanvasDoc } from "./canvas-store";
 import type { AgentInvocation } from "@specflow/workflow";
+import type { AgentSessionRecord } from "./agent-session-store";
 
 export type RunState = "running" | "success" | "error" | "pending" | "cancelled";
 
@@ -22,6 +23,7 @@ export interface RunRecord {
   nodeStates: Record<string, RunState>;
   nodeOutputs: Record<string, string>;
   agentInvocations: AgentInvocation[];
+  agentSessions: AgentSessionRecord[];
   agentflowSnapshot: AgentFlowDoc;
   canvasSnapshot: CanvasLayoutDoc;
   initialInput: string;
@@ -33,6 +35,10 @@ function runsDir(root: string) {
 }
 
 function runPath(id: string, root: string) {
+  return join(runsDir(root), `${id}.json`);
+}
+
+function legacyRunPath(id: string, root: string) {
   return join(runsDir(root), `${id}.yaml`);
 }
 
@@ -44,26 +50,38 @@ export async function listRuns(workflowId: string | undefined, root: string): Pr
   } catch {
     return [];
   }
-  const results: RunRecord[] = [];
-  for (const file of files.filter((f) => f.endsWith(".yaml"))) {
+  const runFiles = files
+    .filter((f) => f.endsWith(".json") || f.endsWith(".yaml"))
+    .sort((a, b) => Number(a.endsWith(".yaml")) - Number(b.endsWith(".yaml")));
+  const byId = new Map<string, RunRecord>();
+  for (const file of runFiles) {
     try {
       const raw = await readFile(join(dir, file), "utf8");
-      const rec = parse(raw) as RunRecord;
+      const rec = parseRunRecord(raw, file);
       normalizeRunRecord(rec);
       if (!workflowId || rec.workflowId === workflowId) {
-        results.push(rec);
+        byId.set(rec.id, rec);
       }
     } catch {
       // skip malformed
     }
   }
+  const results = [...byId.values()];
   results.sort((a, b) => b.startedAt.localeCompare(a.startedAt));
   return results;
 }
 
 export async function loadRun(id: string, root: string): Promise<RunRecord> {
-  const raw = await readFile(runPath(id, root), "utf8");
-  const rec = parse(raw) as RunRecord;
+  let raw: string;
+  let path = runPath(id, root);
+  try {
+    raw = await readFile(path, "utf8");
+  } catch (error) {
+    if ((error as { code?: string }).code !== "ENOENT") throw error;
+    path = legacyRunPath(id, root);
+    raw = await readFile(path, "utf8");
+  }
+  const rec = parseRunRecord(raw, path);
   normalizeRunRecord(rec);
   return rec;
 }
@@ -71,12 +89,17 @@ export async function loadRun(id: string, root: string): Promise<RunRecord> {
 export async function saveRun(record: RunRecord, root: string): Promise<void> {
   const path = runPath(record.id, root);
   await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, stringify(record), "utf8");
+  await writeFile(path, `${JSON.stringify(record, null, 2)}\n`, "utf8");
 }
 
 export async function deleteRun(id: string, root: string): Promise<void> {
   try {
     await unlink(runPath(id, root));
+  } catch {
+    // already gone — ok
+  }
+  try {
+    await unlink(legacyRunPath(id, root));
   } catch {
     // already gone — ok
   }
@@ -94,6 +117,7 @@ export function formatDuration(startedAt: string, completedAt: string): string {
 function normalizeRunRecord(rec: RunRecord): void {
   if (!rec.nodeOutputs) rec.nodeOutputs = {};
   if (!rec.agentInvocations) rec.agentInvocations = [];
+  if (!rec.agentSessions) rec.agentSessions = [];
   if (!rec.initialInput) rec.initialInput = "";
   if (!rec.variableValues) rec.variableValues = {};
 
@@ -107,4 +131,10 @@ function normalizeRunRecord(rec: RunRecord): void {
     maybeLegacy.agentflowSnapshot = agentflow;
     maybeLegacy.canvasSnapshot = layout;
   }
+}
+
+function parseRunRecord(raw: string, path: string): RunRecord {
+  return path.endsWith(".json")
+    ? JSON.parse(raw) as RunRecord
+    : parse(raw) as RunRecord;
 }

@@ -1,8 +1,7 @@
 import { createHash } from "node:crypto";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import type { AgentInvocation } from "@specflow/workflow";
-import type { RunRecord } from "./run-store";
+import { listRuns, saveRun, type RunRecord } from "./run-store";
 
 export interface AgentSessionIndex {
   version: 1;
@@ -55,29 +54,23 @@ export function agentSessionsPath(root: string): string {
 }
 
 export async function loadAgentSessionIndex(root: string): Promise<AgentSessionIndex> {
-  try {
-    const raw = await readFile(agentSessionsPath(root), "utf8");
-    const parsed = JSON.parse(raw) as Partial<AgentSessionIndex>;
-    return normalizeAgentSessionIndex(parsed);
-  } catch {
-    return emptyIndex();
-  }
+  return { version: 1, sessions: await listAgentSessions(root) };
 }
 
 export async function listAgentSessions(
   root: string,
   filter: { workflowId?: string; agentServerId?: string } = {},
 ): Promise<AgentSessionRecord[]> {
-  const index = await loadAgentSessionIndex(root);
-  return index.sessions
+  const runs = await listRuns(filter.workflowId, root);
+  return runs
+    .flatMap((run) => agentSessionsForRun(run))
     .filter((session) => !filter.workflowId || session.workflowId === filter.workflowId)
     .filter((session) => !filter.agentServerId || session.agentServerId === filter.agentServerId)
     .sort((a, b) => b.lastSeenAt.localeCompare(a.lastSeenAt));
 }
 
 export async function loadAgentSession(root: string, id: string): Promise<AgentSessionRecord> {
-  const index = await loadAgentSessionIndex(root);
-  const session = index.sessions.find((candidate) => candidate.id === id);
+  const session = (await listAgentSessions(root)).find((candidate) => candidate.id === id);
   if (!session) {
     throw new Error(`Agent session "${id}" not found.`);
   }
@@ -85,15 +78,19 @@ export async function loadAgentSession(root: string, id: string): Promise<AgentS
 }
 
 export async function upsertAgentSessionsFromRun(record: RunRecord, root: string): Promise<void> {
-  const index = await loadAgentSessionIndex(root);
-  const byId = new Map(index.sessions.map((session) => [session.id, session]));
+  record.agentSessions = buildAgentSessionsForRun(record);
+  await saveRun(record, root);
+}
 
+export function buildAgentSessionsForRun(record: RunRecord): AgentSessionRecord[] {
+  const byId = new Map<string, AgentSessionRecord>();
   for (const invocation of record.agentInvocations) {
     if (!invocation.agentServerId || !invocation.acpSessionId) {
       continue;
     }
 
     const id = createAgentSessionRecordId({
+      runId: record.id,
       workflowId: record.workflowId,
       specflowSessionId: invocation.sessionId,
       agentServerId: invocation.agentServerId,
@@ -150,36 +147,7 @@ export async function upsertAgentSessionsFromRun(record: RunRecord, root: string
     upsertInvocationRef(existing.invocations, ref);
   }
 
-  await saveAgentSessionIndex({ version: 1, sessions: sortedSessions([...byId.values()]) }, root);
-}
-
-export async function removeRunFromAgentSessions(runId: string, root: string): Promise<void> {
-  const index = await loadAgentSessionIndex(root);
-  const sessions = index.sessions
-    .map((session) => {
-      const invocations = session.invocations.filter((ref) => ref.runId !== runId);
-      if (invocations.length === 0) {
-        return undefined;
-      }
-
-      const runIds = unique(invocations.map((ref) => ref.runId));
-      const invocationIds = unique(invocations.map((ref) => ref.invocationId));
-      const latest = [...invocations].sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0]!;
-      return {
-        ...session,
-        firstSeenAt: invocations.reduce((min, ref) => minIso(min, ref.startedAt), invocations[0]!.startedAt),
-        lastSeenAt: invocations.reduce((max, ref) => (ref.completedAt ?? ref.startedAt) > max ? (ref.completedAt ?? ref.startedAt) : max, invocations[0]!.completedAt ?? invocations[0]!.startedAt),
-        latestRunId: latest.runId,
-        latestInvocationId: latest.invocationId,
-        latestStatus: latest.status,
-        runIds,
-        invocationIds,
-        invocations,
-      } satisfies AgentSessionRecord;
-    })
-    .filter((session): session is AgentSessionRecord => Boolean(session));
-
-  await saveAgentSessionIndex({ version: 1, sessions: sortedSessions(sessions) }, root);
+  return sortedSessions([...byId.values()]);
 }
 
 export async function recordAgentSessionRestoreAttempt(
@@ -187,11 +155,15 @@ export async function recordAgentSessionRestoreAttempt(
   sessionId: string,
   attempt: AgentSessionRestoreAttempt,
 ): Promise<AgentSessionRestoreAttempt> {
-  const index = await loadAgentSessionIndex(root);
-  const session = index.sessions.find((candidate) => candidate.id === sessionId);
-  if (!session) {
-    throw new Error(`Agent session "${sessionId}" not found.`);
+  const runs = await listRuns(undefined, root);
+  const run = runs.find((candidate) =>
+    agentSessionsForRun(candidate).some((session) => session.id === sessionId),
+  );
+  if (run && run.agentSessions.length === 0) {
+    run.agentSessions = buildAgentSessionsForRun(run);
   }
+  const session = run?.agentSessions.find((candidate) => candidate.id === sessionId);
+  if (!run || !session) throw new Error(`Agent session "${sessionId}" not found.`);
 
   const existingIndex = session.restoreAttempts.findIndex((candidate) => candidate.id === attempt.id);
   if (existingIndex >= 0) {
@@ -200,20 +172,12 @@ export async function recordAgentSessionRestoreAttempt(
     session.restoreAttempts.push(attempt);
   }
   session.restoreAttempts.sort((a, b) => a.startedAt.localeCompare(b.startedAt));
-  await saveAgentSessionIndex(index, root);
+  await saveRun(run, root);
   return attempt;
 }
 
-export async function saveAgentSessionIndex(index: AgentSessionIndex, root: string): Promise<void> {
-  const path = agentSessionsPath(root);
-  await mkdir(dirname(path), { recursive: true });
-  const normalized = normalizeAgentSessionIndex(index);
-  const tmpPath = `${path}.tmp`;
-  await writeFile(tmpPath, `${JSON.stringify(normalized, null, 2)}\n`, "utf8");
-  await rename(tmpPath, path);
-}
-
 export function createAgentSessionRecordId(input: {
+  runId: string;
   workflowId: string;
   specflowSessionId?: string;
   agentServerId: string;
@@ -221,6 +185,7 @@ export function createAgentSessionRecordId(input: {
 }): string {
   return createHash("sha256")
     .update(JSON.stringify([
+      input.runId,
       input.workflowId,
       input.specflowSessionId ?? null,
       input.agentServerId,
@@ -230,32 +195,12 @@ export function createAgentSessionRecordId(input: {
     .slice(0, 24);
 }
 
-function normalizeAgentSessionIndex(input: Partial<AgentSessionIndex>): AgentSessionIndex {
-  return {
-    version: 1,
-    sessions: sortedSessions((input.sessions ?? []).map(normalizeAgentSessionRecord)),
-  };
-}
-
-function normalizeAgentSessionRecord(input: AgentSessionRecord): AgentSessionRecord {
-  const invocations = input.invocations ?? [];
-  return {
-    ...input,
-    acpSupportsLoadSession: Boolean(input.acpSupportsLoadSession),
-    acpSupportsResumeSession: Boolean(input.acpSupportsResumeSession),
-    runIds: unique(input.runIds ?? invocations.map((ref) => ref.runId)),
-    invocationIds: unique(input.invocationIds ?? invocations.map((ref) => ref.invocationId)),
-    invocations,
-    restoreAttempts: input.restoreAttempts ?? [],
-  };
-}
-
-function emptyIndex(): AgentSessionIndex {
-  return { version: 1, sessions: [] };
-}
-
 function sortedSessions(sessions: AgentSessionRecord[]): AgentSessionRecord[] {
   return sessions.sort((a, b) => b.lastSeenAt.localeCompare(a.lastSeenAt));
+}
+
+function agentSessionsForRun(run: RunRecord): AgentSessionRecord[] {
+  return run.agentSessions.length > 0 ? run.agentSessions : buildAgentSessionsForRun(run);
 }
 
 function upsertInvocationRef(refs: AgentSessionInvocationRef[], ref: AgentSessionInvocationRef): void {
@@ -272,10 +217,6 @@ function addUnique(values: string[], value: string): void {
   if (!values.includes(value)) {
     values.push(value);
   }
-}
-
-function unique(values: string[]): string[] {
-  return [...new Set(values)];
 }
 
 function minIso(a: string, b: string): string {
