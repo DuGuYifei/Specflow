@@ -259,7 +259,7 @@ export class AcpAgentSession {
       const promptResult = await this.#client.connection.prompt({
         sessionId,
         messageId: request.messageId,
-        prompt: request.promptBlocks ?? [{ type: "text", text: request.prompt }],
+        prompt: preparePromptBlocks(request, this.#initializeResponse),
       });
       request.onLifecycleEvent?.({
         type: "prompt_stopped",
@@ -382,7 +382,7 @@ export async function runAcpAgent(
     const promptResult = await client.connection.prompt({
       sessionId,
       messageId: request.messageId,
-      prompt: request.promptBlocks ?? [{ type: "text", text: request.prompt }],
+      prompt: preparePromptBlocks(request, initializeResponse),
     });
     request.onLifecycleEvent?.({
       type: "prompt_stopped",
@@ -597,6 +597,76 @@ function selectOptionValues(option: Extract<acp.SessionConfigOption, { type: "se
     for (const child of entry.options) values.add(child.value);
   }
   return values;
+}
+
+function preparePromptBlocks(
+  request: Pick<AgentRunRequest, "prompt" | "promptBlocks">,
+  initializeResponse: acp.InitializeResponse | undefined,
+): acp.ContentBlock[] {
+  const blocks = request.promptBlocks ?? [{ type: "text", text: request.prompt } satisfies acp.ContentBlock];
+  const capabilities = initializeResponse?.agentCapabilities?.promptCapabilities;
+
+  return blocks.map((block) => {
+    if (block.type === "text" || block.type === "resource_link") {
+      return block;
+    }
+
+    if (block.type === "image") {
+      if (capabilities?.image) return block;
+      return resourceLinkFromPromptBlock(block.uri, "image", block.mimeType);
+    }
+
+    if (block.type === "audio") {
+      if (capabilities?.audio) return block;
+      return resourceLinkFromPromptBlock(
+        metaString(block._meta, "specflowUri"),
+        metaString(block._meta, "specflowName") ?? "audio",
+        block.mimeType,
+      );
+    }
+
+    if (block.type === "resource") {
+      if (capabilities?.embeddedContext) return block;
+      const resource = block.resource;
+      return {
+        type: "resource_link",
+        uri: resource.uri,
+        name: nameFromUri(resource.uri),
+        mimeType: resource.mimeType ?? null,
+      };
+    }
+
+    return block;
+  });
+}
+
+function resourceLinkFromPromptBlock(
+  uri: string | null | undefined,
+  name: string,
+  mimeType: string | null | undefined,
+): acp.ContentBlock {
+  return {
+    type: "resource_link",
+    uri: uri ?? `specflow:${name}`,
+    name: uri ? nameFromUri(uri) : name,
+    mimeType: mimeType ?? null,
+  };
+}
+
+function nameFromUri(uri: string): string {
+  try {
+    const url = new URL(uri);
+    const lastSegment = url.pathname.split("/").filter(Boolean).at(-1);
+    return lastSegment ? decodeURIComponent(lastSegment) : uri;
+  } catch {
+    const lastSegment = uri.split("/").filter(Boolean).at(-1);
+    return lastSegment ?? uri;
+  }
+}
+
+function metaString(meta: Record<string, unknown> | null | undefined, key: string): string | undefined {
+  const value = meta?.[key];
+  return typeof value === "string" ? value : undefined;
 }
 
 async function onceExit(child: ChildProcessWithoutNullStreams): Promise<void> {

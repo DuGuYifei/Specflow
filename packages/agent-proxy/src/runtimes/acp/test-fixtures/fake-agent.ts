@@ -8,6 +8,10 @@ class FakeAgent implements acp.Agent {
     .split(",")
     .map((value) => value.trim())
     .filter(Boolean));
+  readonly #promptCapabilities = new Set((process.env.SPECFLOW_FAKE_ACP_PROMPT_CAPABILITIES ?? "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean));
 
   constructor(connection: acp.AgentSideConnection) {
     this.#connection = connection;
@@ -18,6 +22,11 @@ class FakeAgent implements acp.Agent {
       protocolVersion: acp.PROTOCOL_VERSION,
       agentCapabilities: {
         loadSession: this.#restoreCapabilities.has("load"),
+        promptCapabilities: {
+          image: this.#promptCapabilities.has("image"),
+          audio: this.#promptCapabilities.has("audio"),
+          embeddedContext: this.#promptCapabilities.has("embeddedContext"),
+        },
         sessionCapabilities: {
           close: {},
           ...(this.#restoreCapabilities.has("resume") ? { resume: {} } : {}),
@@ -93,6 +102,7 @@ class FakeAgent implements acp.Agent {
 
     await this.#sendText(sessionId, `turn:${session.promptCount}\n`);
     await this.#sendText(sessionId, `prompt:${text}\n`);
+    await this.#sendText(sessionId, `blocks:${params.prompt.map((block) => block.type).join(",")}\n`);
 
     const file = await this.#connection.readTextFile({
       sessionId,

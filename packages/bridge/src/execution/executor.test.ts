@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { AgentCommandRequest, AgentCommandResult } from "@specflow/agent-proxy";
 import type {
   AgentNode,
@@ -37,6 +40,60 @@ describe("WorkflowExecutor", () => {
     expect(run.status).toBe("done");
     expect(prompts).toEqual(["first start", "second first output"]);
     expect(run.nodeRuns.map((nodeRun) => nodeRun.nodeId)).toEqual(["first", "second"]);
+  });
+
+  test("sends node attachments as ACP content blocks", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "specflow-prompt-blocks-"));
+    await writeFile(join(cwd, "screenshot.png"), new Uint8Array([1, 2, 3]));
+    await writeFile(join(cwd, "note.txt"), "hello text", "utf8");
+    await writeFile(join(cwd, "capture.wav"), new Uint8Array([4, 5, 6]));
+    await writeFile(join(cwd, "archive.bin"), new Uint8Array([7, 8, 9]));
+
+    let promptBlocks: AgentCommandRequest["promptBlocks"];
+    const node = agentNode("source", "inspect <specflow_input>");
+    node.attachments = [
+      { id: "img", kind: "image", path: "screenshot.png", label: "screenshot.png" },
+      { id: "note", kind: "file", path: "note.txt", label: "note.txt" },
+      { id: "audio", kind: "file", path: "capture.wav", label: "capture.wav" },
+      { id: "bin", kind: "file", path: "archive.bin", label: "archive.bin" },
+    ];
+
+    const executor = new WorkflowExecutor({
+      cwd,
+      agentRunner: async (request) => {
+        promptBlocks = request.promptBlocks;
+        return { agentServerId: request.agentServerId, exitCode: 0, output: "done" };
+      },
+    });
+
+    await executor.run(createWorkflow({ nodes: [node], edges: [] }), "target");
+
+    expect(promptBlocks?.map((block) => block.type)).toEqual([
+      "text",
+      "image",
+      "resource",
+      "audio",
+      "resource",
+    ]);
+    expect(promptBlocks?.[0]).toMatchObject({ type: "text", text: "inspect target" });
+    expect(promptBlocks?.[1]).toMatchObject({
+      type: "image",
+      mimeType: "image/png",
+      data: Buffer.from([1, 2, 3]).toString("base64"),
+    });
+    expect(promptBlocks?.[2]).toMatchObject({
+      type: "resource",
+      resource: { text: "hello text", mimeType: "text/plain" },
+    });
+    expect(promptBlocks?.[3]).toMatchObject({
+      type: "audio",
+      mimeType: "audio/wav",
+      data: Buffer.from([4, 5, 6]).toString("base64"),
+    });
+    expect(promptBlocks?.[4]).toMatchObject({
+      type: "resource",
+      resource: { blob: Buffer.from([7, 8, 9]).toString("base64") },
+    });
   });
 
   test("runs only the selected gate branch", async () => {

@@ -25,6 +25,7 @@ import {
   renderHandoffPrompt,
   renderNodePrompt,
 } from "./prompt-renderer";
+import { buildPromptBlocksForNode } from "./prompt-blocks";
 import { DeterministicGateEvaluator, type GateEvaluator } from "./gate-evaluator";
 import { TerminalEventStore } from "./terminal-store";
 import { RunInteractionStore, type RunInteractionContext } from "./interaction-store";
@@ -313,6 +314,11 @@ export class WorkflowExecutor {
       input: input.input,
       edgeValues: input.edgeValues,
     });
+    const promptBlocks = await buildPromptBlocksForNode({
+      node: input.node,
+      prompt,
+      cwd: this.#cwd,
+    });
 
     const invocation = this.#createInvocation({
       run: input.run,
@@ -332,6 +338,7 @@ export class WorkflowExecutor {
       invocation,
       agentId: input.node.agentId,
       prompt,
+      promptBlocks,
       signal: input.signal,
     });
 
@@ -409,6 +416,7 @@ export class WorkflowExecutor {
     invocation: AgentInvocation;
     agentId: string;
     prompt: string;
+    promptBlocks?: AgentCommandRequest["promptBlocks"];
     signal?: AbortSignal;
   }): Promise<string> {
     throwIfCancelled(input.signal);
@@ -420,6 +428,7 @@ export class WorkflowExecutor {
     const result = await input.agentRunner({
       agentServerId: resolveAgentServerId(agent),
       prompt: input.prompt,
+      promptBlocks: input.promptBlocks,
       cwd: this.#cwd,
       runId: input.run.id,
       workflowSessionId: input.invocation.sessionId,

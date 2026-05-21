@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { restoreAcpAgentSession, runAcpAgent } from "./connection";
-import type { ResolvedAgentServer } from "../../types";
+import type { AgentRunRequest, ResolvedAgentServer } from "../../types";
 
 const fakeAgentPath = fileURLToPath(new URL("./test-fixtures/fake-agent.ts", import.meta.url));
 
@@ -73,6 +73,80 @@ describe("runAcpAgent", () => {
 
     expect(result.exitCode).toBe(1);
     expect(result.output).toContain('config option "reasoning" value "low"');
+  });
+
+  it("downgrades unsupported binary prompt blocks to resource links", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "specflow-acp-"));
+    await writeFile(join(cwd, "input.txt"), "file-content", "utf8");
+    const promptBlocks: AgentRunRequest["promptBlocks"] = [
+      { type: "text", text: "inspect" },
+      {
+        type: "image",
+        data: Buffer.from([1, 2, 3]).toString("base64"),
+        mimeType: "image/png",
+        uri: "file:///tmp/screenshot.png",
+      },
+      {
+        type: "audio",
+        data: Buffer.from([4, 5, 6]).toString("base64"),
+        mimeType: "audio/wav",
+        _meta: { specflowUri: "file:///tmp/capture.wav", specflowName: "capture.wav" },
+      },
+      {
+        type: "resource",
+        resource: {
+          uri: "file:///tmp/archive.bin",
+          blob: Buffer.from([7, 8, 9]).toString("base64"),
+          mimeType: "application/octet-stream",
+        },
+      },
+    ];
+
+    const result = await runAcpAgent(resolved(), {
+      agentServerId: "fake-acp",
+      cwd,
+      prompt: "inspect",
+      promptBlocks,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toContain("blocks:text,resource_link,resource_link,resource_link");
+  });
+
+  it("keeps binary prompt blocks when the agent advertises support", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "specflow-acp-"));
+    await writeFile(join(cwd, "input.txt"), "file-content", "utf8");
+
+    const result = await runAcpAgent(resolved({ promptCapabilities: "image,audio,embeddedContext" }), {
+      agentServerId: "fake-acp",
+      cwd,
+      prompt: "inspect",
+      promptBlocks: [
+        { type: "text", text: "inspect" },
+        {
+          type: "image",
+          data: Buffer.from([1, 2, 3]).toString("base64"),
+          mimeType: "image/png",
+          uri: "file:///tmp/screenshot.png",
+        },
+        {
+          type: "audio",
+          data: Buffer.from([4, 5, 6]).toString("base64"),
+          mimeType: "audio/wav",
+        },
+        {
+          type: "resource",
+          resource: {
+            uri: "file:///tmp/archive.bin",
+            blob: Buffer.from([7, 8, 9]).toString("base64"),
+            mimeType: "application/octet-stream",
+          },
+        },
+      ],
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toContain("blocks:text,image,audio,resource");
   });
 });
 
@@ -143,6 +217,7 @@ describe("restoreAcpAgentSession", () => {
 
 function resolved(options: {
   restoreCapabilities?: string;
+  promptCapabilities?: string;
   settings?: Partial<Extract<ResolvedAgentServer["settings"], { type: "custom" }>>;
 } = {}): ResolvedAgentServer {
   return {
@@ -160,7 +235,10 @@ function resolved(options: {
     command: {
       command: "bun",
       args: [fakeAgentPath],
-      env: options.restoreCapabilities ? { SPECFLOW_FAKE_ACP_RESTORE: options.restoreCapabilities } : undefined,
+      env: {
+        ...(options.restoreCapabilities ? { SPECFLOW_FAKE_ACP_RESTORE: options.restoreCapabilities } : {}),
+        ...(options.promptCapabilities ? { SPECFLOW_FAKE_ACP_PROMPT_CAPABILITIES: options.promptCapabilities } : {}),
+      },
     },
   };
 }
