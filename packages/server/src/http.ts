@@ -71,7 +71,7 @@ function startHttpServer({ bridge, devUi, host, preferredPort, handleApi }: Http
         hostname: host,
         port,
         reusePort: false,
-        async fetch(request) {
+        async fetch(request, server) {
           const url = new URL(request.url);
 
           if (url.pathname === "/api/health") {
@@ -84,7 +84,12 @@ function startHttpServer({ bridge, devUi, host, preferredPort, handleApi }: Http
           }
 
           const apiResponse = await handleApi(request);
-          if (apiResponse) return apiResponse;
+          if (apiResponse) {
+            if (apiResponse.headers.get("content-type")?.startsWith("text/event-stream")) {
+              server.timeout(request, 0);
+            }
+            return apiResponse;
+          }
 
           if (devUi) {
             return devUi.fetch(request);
