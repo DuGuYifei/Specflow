@@ -41,6 +41,47 @@ function edgeMid(from: { x: number; y: number }, to: { x: number; y: number }, l
 
 const NODE_H: Record<string, number> = { step: 120, gate: 110, end: 36, input: 72 };
 
+export interface CanvasFitResult {
+  zoom: number;
+  pan: { x: number; y: number };
+}
+
+export function calculateCanvasFit(nodes: WorkflowNode[], viewport: { width: number; height: number }): CanvasFitResult | null {
+  if (nodes.length === 0 || viewport.width <= 0 || viewport.height <= 0) return null;
+
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const n of nodes) {
+    const w = n.w || 220;
+    const h = NODE_H[n.kind] ?? 120;
+    minX = Math.min(minX, n.x);
+    minY = Math.min(minY, n.y);
+    maxX = Math.max(maxX, n.x + w);
+    maxY = Math.max(maxY, n.y + h);
+  }
+
+  const leftAnchor = 96;
+  const rightPad = 48;
+  const verticalPad = 48;
+  const usableWidth = Math.max(1, viewport.width - leftAnchor - rightPad);
+  const usableHeight = Math.max(1, viewport.height - verticalPad * 2);
+  const boundsWidth = Math.max(1, maxX - minX);
+  const boundsHeight = Math.max(1, maxY - minY);
+  const zoom = Math.min(1.4, Math.max(0.3, Math.min(
+    usableWidth / boundsWidth,
+    usableHeight / boundsHeight,
+  )));
+  const centerY = (minY + maxY) / 2;
+  const targetY = verticalPad + usableHeight / 2;
+
+  return {
+    zoom,
+    pan: {
+      x: leftAnchor - minX * zoom,
+      y: targetY - centerY * zoom,
+    },
+  };
+}
+
 // ── node cards ────────────────────────────────────────────────────────────────
 
 interface StepCardProps {
@@ -305,27 +346,13 @@ export function Canvas({
 
   const fitToView = useCallback(() => {
     if (!wrapRef.current || nodes.length === 0) return;
-    const cw = wrapRef.current.clientWidth;
-    const ch = wrapRef.current.clientHeight;
-
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    for (const n of nodes) {
-      const w = n.w || 220;
-      const h = NODE_H[n.kind] ?? 120;
-      minX = Math.min(minX, n.x);
-      minY = Math.min(minY, n.y);
-      maxX = Math.max(maxX, n.x + w);
-      maxY = Math.max(maxY, n.y + h);
-    }
-
-    const pad = 64;
-    const z = Math.min(1.4, Math.max(0.3,
-      Math.min((cw - pad * 2) / (maxX - minX), (ch - pad * 2) / (maxY - minY)),
-    ));
-    const cx = (minX + maxX) / 2;
-    const cy = (minY + maxY) / 2;
-    setZoom(z);
-    setPan({ x: cw / 2 - cx * z, y: ch / 2 - cy * z });
+    const fit = calculateCanvasFit(nodes, {
+      width: wrapRef.current.clientWidth,
+      height: wrapRef.current.clientHeight,
+    });
+    if (!fit) return;
+    setZoom(fit.zoom);
+    setPan(fit.pan);
   }, [nodes, setZoom, setPan]);
 
   useEffect(() => {
