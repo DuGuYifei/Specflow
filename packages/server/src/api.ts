@@ -181,6 +181,16 @@ async function listAgentServerEntries(bridge: SpecflowBridge, root: string): Pro
   return bridge.listAgentServers(root);
 }
 
+async function ensureRegistryAgentServersInstalled(
+  bridge: SpecflowBridge,
+  root: string,
+  entries: AgentServerEntry[],
+): Promise<void> {
+  await Promise.all(entries
+    .filter((entry) => entry.settings.type === "registry")
+    .map((entry) => bridge.ensureAgentServerInstalled(root, entry.id)));
+}
+
 function redactAgentServerSettings(settings: AgentServerSettings): AgentServerSettings {
   if (!settings.env) return settings;
   return {
@@ -744,7 +754,9 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
 
     // GET /api/agent-servers
     if (request.method === "GET" && pathname === "/api/agent-servers") {
-      return Response.json(redactAgentServerEntries(await listAgentServerEntries(bridge, root)));
+      const entries = await listAgentServerEntries(bridge, root);
+      await ensureRegistryAgentServersInstalled(bridge, root, entries);
+      return Response.json(redactAgentServerEntries(entries));
     }
 
     // GET /api/agent-servers/registry

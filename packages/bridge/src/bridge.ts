@@ -36,6 +36,7 @@ export interface SpecflowBridge {
   restoreAgentSession(request: AgentRestoreRequest): Promise<AgentRestoreResult>;
   inspectAgentAuthentication(root: string, agentServerId: string): Promise<AgentAuthenticationStatus>;
   authenticateAgentServer(root: string, agentServerId: string, methodId: string): Promise<AgentAuthenticationStatus>;
+  ensureAgentServerInstalled(root: string, agentServerId: string): Promise<void>;
   listAgentServers(root: string): Promise<AgentServerEntry[]>;
   listAgentRegistry(root: string): Promise<RegistryIndex>;
 }
@@ -54,6 +55,7 @@ export function createSpecflowBridge(): SpecflowBridge {
     restoreAgentSession,
     inspectAgentAuthentication,
     authenticateAgentServer,
+    ensureAgentServerInstalled,
     listAgentServers,
     listAgentRegistry,
   };
@@ -61,6 +63,10 @@ export function createSpecflowBridge(): SpecflowBridge {
 
 async function listAgentServers(root: string): Promise<AgentServerEntry[]> {
   return new AgentServerStore({ root }).listAgentServers();
+}
+
+async function ensureAgentServerInstalled(root: string, agentServerId: string): Promise<void> {
+  await new AgentServerStore({ root }).resolve(agentServerId);
 }
 
 async function listAgentRegistry(root: string): Promise<RegistryIndex> {

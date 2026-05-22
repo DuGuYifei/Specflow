@@ -88,14 +88,18 @@ describe("agent server API", () => {
     expect((await loadLocalAgentServerConfig(root)).agent_servers["my-custom"]).toBeUndefined();
   });
 
-  test("does not read the registry while listing or saving configured servers", async () => {
+  test("ensures configured registry servers on startup listing without using the browser registry endpoint", async () => {
     const root = await mkdtemp(join(tmpdir(), "specflow-agent-server-api-"));
     let registryReads = 0;
+    const ensured: string[] = [];
     const bridge = {
       ...createSpecflowBridge(),
       listAgentRegistry: async () => {
         registryReads += 1;
         throw new Error("registry should be read only by the explicit registry endpoint");
+      },
+      ensureAgentServerInstalled: async (_root: string, id: string) => {
+        ensured.push(id);
       },
     };
     const handle = createApiHandler(bridge, root);
@@ -116,6 +120,7 @@ describe("agent server API", () => {
     const listed = await handle(new Request("http://specflow.test/api/agent-servers"));
     expect(listed?.status).toBe(200);
     expect(registryReads).toBe(0);
+    expect(ensured).toEqual(["codex-acp"]);
   });
 
   test("fetches the registry browser index without creating the agent cache", async () => {
