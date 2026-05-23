@@ -69,7 +69,7 @@ export function canvasToWorkflow(doc: AgentFlowDoc): Workflow {
           promptTemplate: { template: n.gateDesc ?? "" },
           decisionCriteria: n.gateDesc ?? "",
           inputVariable: "specflow_input",
-          branches: n.branches.map((b) => ({ id: b.id, label: b.label, color: b.color })),
+          branches: n.branches.map((b) => ({ id: b.id, label: b.label })),
         } satisfies GateNode;
       }
       throw new Error(`Unknown node kind: ${(n as { kind: string }).kind}`);

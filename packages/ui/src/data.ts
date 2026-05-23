@@ -9,11 +9,11 @@ export interface SpecflowData {
 }
 
 const sessions: Session[] = [
-  { id: 's1', name: 'parser',    color: 'oklch(0.78 0.13 45)',  agentServerId: 'claude-acp' },
-  { id: 's2', name: 'builder',   color: 'oklch(0.74 0.13 145)', agentServerId: 'claude-acp' },
-  { id: 's3', name: 'reviewer',  color: 'oklch(0.74 0.13 230)', agentServerId: 'codex-acp' },
-  { id: 's4', name: 'interview', color: 'oklch(0.74 0.13 300)', agentServerId: 'claude-acp' },
-  { id: 's5', name: 'plan-code', color: 'oklch(0.78 0.13 80)',  agentServerId: 'claude-acp' },
+  { id: 's1', name: 'parser',    agentServerId: 'claude-acp' },
+  { id: 's2', name: 'builder',   agentServerId: 'claude-acp' },
+  { id: 's3', name: 'reviewer',  agentServerId: 'codex-acp' },
+  { id: 's4', name: 'interview', agentServerId: 'claude-acp' },
+  { id: 's5', name: 'plan-code', agentServerId: 'claude-acp' },
 ];
 
 const nodes: WorkflowNode[] = [
@@ -42,9 +42,9 @@ const nodes: WorkflowNode[] = [
     title: 'Component review verdict',
     gateDesc: 'Decide whether the generated component faithfully matches the ticket screenshot. Choose pass when visual regressions are absent and intent is preserved; rework when meaningful divergence remains.',
     branches: [
-      { id: 'pass',   label: 'pass',   color: 'oklch(0.62 0.11 145)' },
-      { id: 'rework', label: 'rework', color: 'oklch(0.72 0.13 80)'  },
-      { id: 'fail',   label: 'fail',   color: 'oklch(0.58 0.16 25)'  },
+      { id: 'pass', label: 'pass' },
+      { id: 'rework', label: 'rework' },
+      { id: 'fail', label: 'fail' },
     ],
     sessionId: 's3' },
 
@@ -80,9 +80,9 @@ const nodes: WorkflowNode[] = [
     title: 'Implementation verdict',
     gateDesc: 'Decide whether implementation passes review. Pass when tests, lint, types green and acceptance criteria met; rework when fixable; replan when scope or approach was wrong.',
     branches: [
-      { id: 'pass',   label: 'pass',   color: 'oklch(0.62 0.11 145)' },
-      { id: 'rework', label: 'rework', color: 'oklch(0.72 0.13 80)'  },
-      { id: 'replan', label: 'replan', color: 'oklch(0.62 0.13 230)' },
+      { id: 'pass', label: 'pass' },
+      { id: 'rework', label: 'rework' },
+      { id: 'replan', label: 'replan' },
     ],
     sessionId: 's3' },
 

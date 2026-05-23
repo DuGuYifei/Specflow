@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import type { Session, WorkflowNode, LogLine, Variable } from '../types';
 import type { AgentServerEntry, AgentSessionRecord, RestoreMode } from '../api';
 import { Icon } from './icon';
+import { isSymbolKey, sessionAccent } from '../appearance';
 
 const UNSCOPED_SESSION_FILTER = '__unscoped__';
 
@@ -90,7 +91,7 @@ export function SessionsBar({
           <span style={{ fontSize: 10.5, color: 'var(--ink-3)' }}>activity:</span>
           {sessions.slice(0, 4).map((s) => (
             <span key={s.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10.5, color: 'var(--ink-2)' }}>
-              <span className="ses-dot" style={{ width: 6, height: 6, borderRadius: 2, background: s.color }} />{s.name}
+              <span className="ses-dot" style={{ width: 6, height: 6, borderRadius: 2, background: sessionAccent(s) }} />{s.name}
             </span>
           ))}
         </div>
@@ -241,10 +242,10 @@ function LogsTab({ sessions, activeSession, setActiveSessionId, stepNodes, logLi
     <div className="sessions-body logs">
       <div className="term-pane">
         <div className="term-header">
-          <span className="ses-dot" style={{ width: 8, height: 8, borderRadius: 2, background: activeSession?.color }} />
+          <span className="ses-dot" style={{ width: 8, height: 8, borderRadius: 2, background: activeSession ? sessionAccent(activeSession) : 'var(--ink-3)' }} />
           <strong style={{ fontSize: 11.5 }}>{activeSession?.name}</strong>
           <span className="agent-badge">
-            <span className="dot" style={{ background: activeSession?.color }} />{activeSession?.agentServerId ?? activeSession?.agent}
+            <span className="dot" style={{ background: activeSession ? sessionAccent(activeSession) : 'var(--ink-3)' }} />{activeSession?.agentServerId ?? activeSession?.agent}
           </span>
           <span style={{ color: 'var(--ink-3)', fontSize: 10.5, fontFamily: 'var(--font-mono)' }}>
             · {stepNodes.filter((n) => n.kind === 'step' && n.sessionId === activeSession?.id).length} nodes
@@ -294,7 +295,7 @@ function LogsTab({ sessions, activeSession, setActiveSessionId, stepNodes, logLi
                 className={`term-ses-item${isActive ? ' active' : ''}`}
                 onClick={() => setActiveSessionId(s.id)}
               >
-                <span className="ses-dot" style={{ background: s.color }} />
+                <span className="ses-dot" style={{ background: sessionAccent(s) }} />
                 <span className="name">{s.name}</span>
                 <span className="count">{count}</span>
                 <button
@@ -608,7 +609,7 @@ function SettingsTab({ sessions, stepNodes, onAssignSession, addSessionPing, onA
   const handleAdd = () => {
     if (readonly) return;
     const name = (inputRef.current?.value ?? draftName).trim();
-    if (!name) return;
+    if (!isSymbolKey(name) || sessions.some((session) => session.id === name)) return;
     onAddSession(name, draftAgent);
     setDraftName('');
   };
@@ -626,7 +627,7 @@ function SettingsTab({ sessions, stepNodes, onAssignSession, addSessionPing, onA
 
   const saveEdit = () => {
     const name = editingName.trim();
-    if (!editingId || !name || readonly) return;
+    if (!editingId || !isSymbolKey(name) || sessions.some((session) => session.id === name && session.id !== editingId) || readonly) return;
     onEditSession(editingId, { name, agentServerId: editingAgent });
     cancelEdit();
   };
@@ -653,6 +654,9 @@ function SettingsTab({ sessions, stepNodes, onAssignSession, addSessionPing, onA
           ))}
         </select>
         <button className="btn sm primary" disabled={readonly} onClick={handleAdd}><Icon name="plus" size={11} />Add</button>
+        {draftName && (!isSymbolKey(draftName.trim()) || sessions.some((session) => session.id === draftName.trim())) && (
+          <span className="field-error">Use a unique lowercase key with letters, digits, or hyphens.</span>
+        )}
         <div style={{ flex: 1 }} />
         <span style={{ fontSize: 10.5, color: 'var(--ink-3)', fontFamily: 'var(--font-mono)' }}>{sessions.length} sessions</span>
       </div>
@@ -663,7 +667,7 @@ function SettingsTab({ sessions, stepNodes, onAssignSession, addSessionPing, onA
           if (editingId === s.id) {
             return (
               <span key={s.id} className="session-chip editing">
-                <span className="ses-dot" style={{ background: s.color }} />
+                <span className="ses-dot" style={{ background: sessionAccent(s) }} />
                 <input
                   className="input sm"
                   value={editingName}
@@ -686,7 +690,7 @@ function SettingsTab({ sessions, stepNodes, onAssignSession, addSessionPing, onA
                     <option key={server.id} value={server.id}>{server.id}</option>
                   ))}
                 </select>
-                <button className="ses-x save" title={`Save ${s.name}`} disabled={readonly || !editingName.trim()} onClick={saveEdit}>
+                <button className="ses-x save" title={`Save ${s.name}`} disabled={readonly || !isSymbolKey(editingName.trim()) || sessions.some((session) => session.id === editingName.trim() && session.id !== editingId)} onClick={saveEdit}>
                   <Icon name="check" size={10} />
                 </button>
                 <button className="ses-x" title="Cancel" onClick={cancelEdit}>
@@ -697,7 +701,7 @@ function SettingsTab({ sessions, stepNodes, onAssignSession, addSessionPing, onA
           }
           return (
             <span key={s.id} className="session-chip">
-              <span className="ses-dot" style={{ background: s.color }} />
+              <span className="ses-dot" style={{ background: sessionAccent(s) }} />
               {s.name}
               <span className="agent">{s.agentServerId ?? s.agent}</span>
               <button className="ses-x" title={`Edit ${s.name}`} disabled={readonly} onClick={() => startEdit(s)}>
@@ -729,7 +733,7 @@ function SettingsTab({ sessions, stepNodes, onAssignSession, addSessionPing, onA
                   className={n.sessionId === s.id ? 'active' : ''}
                   onClick={() => onAssignSession(n.id, s.id)}
                 >
-                  <span className="ses-dot" style={{ background: s.color }} />{s.name}
+                  <span className="ses-dot" style={{ background: sessionAccent(s) }} />{s.name}
                 </button>
               ))}
             </div>

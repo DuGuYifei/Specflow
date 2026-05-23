@@ -1,13 +1,11 @@
 export interface CanvasBranch {
   id: string;
   label: string;
-  color: string;
 }
 
 export interface CanvasSession {
   id: string;
   name: string;
-  color: string;
   agentServerId: string;
   agent?: string;
 }

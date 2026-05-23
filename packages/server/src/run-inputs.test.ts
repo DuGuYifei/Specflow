@@ -5,7 +5,7 @@ import type { AgentFlowDoc, AgentFlowStepNode } from "./canvas-doc";
 const doc: AgentFlowDoc = {
   id: "simple",
   name: "Simple",
-  sessions: [{ id: "s1", name: "codex", color: "blue", agentServerId: "codex-acp" }],
+  sessions: [{ id: "s1", name: "codex", agentServerId: "codex-acp" }],
   nodes: [
     {
       kind: "input",

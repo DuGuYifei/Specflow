@@ -1,6 +1,5 @@
 import { mkdir, readdir, readFile, writeFile, unlink } from "node:fs/promises";
-import { join } from "node:path";
-import { parse, stringify } from "yaml";
+import { basename, join } from "node:path";
 import type {
   AgentFlowDoc,
   AgentFlowNode,
@@ -9,6 +8,7 @@ import type {
   CanvasNode,
   CanvasNodeLayout,
 } from "./canvas-doc";
+import { parseAgentFlowSource, stringifyAgentFlowSource } from "./agentflow-source";
 
 function agentflowsDir(root: string) {
   return join(root, ".specflow", "agentflows");
@@ -38,7 +38,8 @@ export async function listCanvases(root: string): Promise<{ id: string; name: st
   for (const file of files.filter((f) => f.endsWith(".yaml"))) {
     try {
       const raw = await readFile(join(dir, file), "utf8");
-      const doc = parse(raw) as AgentFlowDoc;
+      const id = basename(file, ".yaml");
+      const doc = parseAgentFlowSource(raw, id);
       results.push({ id: doc.id, name: doc.name });
     } catch {
       // skip malformed
@@ -55,7 +56,7 @@ export async function loadCanvas(id: string, root: string): Promise<CanvasDoc> {
 
 export async function loadAgentFlow(id: string, root: string): Promise<AgentFlowDoc> {
   const raw = await readFile(agentflowPath(id, root), "utf8");
-  return parse(raw) as AgentFlowDoc;
+  return parseAgentFlowSource(raw, id);
 }
 
 export async function loadOrCreateCanvasLayout(
@@ -78,7 +79,7 @@ export async function saveCanvas(id: string, doc: CanvasDoc, root: string): Prom
   const { agentflow, layout } = splitCanvasDoc({ ...doc, id });
   await mkdir(agentflowsDir(root), { recursive: true });
   await Promise.all([
-    writeFile(agentflowPath(id, root), stringify(agentflow), "utf8"),
+    writeFile(agentflowPath(id, root), stringifyAgentFlowSource(agentflow), "utf8"),
     saveCanvasLayout(id, layout, root),
   ]);
 }
@@ -91,7 +92,7 @@ export async function saveAgentFlowAndLayout(
 ): Promise<void> {
   await mkdir(agentflowsDir(root), { recursive: true });
   await Promise.all([
-    writeFile(agentflowPath(id, root), stringify(agentflow), "utf8"),
+    writeFile(agentflowPath(id, root), stringifyAgentFlowSource({ ...agentflow, id }), "utf8"),
     saveCanvasLayout(id, layout, root),
   ]);
 }

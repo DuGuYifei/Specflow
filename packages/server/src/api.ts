@@ -23,6 +23,7 @@ import { appendRunLogEvent, deleteRunLog, listRunLogEvents } from "./run-log-sto
 import { prepareCanvasRun } from "./run-inputs";
 import type { AgentFlowDoc, CanvasDoc, CanvasLayoutDoc } from "./canvas-doc";
 import type { CanvasSession } from "./canvas-doc";
+import { assertSymbolKey, keyFromLabel } from "./agentflow-source";
 import {
   loadLocalAgentServerConfig,
   removeLocalAgentServer,
@@ -265,9 +266,8 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
   const runControllers = new Map<string, AbortController>();
 
   const DEFAULT_SESSION: CanvasSession = {
-    id: "s1",
+    id: "main",
     name: "main",
-    color: "oklch(0.7 0.13 250)",
     agentServerId: "unconfigured",
   };
 
@@ -404,8 +404,9 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
       try {
         agentflow = await loadAgentFlow(workflowId, root);
         layout = await loadOrCreateCanvasLayout(agentflow, root);
-      } catch {
-        return Response.json({ error: "Agentflow not found" }, { status: 404 });
+      } catch (error) {
+        const notFound = (error as { code?: string }).code === "ENOENT";
+        return Response.json({ error: notFound ? "Agentflow not found" : errorMessage(error) }, { status: notFound ? 404 : 400 });
       }
     }
 
@@ -848,12 +849,25 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
 
     // POST /api/canvases  (create new canvas)
     if (request.method === "POST" && pathname === "/api/canvases") {
-      let body: { name?: string } = {};
+      let body: { key?: string; name?: string } = {};
       try { body = await request.json(); } catch { /* ok */ }
-      const id = uuidv7();
+      const name = body.name ?? "Untitled workflow";
+      let id = body.key ?? keyFromLabel(name, "untitled-workflow");
+      try {
+        assertSymbolKey(id, "workflow key");
+      } catch (error) {
+        return Response.json({ error: errorMessage(error) }, { status: 400 });
+      }
+      const existingIds = new Set((await listCanvases(root)).map((entry) => entry.id));
+      if (existingIds.has(id)) {
+        const base = id;
+        let suffix = 2;
+        while (existingIds.has(`${base}-${suffix}`)) suffix += 1;
+        id = `${base}-${suffix}`;
+      }
       const doc: CanvasDoc = {
         id,
-        name: body.name ?? "Untitled workflow",
+        name,
         sessions: [DEFAULT_SESSION],
         nodes: [],
         edges: [],
@@ -870,8 +884,9 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
         try {
           const doc = await loadCanvas(id, root);
           return Response.json(doc);
-        } catch {
-          return Response.json({ error: "Not found" }, { status: 404 });
+        } catch (error) {
+          const notFound = (error as { code?: string }).code === "ENOENT";
+          return Response.json({ error: notFound ? "Not found" : errorMessage(error) }, { status: notFound ? 404 : 400 });
         }
       }
       if (request.method === "PUT") {
@@ -881,8 +896,12 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
         } catch {
           return Response.json({ error: "Invalid JSON" }, { status: 400 });
         }
-        await saveCanvas(id, body, root);
-        return Response.json({ ok: true });
+        try {
+          await saveCanvas(id, body, root);
+          return Response.json({ ok: true });
+        } catch (error) {
+          return Response.json({ error: errorMessage(error) }, { status: 400 });
+        }
       }
       if (request.method === "DELETE") {
         await deleteCanvas(id, root);

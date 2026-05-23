@@ -9,9 +9,61 @@ import {
   loadCanvas,
   saveCanvas,
 } from "./canvas-store";
-import type { AgentFlowDoc, CanvasDoc } from "./canvas-doc";
+import { parseAgentFlowSource } from "./agentflow-source";
+import type { CanvasDoc } from "./canvas-doc";
 
 describe("agentflow/canvas storage", () => {
+  it("resolves authored keys into internal workflow references", () => {
+    const doc = parseAgentFlowSource(`version: 1
+name: Review
+sessions:
+  codex:
+    agentServerId: codex-acp
+nodes:
+  build:
+    kind: step
+    title: Build
+    desc: Implement
+    session: codex
+    updateDoc: false
+  done:
+    kind: end
+    title: Done
+edges:
+  - from: build
+    to: done
+`, "review-flow");
+
+    expect(doc.id).toBe("review-flow");
+    expect(doc.sessions[0]?.id).toBe("codex");
+    expect(doc.nodes[0]?.id).toBe("build");
+    expect(doc.edges[0]?.id).toBe("edge:build:->done");
+  });
+
+  it("rejects invalid authored keys and missing references", () => {
+    expect(() => parseAgentFlowSource(`version: 1
+name: Invalid
+sessions:
+  bad session:
+    agentServerId: codex-acp
+nodes: {}
+edges: []
+`, "invalid-flow")).toThrow('session key "bad session"');
+
+    expect(() => parseAgentFlowSource(`version: 1
+name: Invalid
+sessions:
+  codex:
+    agentServerId: codex-acp
+nodes:
+  build:
+    kind: step
+    title: Build
+    session: missing
+edges: []
+`, "invalid-flow")).toThrow('missing session "missing"');
+  });
+
   it("initializes agentflows, gitignored canvas layouts, and seed data", async () => {
     const root = await tempProject();
     await initWorkspace(root);
@@ -20,9 +72,15 @@ describe("agentflow/canvas storage", () => {
     expect(gitignore).toContain("runs/");
     expect(gitignore).toContain("canvas/");
 
-    const agentflow = parse(await readFile(join(root, ".specflow", "agentflows", "wf1.yaml"), "utf8")) as AgentFlowDoc;
+    const agentflowRaw = await readFile(join(root, ".specflow", "agentflows", "wf1.yaml"), "utf8");
+    const agentflow = parseAgentFlowSource(agentflowRaw, "wf1");
     expect(agentflow.nodes.some((node) => node.kind === "end")).toBe(true);
     expect("x" in agentflow.nodes[0]!).toBe(false);
+    expect(agentflowRaw).toContain("version: 1");
+    expect(agentflowRaw).toContain("sessions:\n  parser:");
+    expect(agentflowRaw).not.toMatch(/^id:/m);
+    expect(agentflowRaw).not.toContain("sessionId:");
+    expect(agentflowRaw).not.toContain("color:");
 
     const canvas = JSON.parse(await readFile(join(root, ".specflow", "canvas", "wf1.json"), "utf8"));
     expect(canvas.workflowId).toBe("wf1");
@@ -33,7 +91,7 @@ describe("agentflow/canvas storage", () => {
     const root = await mkdtemp(join(tmpdir(), "specflow-first-run-"));
     await initWorkspace(root, { createIfMissing: true, seedAgentServerId: "chosen-code-acp" });
 
-    const agentflow = parse(await readFile(join(root, ".specflow", "agentflows", "wf1.yaml"), "utf8")) as AgentFlowDoc;
+    const agentflow = parseAgentFlowSource(await readFile(join(root, ".specflow", "agentflows", "wf1.yaml"), "utf8"), "wf1");
     expect(agentflow.sessions.map((session) => session.agentServerId)).toEqual([
       "chosen-code-acp",
       "chosen-code-acp",
@@ -53,7 +111,7 @@ describe("agentflow/canvas storage", () => {
     await initWorkspace(root);
 
     const agentflowRaw = await readFile(join(specflow, "agentflows", "legacy.yaml"), "utf8");
-    const agentflow = parse(agentflowRaw) as AgentFlowDoc;
+    const agentflow = parseAgentFlowSource(agentflowRaw, "legacy");
     expect(agentflow.id).toBe("legacy");
     expect("x" in agentflow.nodes[0]!).toBe(false);
 
@@ -72,7 +130,7 @@ describe("agentflow/canvas storage", () => {
     const doc: CanvasDoc = {
       id: "regen",
       name: "Regenerate",
-      sessions: [{ id: "s1", name: "main", color: "blue", agentServerId: "codex-acp" }],
+      sessions: [{ id: "s1", name: "main", agentServerId: "codex-acp" }],
       nodes: [
         { kind: "step", id: "a", num: "01", x: 10, y: 20, w: 220, title: "A", desc: "A", sessionId: "s1", updateDoc: false },
         { kind: "end", id: "done", num: "END", x: 300, y: 20, w: 140, title: "Done", sessionId: null },
@@ -116,7 +174,6 @@ name: Legacy flow
 sessions:
   - id: s1
     name: main
-    color: blue
     agentServerId: codex-acp
 nodes:
   - kind: input

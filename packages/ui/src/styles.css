@@ -751,6 +751,10 @@ input, textarea, select { font-family: inherit; font-size: inherit; color: inher
   background: var(--session-color, var(--ink-3));
   border-radius: 2px 0 0 2px;
   opacity: 0.85;
+  box-shadow: 0 0 0 1px color-mix(in oklch, var(--ink-3) 38%, transparent);
+}
+.ses-dot {
+  border: 1px solid color-mix(in oklch, var(--ink-3) 45%, transparent);
 }
 
 /* updateDoc badge */
@@ -1483,6 +1487,11 @@ input, textarea, select { font-family: inherit; font-size: inherit; color: inher
 }
 .session-chip.editing { height: 28px; padding-right: 6px; }
 .session-chip .ses-dot { width: 8px; height: 8px; border-radius: 2px; }
+.field-error {
+  color: var(--err);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
 .session-chip .agent {
   font-family: var(--font-mono);
   font-size: 9.5px;

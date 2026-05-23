@@ -291,16 +291,17 @@ export async function fetchCanvases(): Promise<CanvasSummary[]> {
 
 export async function fetchCanvas(id: string): Promise<CanvasDoc> {
   const res = await fetch(`/api/canvases/${id}`);
-  if (!res.ok) throw new Error(`Canvas ${id} not found`);
+  if (!res.ok) throw new Error(await apiError(res, `Failed to load canvas ${id}`));
   return res.json();
 }
 
 export async function saveCanvas(id: string, doc: CanvasDoc): Promise<void> {
-  await fetch(`/api/canvases/${id}`, {
+  const res = await fetch(`/api/canvases/${id}`, {
     method: 'PUT',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(doc),
   });
+  if (!res.ok) throw new Error(await apiError(res, `Failed to save canvas ${id}`));
 }
 
 export async function createCanvas(name: string): Promise<CanvasDoc> {

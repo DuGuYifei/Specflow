@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import { uuidv7 } from '@specflow/shared';
 import type { WorkflowNode, Edge, Session, Workflow, Run, Selection, RunStateMap, Theme, RunStatus, LogLine, InputNode } from './types';
+import { isSymbolKey } from './appearance';
 import {
   fetchCanvases, fetchCanvas, saveCanvas, runCanvas,
   fetchRuns, fetchRun, fetchRunLogs, subscribeToRun,
@@ -28,14 +28,6 @@ import { RunConfigPanel } from './components/run-config-panel';
 import { InteractionModal } from './components/interaction-modal';
 import { AgentAuthModal } from './components/agent-auth-modal';
 import { AgentServerManager } from './components/agent-server-manager';
-
-const SESSION_COLORS = [
-  'oklch(0.7 0.13 250)',
-  'oklch(0.7 0.14 160)',
-  'oklch(0.7 0.14 30)',
-  'oklch(0.7 0.14 310)',
-  'oklch(0.65 0.12 80)',
-];
 
 function runStatusFromEvent(status: string): RunStatus {
   if (status === 'success') return 'success';
@@ -236,7 +228,13 @@ export function App() {
     setNodes((ns) => {
       const updated = ns.map((n) => {
         if (n.id !== gateId || n.kind !== 'gate') return n;
-        const newBranch = { id: uuidv7(), label: 'branch', color: 'var(--ink-3)' };
+        let suffix = n.branches.length + 1;
+        let id = `branch-${suffix}`;
+        while (n.branches.some((branch) => branch.id === id)) {
+          suffix += 1;
+          id = `branch-${suffix}`;
+        }
+        const newBranch = { id, label: id };
         return { ...n, branches: [...n.branches, newBranch] };
       });
       nodesRef.current = updated;
@@ -393,9 +391,9 @@ export function App() {
 
   const onAddSession = useCallback((name: string, agentServerId: Session['agentServerId']) => {
     setSessions((ss) => {
-      const id = uuidv7();
-      const color = SESSION_COLORS[ss.length % SESSION_COLORS.length];
-      const updated = [...ss, { id, name, color, agentServerId }];
+      const id = name.trim();
+      if (!isSymbolKey(id) || ss.some((session) => session.id === id)) return ss;
+      const updated = [...ss, { id, name: id, agentServerId }];
       sessionsRef.current = updated;
       setActiveSessionId(id);
       scheduleSave();
@@ -426,11 +424,21 @@ export function App() {
   }, [scheduleSave]);
 
   const onEditSession = useCallback((id: string, patch: Partial<Pick<Session, 'name' | 'agentServerId'>>) => {
+    const nextId = patch.name?.trim() ?? id;
+    if (!isSymbolKey(nextId) || sessionsRef.current.some((session) => session.id === nextId && session.id !== id)) {
+      return;
+    }
     const updated = sessionsRef.current.map((session) =>
-      session.id === id ? { ...session, ...patch } : session,
+      session.id === id ? { ...session, ...patch, id: nextId, name: nextId } : session,
+    );
+    const updatedNodes = nodesRef.current.map((node) =>
+      node.sessionId === id ? { ...node, sessionId: nextId } as WorkflowNode : node,
     );
     sessionsRef.current = updated;
+    nodesRef.current = updatedNodes;
     setSessions(updated);
+    setNodes(updatedNodes);
+    setActiveSessionId((active) => active === id ? nextId : active);
     scheduleSave();
   }, [scheduleSave]);
 

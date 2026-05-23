@@ -57,7 +57,6 @@ function sampleCanvas(): CanvasDoc {
       {
         id: "s1",
         name: "main",
-        color: "oklch(0.7 0.13 250)",
         agentServerId: "slow-headless",
       },
     ],

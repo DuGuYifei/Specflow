@@ -1,49 +1,44 @@
-id: simple-agent-flow
+version: 1
 name: Simple mock agent flow
 sessions:
-  - id: s1
-    name: mock-main
-    color: oklch(0.7 0.13 250)
+  mock-main:
     agentServerId: codex-acp
+  claude-acp:
+    agentServerId: claude-acp
 nodes:
-  - kind: input
-    id: in1
+  in1:
+    kind: input
     num: IN
     title: Input value
     variableName: specflow_value
     description: Value used by the first step
-    sessionId: null
-  - kind: step
-    id: n1
+  n1:
+    kind: step
     num: "01"
     title: Add one
     desc: 1 + <specflow_value> = ?
-    sessionId: s1
+    session: claude-acp
     updateDoc: false
     paths: []
-  - kind: step
-    id: n2
+  n2:
+    kind: step
     num: "02"
     title: Add two
     desc: |-
       Previous output: <specflow_input>
       + 2 = ?
-    sessionId: s1
+    session: claude-acp
     updateDoc: false
-  - kind: end
-    id: end1
+  end1:
+    kind: end
     num: END
     title: Done
-    sessionId: null
 edges:
-  - id: e-input-1
-    from: in1
+  - from: in1
     to: n1
     sameSession: false
-  - id: e1
-    from: n1
+  - from: n1
     to: n2
     sameSession: true
-  - id: e2
-    from: n2
+  - from: n2
     to: end1

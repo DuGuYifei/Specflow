@@ -230,7 +230,7 @@ describe("agent server API", () => {
     await saveCanvas("wf-auth", {
       id: "wf-auth",
       name: "Auth workflow",
-      sessions: [{ id: "s1", name: "main", color: "blue", agentServerId: "needs-auth" }],
+      sessions: [{ id: "s1", name: "main", agentServerId: "needs-auth" }],
       nodes: [{
         kind: "step",
         id: "n1",

@@ -1,12 +1,14 @@
 import { readFile } from "node:fs/promises";
-import { parse } from "yaml";
+import { basename, extname } from "node:path";
 import { WorkflowExecutor, type NodeStatusEvent, type RunStatusEvent } from "@specflow/bridge";
 import type { WorkflowRun } from "@specflow/workflow";
 import type { AgentFlowDoc } from "./canvas-doc";
 import { canvasToWorkflow } from "./canvas-to-workflow";
+import { parseAgentFlowSource } from "./agentflow-source";
 
 export async function loadAgentFlowFile(filePath: string): Promise<AgentFlowDoc> {
-  return parse(await readFile(filePath, "utf8")) as AgentFlowDoc;
+  const workflowId = basename(filePath, extname(filePath));
+  return parseAgentFlowSource(await readFile(filePath, "utf8"), workflowId);
 }
 
 export async function executeAgentFlowDoc(input: {

@@ -14,7 +14,6 @@ export type RunStateMap = Record<string, RunState>;
 export interface Session {
   id: string;
   name: string;
-  color: string;
   agentServerId: string;
   agent?: string;
 }
@@ -65,7 +64,6 @@ export interface LogLine {
 export interface Branch {
   id: string;
   label: string;
-  color: string;
 }
 
 export interface StepNode {

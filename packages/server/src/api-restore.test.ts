@@ -149,7 +149,7 @@ function sampleRun(id: string): RunRecord {
     agentflowSnapshot: {
       id: "wf",
       name: "Workflow",
-      sessions: [{ id: "s1", name: "main", color: "blue", agentServerId: "fake" }],
+      sessions: [{ id: "s1", name: "main", agentServerId: "fake" }],
       nodes: [],
       edges: [],
     },

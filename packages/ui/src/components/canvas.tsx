@@ -1,6 +1,6 @@
 import { useRef, useState, useMemo, useEffect, useCallback } from 'react';
-import { uuidv7 } from '@specflow/shared';
 import type { WorkflowNode, Edge, Session, Selection, RunStateMap, GateNode, InputNode } from '../types';
+import { branchAccent, edgeKey, nextSymbolKey, sessionAccent } from '../appearance';
 import type { IconName } from './icon';
 import { Icon } from './icon';
 
@@ -106,7 +106,7 @@ function StepCard({ n, session, selected, runState, onMouseDown, onSelect }: Ste
     <div
       className={cls.join(' ')}
       data-session={n.sessionId || ''}
-      style={{ left: n.x, top: n.y, width: n.w, '--session-color': session?.color || 'var(--ink-3)' } as React.CSSProperties}
+      style={{ left: n.x, top: n.y, width: n.w, '--session-color': session ? sessionAccent(session) : 'var(--ink-3)' } as React.CSSProperties}
       onMouseDown={(e) => onMouseDown(e, n.id)}
       onClick={(e) => { e.stopPropagation(); onSelect(n.id); }}
     >
@@ -182,7 +182,14 @@ function GateCard({ n, selected, runState, onMouseDown, onSelect, onAddBranch }:
         const t = (i + 1) / (total + 1);
         const top = h * t - 6;
         return (
-          <div key={b.id} className={`gate-port-out ${b.id}`} data-port="gate-out" data-node={n.id} data-branch={b.id} style={{ right: -7, top }}>
+          <div
+            key={b.id}
+            className={`gate-port-out ${b.id}`}
+            data-port="gate-out"
+            data-node={n.id}
+            data-branch={b.id}
+            style={{ right: -7, top, borderColor: branchAccent(b) }}
+          >
             <span className="pl">{b.label}</span>
           </div>
         );
@@ -314,12 +321,14 @@ export function Canvas({
   const zoomRef = useRef(zoom);
   const panRef  = useRef(pan);
   const nodesRef = useRef(nodes);
+  const edgesRef = useRef(edges);
   const dragEdgeRef = useRef<DragEdge | null>(null);
   const [hoverEdge, setHoverEdge] = useState<string | null>(null);
 
   zoomRef.current   = zoom;
   panRef.current    = pan;
   nodesRef.current  = nodes;
+  edgesRef.current  = edges;
   dragEdgeRef.current = dragEdge;
 
   const isEdit = viewMode === 'edit';
@@ -440,13 +449,14 @@ export function Canvas({
                 fromN.kind !== 'gate' && toN.kind !== 'gate' && toN.kind !== 'end' &&
                 fromN.kind !== 'input' &&
                 fromN.sessionId != null && fromN.sessionId === toN.sessionId;
-              onAddEdge({
-                id: uuidv7(),
+              const edge = {
+                id: edgeKey({ from: dragInfo.fromId, to: toId, branch: dragInfo.branch }),
                 from: dragInfo.fromId,
                 to: toId,
                 branch: dragInfo.branch,
                 sameSession,
-              });
+              };
+              if (!edgesRef.current.some((existing) => existing.id === edge.id)) onAddEdge(edge);
             }
           }
         }
@@ -472,7 +482,12 @@ export function Canvas({
     // In add-mode and edit view: place node at click
     if (mode !== 'pan' && isEdit) {
       const pos = clientToCanvas(e.clientX, e.clientY);
-      const id = uuidv7();
+      const keyPrefix =
+        mode === 'add-step' ? 'step'
+        : mode === 'add-gate' ? 'gate'
+        : mode === 'add-input' ? 'input'
+        : 'end';
+      const id = nextSymbolKey(keyPrefix, nodesRef.current.map((node) => node.id));
       const num = `${nodesRef.current.length + 1}`;
       const firstSession = sessions[0]?.id ?? null;
 
@@ -480,7 +495,7 @@ export function Canvas({
       if (mode === 'add-step') {
         newNode = { kind: 'step', id, num, x: pos.x - 110, y: pos.y - 60, w: 220, title: 'Untitled', desc: '', sessionId: firstSession, updateDoc: false };
       } else if (mode === 'add-gate') {
-        newNode = { kind: 'gate', id, num, x: pos.x - 110, y: pos.y - 55, w: 220, title: 'Decision', sessionId: firstSession, branches: [{ id: 'pass', label: 'pass', color: 'oklch(0.55 0.13 145)' }, { id: 'fix', label: 'fix', color: 'var(--err)' }] };
+        newNode = { kind: 'gate', id, num, x: pos.x - 110, y: pos.y - 55, w: 220, title: 'Decision', sessionId: firstSession, branches: [{ id: 'pass', label: 'pass' }, { id: 'fix', label: 'fix' }] };
       } else if (mode === 'add-input') {
         newNode = { kind: 'input', id, num, x: pos.x - 100, y: pos.y - 36, w: 200, title: 'Run input', variableName: `specflow_var${nodesRef.current.filter((n) => n.kind === 'input').length + 1}`, sessionId: null };
       } else {

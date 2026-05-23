@@ -2,6 +2,7 @@ import { useState, useRef } from 'react';
 import type { WorkflowNode, Edge, Run, Session, RunState, GateNode, StepNode, InputNode, LogLine } from '../types';
 import { Icon } from './icon';
 import { RightPanel } from './right-panel';
+import { branchAccent, sessionAccent } from '../appearance';
 
 function insertAtCaret(
   el: HTMLTextAreaElement | null,
@@ -105,7 +106,7 @@ function StepPanelContent({ node, run, sessions, nodes, edges, readonly, logLine
       {session && (
         <>
           <span style={{ color: 'var(--ink-4)' }}>·</span>
-          <span className="ses-dot" style={{ width: 7, height: 7, borderRadius: 2, background: session.color, display: 'inline-block' }} />
+          <span className="ses-dot" style={{ width: 7, height: 7, borderRadius: 2, background: sessionAccent(session), display: 'inline-block' }} />
           {session.name}
         </>
       )}
@@ -223,7 +224,7 @@ function StepOverview({ node, run, sessions, nodes, edges, readonly, onEditNode,
             }}
             onClick={() => onChangeSession(node.id, s.id)}
           >
-            <span style={{ width: 7, height: 7, borderRadius: 2, background: s.color }} />
+            <span className="ses-dot" style={{ width: 7, height: 7, borderRadius: 2, background: sessionAccent(s) }} />
             {s.name}
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--ink-3)' }}>{s.agentServerId ?? s.agent}</span>
           </button>
@@ -425,7 +426,7 @@ function GatePanelContent({ node, sessions, nodes, edges, readonly, onClose, onE
       {session && (
         <>
           <span style={{ color: 'var(--ink-4)' }}>·</span>
-          <span style={{ width: 7, height: 7, borderRadius: 2, background: session.color, display: 'inline-block' }} />
+          <span className="ses-dot" style={{ width: 7, height: 7, borderRadius: 2, background: sessionAccent(session), display: 'inline-block' }} />
           {session.name}
         </>
       )}
@@ -479,7 +480,7 @@ function GatePanelContent({ node, sessions, nodes, edges, readonly, onClose, onE
       </div>
       {node.branches.map((b) => (
         <div key={b.id} className="output-card" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 8, marginBottom: 6 }}>
-          <span style={{ width: 10, height: 10, borderRadius: '50%', background: b.color, flexShrink: 0 }} />
+          <span style={{ width: 10, height: 10, borderRadius: '50%', background: branchAccent(b), flexShrink: 0 }} />
           <input
             className="input"
             value={b.label}
@@ -513,7 +514,7 @@ function GatePanelContent({ node, sessions, nodes, edges, readonly, onClose, onE
             }}
             onClick={() => onChangeSession(node.id, s.id)}
           >
-            <span style={{ width: 7, height: 7, borderRadius: 2, background: s.color }} />{s.name}
+            <span className="ses-dot" style={{ width: 7, height: 7, borderRadius: 2, background: sessionAccent(s) }} />{s.name}
           </button>
         ))}
       </div>

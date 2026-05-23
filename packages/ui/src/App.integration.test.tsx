@@ -219,7 +219,7 @@ function sampleCanvas() {
   return {
     id: "wf1",
     name: "Workflow",
-    sessions: [{ id: "s1", name: "main", color: "oklch(0.7 0.13 250)", agentServerId: "echo-headless" }],
+    sessions: [{ id: "main", name: "main", agentServerId: "echo-headless" }],
     nodes: [{
       kind: "step",
       id: "node-1",
@@ -229,7 +229,7 @@ function sampleCanvas() {
       w: 240,
       title: "Echo",
       desc: "echo prompt",
-      sessionId: "s1",
+        sessionId: "main",
       updateDoc: false,
     }],
     edges: [],
