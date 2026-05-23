@@ -213,13 +213,6 @@ export class AcpAgentSession {
     if (this.#initializeResponse.protocolVersion !== acp.PROTOCOL_VERSION) {
       throw new Error(`Unsupported ACP protocol version: ${this.#initializeResponse.protocolVersion}`);
     }
-    await authenticateIfAvailable({
-      connection: this.#client.connection,
-      initializeResponse: this.#initializeResponse,
-      resolved: this.#resolved,
-      cwd: this.#cwd,
-      onTerminalEvent: request.onTerminalEvent,
-    });
     const session = await this.#client.connection.newSession({
       cwd: this.#cwd,
       additionalDirectories: this.#additionalDirectories,
@@ -372,14 +365,6 @@ export async function runAcpAgent(
     if (initializeResponse.protocolVersion !== acp.PROTOCOL_VERSION) {
       throw new Error(`Unsupported ACP protocol version: ${initializeResponse.protocolVersion}`);
     }
-    await authenticateIfAvailable({
-      connection: client.connection,
-      initializeResponse,
-      resolved,
-      cwd: request.cwd,
-      onTerminalEvent: request.onTerminalEvent,
-    });
-
     const session = await client.connection.newSession({
       cwd: request.cwd,
       additionalDirectories: request.additionalDirectories,
@@ -513,14 +498,6 @@ export async function restoreAcpAgentSession(
     if (initializeResponse.protocolVersion !== acp.PROTOCOL_VERSION) {
       throw new Error(`Unsupported ACP protocol version: ${initializeResponse.protocolVersion}`);
     }
-    await authenticateIfAvailable({
-      connection: client.connection,
-      initializeResponse,
-      resolved,
-      cwd: request.cwd,
-      onTerminalEvent: request.onTerminalEvent,
-    });
-
     const selectedPrimitive = selectAcpRestorePrimitive(request.mode, initializeResponse);
     if (selectedPrimitive === "load") {
       const loadResponse = await raceWithAbort(client.connection.loadSession({
@@ -694,57 +671,6 @@ function isAuthRequiredError(error: unknown): boolean {
   return /auth(?:entication)?[_ -]?required/i.test(message);
 }
 
-async function authenticateIfAvailable(input: {
-  connection: acp.ClientSideConnection;
-  initializeResponse: acp.InitializeResponse;
-  resolved: ResolvedAgentServer;
-  cwd: string;
-  onTerminalEvent?: (event: AgentTerminalEvent) => void;
-}): Promise<void> {
-  const methods = input.initializeResponse.authMethods ?? [];
-  if (methods.length === 0) return;
-
-  const method = selectAuthMethod(methods, input.resolved);
-  input.onTerminalEvent?.({
-    stream: "system",
-    chunk: `[acp:auth] ${method.name} (${method.id})\n`,
-  });
-
-  if (isTerminalAuthMethod(method)) {
-    await runTerminalAuthMethod(input.resolved, input.cwd, method, input.onTerminalEvent);
-  }
-
-  await input.connection.authenticate({ methodId: method.id });
-}
-
-function selectAuthMethod(
-  methods: acp.AuthMethod[],
-  resolved: ResolvedAgentServer,
-): acp.AuthMethod {
-  const agentMethod = methods.find(isAgentAuthMethod);
-  if (agentMethod) return agentMethod;
-
-  const envMethod = methods.find((method) => isEnvAuthMethod(method) && missingEnvVars(method, resolved).length === 0);
-  if (envMethod) return envMethod;
-
-  const terminalMethod = methods.find(isTerminalAuthMethod);
-  if (terminalMethod) {
-    if (resolved.settings.terminal?.auth) return terminalMethod;
-    throw new Error(
-      `ACP agent "${resolved.id}" requires terminal authentication, but terminal auth is disabled. Set terminal.auth=true on the agent server.`,
-    );
-  }
-
-  const missingEnvMethod = methods.find(isEnvAuthMethod);
-  if (missingEnvMethod) {
-    throw new Error(
-      `ACP agent "${resolved.id}" requires authentication env vars: ${missingEnvVars(missingEnvMethod, resolved).join(", ")}`,
-    );
-  }
-
-  throw new Error(`ACP agent "${resolved.id}" advertised no supported authentication methods.`);
-}
-
 function authMethodInfos(
   methods: acp.AuthMethod[],
   resolved: ResolvedAgentServer,
@@ -781,10 +707,6 @@ function authMethodInfos(
       type: "agent",
     };
   });
-}
-
-function isAgentAuthMethod(method: acp.AuthMethod): method is Exclude<acp.AuthMethod, { type: "env_var" } | { type: "terminal" }> {
-  return !("type" in method) || (method as { type?: unknown }).type === "agent";
 }
 
 function isEnvAuthMethod(method: acp.AuthMethod): method is Extract<acp.AuthMethod, { type: "env_var" }> {

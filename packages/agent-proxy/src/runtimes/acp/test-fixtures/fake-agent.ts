@@ -18,6 +18,7 @@ class FakeAgent implements acp.Agent {
     .map((value) => value.trim())
     .filter(Boolean);
   #authenticated = process.env.SPECFLOW_FAKE_ACP_PREAUTHORIZED === "1";
+  #authenticationCount = 0;
 
   constructor(connection: acp.AgentSideConnection) {
     this.#connection = connection;
@@ -47,6 +48,7 @@ class FakeAgent implements acp.Agent {
     if (methodIds.size > 0 && !methodIds.has(params.methodId)) {
       throw new Error(`Unknown auth method ${params.methodId}`);
     }
+    this.#authenticationCount += 1;
     this.#authenticated = true;
     return {};
   }
@@ -117,6 +119,7 @@ class FakeAgent implements acp.Agent {
 
     await this.#sendText(sessionId, `turn:${session.promptCount}\n`);
     await this.#sendText(sessionId, `authenticated:${this.#isAuthenticated()}\n`);
+    await this.#sendText(sessionId, `authentications:${this.#authenticationCount}\n`);
     await this.#sendText(sessionId, `prompt:${text}\n`);
     await this.#sendText(sessionId, `blocks:${params.prompt.map((block) => block.type).join(",")}\n`);
 

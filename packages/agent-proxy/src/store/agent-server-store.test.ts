@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
@@ -42,5 +42,6 @@ describe("AgentServerStore", () => {
     }), "utf8");
 
     await expect(new AgentServerStore({ root }).resolve("other")).rejects.toThrow("Unsupported registry ACP agent");
+    await expect(access(join(root, ".specflow", "cache", "agents"))).rejects.toThrow();
   });
 });
