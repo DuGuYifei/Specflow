@@ -2,6 +2,7 @@ import {
   AgentServerStore,
   authenticateAgentServer,
   fetchRegistryIndex,
+  filterSupportedRegistryIndex,
   inspectAgentAuthentication,
   restoreAgentSession,
   type AgentRestoreRequest,
@@ -27,6 +28,12 @@ export type {
   AgentTerminalEvent,
   RegistryAgent,
   RegistryIndex,
+} from "@specflow/agent-proxy";
+export {
+  assertSupportedRegistryAgent,
+  choosePreferredAuthMethod,
+  supportedRegistryAgentIds,
+  supportedRegistryAgentProfile,
 } from "@specflow/agent-proxy";
 
 export interface SpecflowBridge {
@@ -78,5 +85,5 @@ async function ensureAgentServerInstalled(root: string, agentServerId: string): 
 
 async function listAgentRegistry(root: string): Promise<RegistryIndex> {
   void root;
-  return fetchRegistryIndex();
+  return filterSupportedRegistryIndex(await fetchRegistryIndex());
 }

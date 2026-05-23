@@ -1,6 +1,7 @@
 import { WorkflowExecutor } from "@specflow/bridge";
 import type { SpecflowBridge } from "@specflow/bridge";
 import type { AgentAuthenticationStatus, AgentRestoreMode, AgentRestorePrimitive, AgentServerEntry, AgentServerSettings, NodeStatusEvent, RunInteraction, RunStatusEvent } from "@specflow/bridge";
+import { supportedRegistryAgentProfile } from "@specflow/bridge";
 import { uuidv7 } from "@specflow/shared";
 import { canvasToWorkflow } from "./canvas-to-workflow";
 import {
@@ -100,6 +101,7 @@ function parseAgentServerSettings(input: unknown): AgentServerSettings | undefin
   const defaultConfigOptions = recordOfConfigValues(raw.defaultConfigOptions);
 
   if (raw.type === "registry" && typeof raw.registryId === "string" && raw.registryId.trim()) {
+    if (!supportedRegistryAgentProfile(raw.registryId.trim())) return undefined;
     return {
       type: "registry",
       registryId: raw.registryId.trim(),
@@ -755,7 +757,11 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
     // GET /api/agent-servers
     if (request.method === "GET" && pathname === "/api/agent-servers") {
       const entries = await listAgentServerEntries(bridge, root);
-      await ensureRegistryAgentServersInstalled(bridge, root, entries);
+      try {
+        await ensureRegistryAgentServersInstalled(bridge, root, entries);
+      } catch (error) {
+        return Response.json({ error: errorMessage(error) }, { status: 409 });
+      }
       return Response.json(redactAgentServerEntries(entries));
     }
 

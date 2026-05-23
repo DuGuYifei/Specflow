@@ -13,6 +13,7 @@ import {
   prepareCanvasRun,
   startSpecflowServer,
   upsertLocalAgentServer,
+  choosePreferredAuthMethod,
   type AgentFlowDoc,
   type RunInputVariable,
 } from "@specflow/server";
@@ -356,7 +357,7 @@ async function authenticateInitialAgentServer(
   }
 
   console.log(`${agentServerId} requires authentication.`);
-  const method = selectCliAuthMethod(status.methods);
+  const method = selectCliAuthMethod(agentServerId, status.methods);
   if (!method) {
     throw new Error(`ACP agent "${agentServerId}" requires authentication but advertised no supported method.`);
   }
@@ -404,11 +405,8 @@ async function ensureConfiguredAgentServersForTui(skipIds: Set<string>): Promise
   }
 }
 
-function selectCliAuthMethod(methods: AgentAuthenticationMethod[]): AgentAuthenticationMethod | undefined {
-  return methods.find((method) => method.type === "terminal" && method.terminalEnabled)
-    ?? methods.find((method) => method.type === "agent")
-    ?? methods.find((method) => method.type === "env_var")
-    ?? methods.find((method) => method.type === "terminal");
+function selectCliAuthMethod(agentServerId: string, methods: AgentAuthenticationMethod[]): AgentAuthenticationMethod | undefined {
+  return choosePreferredAuthMethod(agentServerId, methods);
 }
 
 async function pathExists(path: string): Promise<boolean> {

@@ -134,6 +134,11 @@ describe("agent server API", () => {
         name: "Codex",
         version: "1.0.0",
         distribution: { npx: { package: "codex-acp" } },
+      }, {
+        id: "other-acp",
+        name: "Other",
+        version: "1.0.0",
+        distribution: { npx: { package: "other-acp" } },
       }],
     })) as unknown as typeof fetch;
 
@@ -147,6 +152,22 @@ describe("agent server API", () => {
     } finally {
       globalThis.fetch = fetchBeforeTest;
     }
+  });
+
+  test("rejects unsupported registry agent server settings", async () => {
+    const root = await mkdtemp(join(tmpdir(), "specflow-agent-server-api-"));
+    const handle = createApiHandler(createSpecflowBridge(), root);
+
+    const response = await handle(new Request("http://specflow.test/api/agent-servers/other", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        type: "registry",
+        registryId: "other-acp",
+      }),
+    }));
+
+    expect(response?.status).toBe(400);
   });
 
   test("probes auth methods and stores env auth values locally", async () => {

@@ -10,6 +10,7 @@ import type {
 } from "../types";
 import { resolveCustomAcpCommand } from "../sources/custom-acp";
 import { resolveRegistryAcpCommand } from "../sources/registry-acp";
+import { applySupportedRegistryAgentDefaults } from "../supported-agents";
 import { expandHome } from "../util";
 
 export interface AgentServerStoreOptions {
@@ -47,7 +48,7 @@ export class AgentServerStore {
     this.#settings = new Map([
       ...Object.entries(base.agentServers ?? base.agent_servers ?? {}),
       ...Object.entries(local.agentServers ?? local.agent_servers ?? {}),
-    ]);
+    ].map(([id, settings]) => [id, applySupportedRegistryAgentDefaults(settings)]));
   }
 }
 

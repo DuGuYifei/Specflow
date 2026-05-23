@@ -8,6 +8,7 @@ import {
 } from "./registry-client";
 import { resolveBinaryTarget } from "./registry-download";
 import { normalizeEnv } from "../util";
+import { assertSupportedRegistryAgent } from "../supported-agents";
 
 export async function resolveRegistryAcpCommand(input: {
   settings: RegistryAcpAgentServerSettings;
@@ -15,6 +16,7 @@ export async function resolveRegistryAcpCommand(input: {
 }): Promise<AgentServerCommand> {
   const cacheDir = await ensureCacheDir(input.cacheDir);
   const index = await loadRegistryIndex(cacheDir);
+  assertSupportedRegistryAgent(input.settings.registryId);
   const agent = index.agents.find((candidate) => candidate.id === input.settings.registryId);
   if (!agent) {
     throw new Error(`ACP registry agent not found: ${input.settings.registryId}`);
