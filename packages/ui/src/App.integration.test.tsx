@@ -8,6 +8,7 @@ declare function afterEach(fn: () => void): void;
 declare function test(name: string, fn: () => Promise<void> | void): void;
 declare const expect: (value: unknown) => {
   toContain(expected: unknown): void;
+  not: { toContain(expected: unknown): void };
 };
 
 class MockEventSource {
@@ -37,6 +38,7 @@ class MockEventSource {
 let runAuthRequired = false;
 let holdRunStart = false;
 let releaseRunStart: (() => void) | undefined;
+let agentSessionHistory: unknown[] = [];
 
 describe("App run integration", () => {
   let root: Root | undefined;
@@ -60,6 +62,7 @@ describe("App run integration", () => {
     runAuthRequired = false;
     holdRunStart = false;
     releaseRunStart = undefined;
+    agentSessionHistory = [];
     container = document.createElement("div");
     document.body.appendChild(container);
   });
@@ -95,7 +98,7 @@ describe("App run integration", () => {
     await waitForText("Start run");
     clickBottomBarHandle();
     await waitForText("Logs");
-    clickButtonContaining("Sessions");
+    clickButtonContaining("Sessions", "last");
     await waitForText("New agent session");
 
     const input = document.querySelector(".add-session-row input");
@@ -105,6 +108,30 @@ describe("App run integration", () => {
 
     await waitForText("reviewer");
     expect(document.body.textContent).toContain("2 sessions");
+  });
+
+  test("organizes ACP session history under the selected agent", async () => {
+    agentSessionHistory = [
+      sampleAgentSession("claude-acp", "claude-review", "claude-runtime"),
+      sampleAgentSession("codex-acp", "implementation", "codex-runtime"),
+    ];
+    root = createRoot(container);
+    root.render(<App />);
+
+    await waitForText("Start run");
+    clickBottomBarHandle();
+    await waitForText("Agent Sessions");
+    clickButtonContaining("Agent Sessions");
+
+    await waitForText("claude-runtime");
+    expect(document.body.textContent).not.toContain("codex-runtime");
+
+    const agentSelect = document.querySelector(".agent-session-agent-select");
+    if (!(agentSelect instanceof window.HTMLSelectElement)) throw new Error("Agent session selector not found");
+    setSelectValue(agentSelect, "codex-acp");
+
+    await waitForText("codex-runtime");
+    expect(document.body.textContent).not.toContain("claude-runtime");
   });
 
   test("opens the auth modal when run preflight requires agent authentication", async () => {
@@ -152,7 +179,7 @@ function mockFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Respon
     return json([]);
   }
   if (method === "GET" && url === "/api/agent-sessions?workflowId=wf1") {
-    return json([]);
+    return json(agentSessionHistory);
   }
   if (method === "GET" && url === "/api/agent-servers") {
     return json([{ id: "echo-headless", settings: { type: "headless", command: "node", argsTemplate: [] } }]);
@@ -228,6 +255,33 @@ function sampleRun(status: string) {
   };
 }
 
+function sampleAgentSession(agentServerId: string, specflowSessionId: string, acpSessionId: string) {
+  return {
+    id: `${agentServerId}-${acpSessionId}`,
+    workflowId: "wf1",
+    specflowSessionId,
+    agentId: `agent-server-${agentServerId}`,
+    agentServerId,
+    acpSessionId,
+    acpSupportsLoadSession: true,
+    acpSupportsResumeSession: true,
+    firstSeenAt: "2026-05-19T10:00:00.000Z",
+    lastSeenAt: "2026-05-19T10:05:00.000Z",
+    latestRunId: "run1",
+    latestInvocationId: `${acpSessionId}-invocation`,
+    latestStatus: "done",
+    runIds: ["run1"],
+    invocationIds: [`${acpSessionId}-invocation`],
+    invocations: [{
+      runId: "run1",
+      invocationId: `${acpSessionId}-invocation`,
+      nodeId: "node-1",
+      status: "done",
+      startedAt: "2026-05-19T10:00:00.000Z",
+    }],
+  };
+}
+
 function clickButton(text: string, pick: "first" | "last" = "first"): void {
   const matches = [...document.getElementsByTagName("button")].filter((candidate) =>
     candidate.textContent?.trim() === text,
@@ -237,12 +291,18 @@ function clickButton(text: string, pick: "first" | "last" = "first"): void {
   button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
 }
 
-function clickButtonContaining(text: string): void {
-  const button = [...document.getElementsByTagName("button")].find((candidate) =>
+function clickButtonContaining(text: string, pick: "first" | "last" = "first"): void {
+  const matches = [...document.getElementsByTagName("button")].filter((candidate) =>
     candidate.textContent?.includes(text),
   );
+  const button = pick === "last" ? matches.at(-1) : matches[0];
   if (!button) throw new Error(`Button containing text not found: ${text}`);
   button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+}
+
+function setSelectValue(select: HTMLSelectElement, value: string): void {
+  select.value = value;
+  select.dispatchEvent(new window.Event("change", { bubbles: true }));
 }
 
 function clickBottomBarHandle(): void {

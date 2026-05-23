@@ -864,7 +864,7 @@ input, textarea, select { font-family: inherit; font-size: inherit; color: inher
   flex: 1;
   align-items: stretch;
 }
-.sessions-body.history {
+.sessions-body.agent-sessions {
   flex-direction: column;
   padding: 10px 14px 14px;
   gap: 10px;
@@ -874,8 +874,29 @@ input, textarea, select { font-family: inherit; font-size: inherit; color: inher
 }
 .history-filters {
   display: flex;
+  align-items: end;
   gap: 8px;
   flex-shrink: 0;
+}
+.history-filter {
+  display: grid;
+  gap: 4px;
+  color: var(--ink-3);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+.history-filter .input {
+  min-width: 176px;
+}
+.history-agent-summary {
+  min-height: 31px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: 6px;
+  color: var(--ink-3);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
 }
 .history-list {
   flex: 1;
@@ -884,6 +905,27 @@ input, textarea, select { font-family: inherit; font-size: inherit; color: inher
   display: grid;
   gap: 8px;
   align-content: start;
+}
+.history-session-group {
+  display: grid;
+  gap: 6px;
+}
+.history-session-group-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink-3);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+.history-session-group-head .count {
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 1px 5px;
+}
+.history-session-cards {
+  display: grid;
+  gap: 8px;
 }
 .history-empty {
   color: var(--ink-3);
