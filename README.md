@@ -37,7 +37,7 @@ bun --version
 The expected Bun version is:
 
 ```text
-1.3.13
+1.3.14
 ```
 
 ## Development
