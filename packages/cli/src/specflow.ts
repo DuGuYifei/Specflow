@@ -17,6 +17,7 @@ import {
   type AgentFlowDoc,
   type RunInputVariable,
 } from "@specflow/server";
+import { StdinLineReader } from "./stdin-lines";
 
 type AgentAuthenticationStatus = Awaited<ReturnType<typeof inspectAgentServerAuthentication>>;
 type AgentAuthenticationMethod = AgentAuthenticationStatus["methods"][number];
@@ -29,6 +30,7 @@ interface RunCliOptions {
 }
 
 const args = Bun.argv.slice(2);
+let stdinLineReader: StdinLineReader | undefined;
 
 try {
   if (args[0] === "run") {
@@ -226,16 +228,8 @@ async function confirm(question: string): Promise<boolean> {
 }
 
 async function readStdinLine(): Promise<string> {
-  const reader = Bun.stdin.stream().getReader();
-  const decoder = new TextDecoder();
-  let out = "";
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) return out;
-    out += decoder.decode(value);
-    const nl = out.indexOf("\n");
-    if (nl >= 0) return out.slice(0, nl);
-  }
+  stdinLineReader ??= new StdinLineReader(Bun.stdin.stream());
+  return stdinLineReader.readLine();
 }
 
 function indentBlock(label: string, value: string): string {
