@@ -1,0 +1,82 @@
+version: 1
+name: Gate fork and join smoke test
+sessions:
+  judge:
+    agentServerId: claude-acp
+nodes:
+  route:
+    kind: input
+    num: IN
+    title: Requested branch
+    variableName: specflow_route
+    defaultValue: rework
+    description: Use pass or rework to select the expected branch.
+  source:
+    kind: step
+    num: "01"
+    title: Publish route fact
+    prompt: |-
+      Do not use tools or edit files.
+      The requested route is "<specflow_route>".
+      If it is exactly "pass", reply exactly ROUTE=pass.
+      For every other value, reply exactly ROUTE=rework.
+    session: judge
+  decide:
+    kind: gate
+    num: G1
+    title: Select requested route
+    decisionCriteria: |-
+      Choose pass only when the preceding output is exactly ROUTE=pass.
+      Choose rework only when the preceding output is exactly ROUTE=rework.
+    branches:
+      pass:
+        label: pass
+        description: The published fact selected the passing path.
+      rework:
+        label: rework
+        description: The published fact selected the rework path.
+  pass-path:
+    kind: step
+    num: "02A"
+    title: Pass branch marker
+    prompt: |-
+      Do not use tools or edit files.
+      Reply exactly SELECTED_BRANCH=pass.
+    session: judge
+  rework-path:
+    kind: step
+    num: "02B"
+    title: Rework branch marker
+    prompt: |-
+      Do not use tools or edit files.
+      Reply exactly SELECTED_BRANCH=rework.
+    session: judge
+  joined:
+    kind: step
+    num: "03"
+    title: Joined completion marker
+    prompt: |-
+      Do not use tools or edit files.
+      Reply exactly JOIN_REACHED.
+    session: judge
+  done:
+    kind: end
+    num: END
+    title: Done
+edges:
+  - from: route
+    to: source
+  - from: source
+    to: decide
+  - from: decide
+    to: pass-path
+    branch: pass
+  - from: decide
+    to: rework-path
+    branch: rework
+  - from: pass-path
+    to: joined
+  - from: rework-path
+    to: joined
+  - from: joined
+    to: done
