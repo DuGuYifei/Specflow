@@ -31,6 +31,7 @@
 | `sessionId` | `string \| null` | 所用 workflow session；有效执行必须指向存在的 session |
 | `images` | `{ path, label?, mimeType? }[]` | 图片上下文 |
 | `paths` | `string[]` | 文件或目录上下文；支持手写相对路径或绝对路径 |
+| `pauseAfterRun` | `boolean?` | 节点完成一次 agent turn 后暂停 workflow，允许人工继续与该 session 交互 |
 | `locked` | `boolean?` | UI 布局/删除限制，不影响执行语义 |
 
 运行时 `AgentNode` 主要字段：
@@ -42,6 +43,7 @@
 | `sessionId` | `step.sessionId` |
 | `images` | 图片资源引用；支持图片块的 agent 接收 ACP 多模态 content block，否则降级为资源链接 |
 | `relatedResources` | `paths` 转成的文件/目录资源引用 |
+| `pauseAfterRun` | `step.pauseAfterRun`；启用时完成 turn 后进入人工暂停 |
 
 `description` 不再承担 step 执行内容；step UI 只编辑 `prompt`。
 
@@ -232,7 +234,27 @@ Runtime `TaggedOutputEdge.outputTag` 字段：
 - Gate 不支持 fork 时，运行记录使用父 session，不制造虚假的 fork session。
 - UI 的 Agent sessions 历史面板展示 `load`、`resume`、`fork` 能力，并为 fork 记录展示父 session。
 
-## 8. 当前限制
+## 8. Inspect、Resume 与人工暂停
+
+### 历史 session 操作
+
+- `Inspect` 使用 ACP `load`（不可用时按 capability fallback）读取历史 session，并在独立只读 conversation 窗口展示 ACP 回放。
+- `Resume` 使用 ACP `resume`（不可用时 fallback），在独立 conversation 窗口保持恢复后的连接，用户可以发送后续 prompt。
+- `Resume` 后续 prompt 引发的 ACP permission 或 elicitation 会复用 UI 确认流程；关闭窗口会取消仍在等待答复的请求。
+- `Inspect`/`Resume` 的 ACP 回放和后续会话内容不写入运行时 `Logs` 页签；`Logs` 仅展示 workflow run 自身保存的 terminal 输出。
+- 关闭 conversation 窗口会取消未完成的恢复，或关闭已恢复并可交互的 Resume session。
+
+### Step 人工暂停
+
+- 普通 `step` 可配置 `pauseAfterRun: true`；`gate`、`input` 和 `end` 不支持此选项。
+- 节点完成首个 agent turn 后，run 状态为 `paused`，执行器保留同一次 run 的 ACP connection 与原 workflow session。
+- 暂停期间，只有暂停节点所属 session 的 `Logs` 页签会显示 prompt 输入口；发送内容会继续作用于该 session。
+- 用户点击暂停节点卡片上的 `Continue` 后，输入口关闭，workflow 继续执行；若人工发送过 prompt，最后一次回复成为该节点用于后续显式内容传递的输出。
+- Prompt/Continue API 不接受客户端指定 ACP session，而是只根据服务端登记的活动 `(runId, nodeId)` 暂停令牌路由请求；运行结束或继续后令牌立即失效。
+- Headless agent 没有可继续交互的 ACP session，因此服务端拒绝为其启动启用了 `pauseAfterRun` 的 run。
+- 当前 ACP 尚未提供可供此流程直接使用的 ask-human tool；UI 说明人工暂停是过渡方案，待 Agent Client Protocol Elicitation RFD 合并后增加原生能力。
+
+## 9. 当前限制
 
 - `loopback` 仍是画布层字段，运行执行器不会循环回退。
 - Gate 未选中路径会正确停止执行，但运行记录/UI 尚未将这些节点标为独立的 `skipped` 状态，仍可能显示初始 `pending`。

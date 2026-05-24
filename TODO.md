@@ -36,6 +36,15 @@
 - [x] UI 展示 gate fork 的父 session 与 ACP capability 信息。
 - [x] Server 与 converter 对上述约束进行防御性校验，避免手写 YAML 绕过 UI。
 
+### ACP Conversation And Human Pause
+
+- [x] `Inspect` 在独立 ACP conversation 窗口只读展示恢复内容，不把回放内容混入 run `Logs` 页签。
+- [x] `Resume` 在独立 conversation 窗口恢复并保持 ACP session，可继续发送用户 prompt 和处理 ACP permission/elicitation；窗口关闭时终止该恢复会话。
+- [x] 普通 `step` 可启用 `pauseAfterRun`；暂停后仅该 step 所属 session 的 `Logs` 页签展示人工 prompt 输入口。
+- [x] 暂停节点卡片提供 `Continue`，继续后关闭输入口，并将最后一次人工交互输出作为下游显式传输来源。
+- [x] 服务端仅允许当前 run 中由执行器登记的暂停节点接收 prompt/continue；headless agent 不允许启用交互暂停。
+- [x] UI 明示当前为 ACP 尚无 ask-human tool 的暂停方案，待 Agent Client Protocol Elicitation RFD 合并后扩展原生交互。
+
 ## Open Work
 
 - [ ] 实现 `loopback` 的有界循环/返工执行语义；当前仅用于画布显示。

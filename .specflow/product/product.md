@@ -50,7 +50,7 @@ Specflow 关注的是编码过程如何在本地被系统性收敛。
 - `review_loop` — 审查失败后的修复循环
 - `control_scope` — director、manager 或 verifier 节点能管理哪些其他节点
 
-**Session** 是一组节点共享的 agent CLI 上下文。多个节点可以进入同一个 session module，以保持计划、实现和修复之间的上下文连续性；节点也可以声明当 repair loop 再次进入时开启新 session，避免旧上下文污染新的审查或修复。
+**Session** 是一组节点共享的 agent CLI 上下文。多个节点可以进入同一个 session module，以保持计划、实现和修复之间的上下文连续性；节点也可以声明当 repair loop 再次进入时开启新 session，避免旧上下文污染新的审查或修复。当前 UI 允许独立 Inspect/Resume 历史 ACP session，也允许普通 agent 节点完成后暂停，在原 session 中进行人工 prompt 交互后再继续 workflow。
 
 ## Workflow 基础样例
 
