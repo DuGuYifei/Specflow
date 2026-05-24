@@ -30,7 +30,6 @@ nodes:
     num: "01"
     title: Validate and inspect source
     session: homepage-researcher
-    locked: true
     prompt: |-
       You are researching a software product in order to build its public-facing homepage.
 
@@ -64,7 +63,6 @@ nodes:
     num: STOP
     title: Report setup required
     session: homepage-researcher
-    locked: true
     prompt: |-
       The source-project preflight did not pass. Do not create a speculative landing page. Summarize exactly how to make the next run actionable: use an absolute source project path, add that directory to the selected Codex agent server Additional directories, keep it separate from the empty output workspace, and rerun this flow. Do not edit project files.
   position-product:
@@ -194,6 +192,10 @@ nodes:
     num: END
     title: Repair reviewed
 edges:
+  - from: source-project-path
+    to: inspect-source
+  - from: homepage-direction
+    to: inspect-source
   - from: inspect-source
     to: source-readiness
   - from: source-readiness
