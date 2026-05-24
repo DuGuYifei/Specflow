@@ -73,11 +73,14 @@ export interface AgentSessionRecord {
   id: string;
   workflowId: string;
   specflowSessionId?: string;
+  parentSpecflowSessionId?: string;
   agentId: string;
   agentServerId: string;
   acpSessionId: string;
   acpSupportsLoadSession: boolean;
   acpSupportsResumeSession: boolean;
+  acpSupportsForkSession: boolean;
+  acpSessionForked: boolean;
   firstSeenAt: string;
   lastSeenAt: string;
   latestRunId: string;
@@ -302,6 +305,22 @@ export async function saveCanvas(id: string, doc: CanvasDoc): Promise<void> {
     body: JSON.stringify(doc),
   });
   if (!res.ok) throw new Error(await apiError(res, `Failed to save canvas ${id}`));
+}
+
+export async function uploadCanvasAssets(
+  id: string,
+  kind: 'image' | 'path',
+  files: File[],
+  directory = false,
+): Promise<{ paths: string[]; images?: Array<{ path: string; label?: string; mimeType?: string }> }> {
+  const body = new FormData();
+  for (const file of files) {
+    body.append('files', file, file.name);
+    body.append('relativePaths', (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name);
+  }
+  const res = await fetch(`/api/canvases/${id}/assets?kind=${kind}&directory=${directory}`, { method: 'POST', body });
+  if (!res.ok) throw new Error(await apiError(res, 'Failed to import assets'));
+  return res.json();
 }
 
 export async function createCanvas(name: string): Promise<CanvasDoc> {

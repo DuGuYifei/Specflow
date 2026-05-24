@@ -2,7 +2,7 @@ import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import type { WorkflowNode, Edge, Session, Workflow, Run, Selection, RunStateMap, Theme, RunStatus, LogLine, InputNode } from './types';
 import { isSymbolKey } from './appearance';
 import {
-  fetchCanvases, fetchCanvas, saveCanvas, runCanvas,
+  fetchCanvases, fetchCanvas, saveCanvas, uploadCanvasAssets, runCanvas,
   fetchRuns, fetchRun, fetchRunLogs, subscribeToRun,
   createCanvas, deleteRun as apiDeleteRun, rerunRun as apiRerunRun,
   cancelRun as apiCancelRun,
@@ -36,6 +36,15 @@ function runStatusFromEvent(status: string): RunStatus {
   if (status === 'failed') return 'error';
   if (status === 'cancelled') return 'cancelled';
   return 'running';
+}
+
+function resolveTransferSource(edge: Edge, nodes: WorkflowNode[], edges: Edge[]): WorkflowNode | undefined {
+  const source = nodes.find((node) => node.id === edge.from);
+  if (source?.kind !== 'gate') return source;
+  const incoming = edges.find((candidate) =>
+    candidate.to === source.id && nodes.find((node) => node.id === candidate.from)?.kind !== 'input',
+  );
+  return incoming ? resolveTransferSource(incoming, nodes, edges) : undefined;
 }
 
 export function App() {
@@ -188,38 +197,14 @@ export function App() {
     });
   }, [scheduleSave]);
 
-  const onToggleUpdateDoc = useCallback((id: string) => {
-    setNodes((ns) => {
-      const updated = ns.map((n) => {
-        if (n.id !== id || n.kind !== 'step') return n;
-        return { ...n, updateDoc: !n.updateDoc };
-      });
-      nodesRef.current = updated;
-      scheduleSave();
-      return updated;
-    });
-  }, [scheduleSave]);
-
   const onChangeSession = useCallback((id: string, sid: string) => {
     setNodes((ns) => {
       const updated = ns.map((n) => {
-        if (n.id !== id || n.kind === 'end' || n.kind === 'input') return n;
+        if (n.id !== id || n.kind !== 'step') return n;
         return { ...n, sessionId: sid };
       });
       nodesRef.current = updated;
-      setEdges((es) => {
-        const recomputed = es.map((e) => {
-          const fromN = updated.find((n) => n.id === e.from);
-          const toN   = updated.find((n) => n.id === e.to);
-          if (!fromN || !toN || e.loopback || fromN.kind === 'gate' || toN.kind === 'gate' || toN.kind === 'end') return e;
-          const fromSid = fromN.sessionId;
-          const toSid   = toN.sessionId;
-          return { ...e, sameSession: fromSid != null && fromSid === toSid };
-        });
-        edgesRef.current = recomputed;
-        scheduleSave();
-        return recomputed;
-      });
+      scheduleSave();
       return updated;
     });
   }, [scheduleSave]);
@@ -243,7 +228,7 @@ export function App() {
     });
   }, [scheduleSave]);
 
-  const onEditBranch = useCallback((gateId: string, branchId: string, patch: { label?: string; color?: string }) => {
+  const onEditBranch = useCallback((gateId: string, branchId: string, patch: { label?: string; description?: string }) => {
     setNodes((ns) => {
       const updated = ns.map((n) => {
         if (n.id !== gateId || n.kind !== 'gate') return n;
@@ -310,11 +295,24 @@ export function App() {
     });
   }, [scheduleSave]);
 
-  const onAddAttachment = useCallback((nodeId: string, label: string) => {
+  const onUploadImages = useCallback(async (nodeId: string, files: File[]) => {
+    const uploaded = await uploadCanvasAssets(activeWorkflow, 'image', files);
     setNodes((ns) => {
       const updated = ns.map((n) => {
         if (n.id !== nodeId || n.kind !== 'step') return n;
-        return { ...n, attachments: [...(n.attachments ?? []), { label }] };
+        return { ...n, images: [...(n.images ?? []), ...(uploaded.images ?? [])] };
+      });
+      nodesRef.current = updated;
+      scheduleSave();
+      return updated;
+    });
+  }, [activeWorkflow, scheduleSave]);
+
+  const onDeleteImage = useCallback((nodeId: string, index: number) => {
+    setNodes((ns) => {
+      const updated = ns.map((n) => {
+        if (n.id !== nodeId || n.kind !== 'step') return n;
+        return { ...n, images: (n.images ?? []).filter((_, i) => i !== index) };
       });
       nodesRef.current = updated;
       scheduleSave();
@@ -322,19 +320,20 @@ export function App() {
     });
   }, [scheduleSave]);
 
-  const onDeleteAttachment = useCallback((nodeId: string, index: number) => {
+  const onImportPaths = useCallback(async (nodeId: string, files: File[], directory: boolean) => {
+    if (!files.length) return;
+    const uploaded = await uploadCanvasAssets(activeWorkflow, 'path', files, directory);
     setNodes((ns) => {
-      const updated = ns.map((n) => {
-        if (n.id !== nodeId || n.kind !== 'step') return n;
-        return { ...n, attachments: (n.attachments ?? []).filter((_, i) => i !== index) };
-      });
+      const updated = ns.map((node) => node.id === nodeId && node.kind === 'step'
+        ? { ...node, paths: [...(node.paths ?? []), ...uploaded.paths] }
+        : node);
       nodesRef.current = updated;
       scheduleSave();
       return updated;
     });
-  }, [scheduleSave]);
+  }, [activeWorkflow, scheduleSave]);
 
-  const onEditEdge = useCallback((id: string, patch: { tag?: string; prompt?: string }) => {
+  const onEditEdge = useCallback((id: string, patch: Partial<Edge>) => {
     setEdges((es) => {
       const updated = es.map((e) => e.id === id ? { ...e, ...patch } : e);
       edgesRef.current = updated;
@@ -405,21 +404,13 @@ export function App() {
     const remaining = sessionsRef.current.filter((s) => s.id !== id);
     const fallback = remaining[0]?.id ?? null;
     const updatedNodes = nodesRef.current.map((n) =>
-      n.sessionId === id ? { ...n, sessionId: fallback } as WorkflowNode : n,
+      n.kind === 'step' && n.sessionId === id ? { ...n, sessionId: fallback } as WorkflowNode : n,
     );
-    const updatedEdges = edgesRef.current.map((e) => {
-      const fromN = updatedNodes.find((n) => n.id === e.from);
-      const toN   = updatedNodes.find((n) => n.id === e.to);
-      if (!fromN || !toN || e.loopback || fromN.kind === 'gate' || toN.kind === 'gate' || toN.kind === 'end') return e;
-      return { ...e, sameSession: fromN.sessionId != null && fromN.sessionId === toN.sessionId };
-    });
     sessionsRef.current = remaining;
     nodesRef.current    = updatedNodes;
-    edgesRef.current    = updatedEdges;
     setSessions(remaining);
     setActiveSessionId(fallback ?? '');
     setNodes(updatedNodes);
-    setEdges(updatedEdges);
     scheduleSave();
   }, [scheduleSave]);
 
@@ -432,7 +423,7 @@ export function App() {
       session.id === id ? { ...session, ...patch, id: nextId, name: nextId } : session,
     );
     const updatedNodes = nodesRef.current.map((node) =>
-      node.sessionId === id ? { ...node, sessionId: nextId } as WorkflowNode : node,
+      node.kind === 'step' && node.sessionId === id ? { ...node, sessionId: nextId } as WorkflowNode : node,
     );
     sessionsRef.current = updated;
     nodesRef.current = updatedNodes;
@@ -802,6 +793,7 @@ export function App() {
   const selectedEdge     = selection?.kind === 'edge' ? displayEdges.find((e) => e.id === selection.id) : null;
   const selectedFromNode = selectedEdge ? displayNodes.find((n) => n.id === selectedEdge.from) : undefined;
   const selectedToNode   = selectedEdge ? displayNodes.find((n) => n.id === selectedEdge.to)   : undefined;
+  const selectedTransferSourceNode = selectedEdge ? resolveTransferSource(selectedEdge, displayNodes, displayEdges) : undefined;
 
   const selectedNodeWithState = selectedNode
     ? { ...selectedNode, runState: runState[selectedNode.id] }
@@ -933,7 +925,6 @@ export function App() {
           logLines={logLines}
           onClose={onClearSelection}
           onEditNode={onEditNode}
-          onToggleUpdateDoc={onToggleUpdateDoc}
           onChangeSession={onChangeSession}
           onAddSessionRequest={onAddSessionRequest}
           onAddBranch={onAddBranch}
@@ -942,8 +933,9 @@ export function App() {
           onAddPath={onAddPath}
           onEditPath={onEditPath}
           onDeletePath={onDeletePath}
-          onAddAttachment={onAddAttachment}
-          onDeleteAttachment={onDeleteAttachment}
+          onUploadImages={onUploadImages}
+          onDeleteImage={onDeleteImage}
+          onImportPaths={onImportPaths}
         />
       )}
       {!runConfigOpen && selection?.kind === 'edge' && selectedEdge && (
@@ -951,6 +943,7 @@ export function App() {
           edge={selectedEdge}
           fromNode={selectedFromNode}
           toNode={selectedToNode}
+          transferSourceNode={selectedTransferSourceNode}
           viewMode={view}
           onClose={onClearSelection}
           onEditEdge={onEditEdge}

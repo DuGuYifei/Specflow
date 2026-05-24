@@ -26,7 +26,7 @@ import {
   renderNodePrompt,
 } from "./prompt-renderer";
 import { buildPromptBlocksForNode } from "./prompt-blocks";
-import { DeterministicGateEvaluator, type GateEvaluator } from "./gate-evaluator";
+import { parseGateDecision } from "./gate-evaluator";
 import { TerminalEventStore } from "./terminal-store";
 import { RunInteractionStore, type RunInteractionContext } from "./interaction-store";
 
@@ -57,7 +57,6 @@ export type AgentLifecycleStatusEvent = AgentLifecycleEvent & {
 
 export interface WorkflowExecutorOptions {
   cwd?: string;
-  gateEvaluator?: GateEvaluator;
   terminalEvents?: TerminalEventStore;
   interactions?: RunInteractionStore;
   agentRunner?: AgentRunner;
@@ -73,15 +72,22 @@ export interface WorkflowRunOptions {
   signal?: AbortSignal;
 }
 
+interface TransferOrigin {
+  agentId: string;
+  sessionId: string;
+  output: string;
+}
+
 interface NodeExecutionResult {
   output: string;
-  downstreamInput: string;
+  origin: TransferOrigin;
   chosenBranchId?: string;
 }
 
 interface PendingNodeInput {
-  passthrough: string[];
+  input: string[];
   edgeValues: Record<string, string>;
+  origin?: TransferOrigin;
 }
 
 class WorkflowCancelledError extends Error {
@@ -92,24 +98,21 @@ class WorkflowCancelledError extends Error {
 }
 
 function throwIfCancelled(signal: AbortSignal | undefined): void {
-  if (signal?.aborted) {
-    throw new WorkflowCancelledError();
-  }
+  if (signal?.aborted) throw new WorkflowCancelledError();
 }
 
 export class WorkflowExecutor {
   readonly #cwd: string;
-  readonly #gateEvaluator: GateEvaluator;
   readonly #terminalEvents: TerminalEventStore;
   readonly #interactions: RunInteractionStore;
   readonly #agentRunnerOverride: AgentRunner | undefined;
   readonly #onNodeStatus: ((event: NodeStatusEvent) => void) | undefined;
   readonly #onRunStatus: ((event: RunStatusEvent) => void) | undefined;
   readonly #onAgentLifecycle: ((event: AgentLifecycleStatusEvent) => void) | undefined;
+  readonly #forkCounts = new Map<string, number>();
 
   constructor(options: WorkflowExecutorOptions = {}) {
     this.#cwd = options.cwd ?? process.cwd();
-    this.#gateEvaluator = options.gateEvaluator ?? new DeterministicGateEvaluator();
     this.#terminalEvents = options.terminalEvents ?? new TerminalEventStore();
     this.#interactions = options.interactions ?? new RunInteractionStore();
     this.#agentRunnerOverride = options.agentRunner;
@@ -127,9 +130,7 @@ export class WorkflowExecutor {
   }
 
   async run(workflow: Workflow, initialInput = "", options: WorkflowRunOptions = {}): Promise<WorkflowRun> {
-    const sessionPool = this.#agentRunnerOverride
-      ? undefined
-      : new AgentProxySessionPool({ root: this.#cwd });
+    const sessionPool = this.#agentRunnerOverride ? undefined : new AgentProxySessionPool({ root: this.#cwd });
     const agentRunner = this.#agentRunnerOverride ?? ((request: AgentCommandRequest) => sessionPool!.run(request));
     const run: WorkflowRun = {
       id: options.runId ?? uuidv7(),
@@ -151,20 +152,15 @@ export class WorkflowExecutor {
       const completedNodes = new Set<string>();
 
       for (const entryNode of findEntryNodes(workflow)) {
-        pendingInputs.set(entryNode.id, { passthrough: [initialInput], edgeValues: {} });
+        pendingInputs.set(entryNode.id, { input: [initialInput], edgeValues: {} });
       }
 
       while (queue.length > 0) {
         throwIfCancelled(options.signal);
         const nodeId = queue.shift();
-        if (!nodeId || completedNodes.has(nodeId)) {
-          continue;
-        }
-
+        if (!nodeId || completedNodes.has(nodeId)) continue;
         const node = nodesById.get(nodeId);
-        if (!node) {
-          throw new Error(`Workflow references missing node "${nodeId}".`);
-        }
+        if (!node) throw new Error(`Workflow references missing node "${nodeId}".`);
 
         const incomingEdges = incomingEdgesByTarget.get(node.id) ?? [];
         if (!isNodeReady(incomingEdges, completedNodes)) {
@@ -172,45 +168,37 @@ export class WorkflowExecutor {
           continue;
         }
 
-        const pendingInput = pendingInputs.get(node.id) ?? { passthrough: [initialInput], edgeValues: {} };
-        const nodeInput = pendingInput.passthrough.filter(Boolean).join("\n\n");
+        const pending = pendingInputs.get(node.id) ?? { input: [], edgeValues: {} };
         const nodeResult = await this.#executeNode({
           agentRunner,
           workflow,
           run,
           node,
-          input: nodeInput,
-          edgeValues: pendingInput.edgeValues,
+          input: pending.input.filter(Boolean).join("\n\n"),
+          edgeValues: pending.edgeValues,
+          origin: pending.origin,
           signal: options.signal,
         });
-
         completedNodes.add(node.id);
 
         for (const edge of outgoingEdgesBySource.get(node.id) ?? []) {
-          if (node.kind === "gate" && edge.sourcePortId !== nodeResult.chosenBranchId) {
-            continue;
-          }
-
-          const targetInput = pendingInputs.get(edge.targetNodeId) ?? {
-            passthrough: [],
-            edgeValues: {},
-          };
-
-          if (edge.kind === "passthrough") {
-            targetInput.passthrough.push(nodeResult.downstreamInput);
-          } else {
+          if (node.kind === "gate" && edge.sourcePortId !== nodeResult.chosenBranchId) continue;
+          const target = pendingInputs.get(edge.targetNodeId) ?? { input: [], edgeValues: {} };
+          if (edge.kind === "gate-input") {
+            target.input.push(nodeResult.origin.output);
+            target.origin = nodeResult.origin;
+          } else if (edge.kind === "tagged-output") {
             const taggedContent = await this.#resolveTaggedEdgeContent({
               workflow,
               agentRunner,
               run,
               edge,
-              input: nodeResult.output,
+              origin: nodeResult.origin,
               signal: options.signal,
             });
-            Object.assign(targetInput.edgeValues, createTaggedEdgeVariable(edge, taggedContent));
+            Object.assign(target.edgeValues, createTaggedEdgeVariable(edge, taggedContent));
           }
-
-          pendingInputs.set(edge.targetNodeId, targetInput);
+          pendingInputs.set(edge.targetNodeId, target);
           queue.push(edge.targetNodeId);
         }
       }
@@ -223,9 +211,9 @@ export class WorkflowExecutor {
       const cancelled = error instanceof WorkflowCancelledError || options.signal?.aborted;
       run.status = cancelled ? "cancelled" : "failed";
       run.completedAt = new Date().toISOString();
-      const errMsg = error instanceof Error ? error.message : String(error);
-      this.#terminalEvents.append({ runId: run.id, stream: "system", chunk: errMsg });
-      this.#onRunStatus?.({ runId: run.id, workflowId: workflow.id, status: run.status, at: run.completedAt, error: errMsg });
+      const message = error instanceof Error ? error.message : String(error);
+      this.#terminalEvents.append({ runId: run.id, stream: "system", chunk: message });
+      this.#onRunStatus?.({ runId: run.id, workflowId: workflow.id, status: run.status, at: run.completedAt, error: message });
       return run;
     } finally {
       await sessionPool?.closeAll();
@@ -239,6 +227,7 @@ export class WorkflowExecutor {
     node: WorkflowNode;
     input: string;
     edgeValues: Record<string, string>;
+    origin?: TransferOrigin;
     signal?: AbortSignal;
   }): Promise<NodeExecutionResult> {
     throwIfCancelled(input.signal);
@@ -254,45 +243,52 @@ export class WorkflowExecutor {
 
     try {
       if (input.node.kind === "agent") {
-        const output = await this.#executeAgentNode({
-          workflow: input.workflow,
-          agentRunner: input.agentRunner,
-          run: input.run,
-          nodeRun,
-          node: input.node,
-          input: input.input,
-          edgeValues: input.edgeValues,
-          signal: input.signal,
-        });
-
+        const output = await this.#executeAgentNode({ ...input, node: input.node, nodeRun });
         nodeRun.status = "done";
         nodeRun.output = output;
         nodeRun.completedAt = new Date().toISOString();
         this.#onNodeStatus?.({ runId: input.run.id, nodeId: input.node.id, status: "done", at: nodeRun.completedAt, output });
-        return { output, downstreamInput: output };
+        return {
+          output,
+          origin: { agentId: input.node.agentId, sessionId: input.node.sessionId, output },
+        };
       }
-
-      const decision = await this.#gateEvaluator.evaluate({
-        node: input.node,
-        input: input.input,
-        prompt: renderGatePrompt(input.node, input.input),
+      if (!input.origin) throw new Error(`Gate node "${input.node.id}" requires one upstream step output.`);
+      const prompt = renderGatePrompt(input.node, input.origin.output);
+      const forkSessionId = this.#nextForkSessionId(input.origin.sessionId);
+      const invocation = this.#createInvocation({
+        run: input.run,
+        nodeRun,
+        agentId: input.origin.agentId,
+        sessionId: forkSessionId,
+        parentSessionId: input.origin.sessionId,
+        prompt,
       });
-      throwIfCancelled(input.signal);
+      const output = await this.#invokeAgent({
+        workflow: input.workflow,
+        agentRunner: input.agentRunner,
+        run: input.run,
+        nodeRun,
+        invocation,
+        agentId: input.origin.agentId,
+        prompt,
+        forkFromSessionId: input.origin.sessionId,
+        signal: input.signal,
+      });
+      const decision = parseGateDecision(input.node, output);
       nodeRun.status = "done";
-      nodeRun.output = JSON.stringify(decision);
+      nodeRun.output = output;
       nodeRun.gateDecision = decision;
+      nodeRun.sessionId = invocation.sessionId;
+      nodeRun.agentInvocationId = invocation.id;
       nodeRun.completedAt = new Date().toISOString();
-      this.#onNodeStatus?.({ runId: input.run.id, nodeId: input.node.id, status: "done", at: nodeRun.completedAt, output: nodeRun.output });
-      return {
-        output: nodeRun.output,
-        downstreamInput: input.input,
-        chosenBranchId: decision.branchId,
-      };
+      this.#onNodeStatus?.({ runId: input.run.id, nodeId: input.node.id, status: "done", at: nodeRun.completedAt, output });
+      return { output, origin: input.origin, chosenBranchId: decision.branchId };
     } catch (error) {
       nodeRun.status = "failed";
       nodeRun.error = error instanceof Error ? error.message : String(error);
       nodeRun.completedAt = new Date().toISOString();
-      this.#onNodeStatus?.({ runId: input.run.id, nodeId: input.node.id, status: "failed", at: nodeRun.completedAt! });
+      this.#onNodeStatus?.({ runId: input.run.id, nodeId: input.node.id, status: "failed", at: nodeRun.completedAt });
       throw error;
     }
   }
@@ -307,19 +303,9 @@ export class WorkflowExecutor {
     edgeValues: Record<string, string>;
     signal?: AbortSignal;
   }): Promise<string> {
-    throwIfCancelled(input.signal);
     assertValidAgentNodeSession(input.workflow, input.node);
-    const prompt = renderNodePrompt({
-      node: input.node,
-      input: input.input,
-      edgeValues: input.edgeValues,
-    });
-    const promptBlocks = await buildPromptBlocksForNode({
-      node: input.node,
-      prompt,
-      cwd: this.#cwd,
-    });
-
+    const prompt = renderNodePrompt({ node: input.node, input: input.input, edgeValues: input.edgeValues });
+    const promptBlocks = await buildPromptBlocksForNode({ node: input.node, prompt, cwd: this.#cwd });
     const invocation = this.#createInvocation({
       run: input.run,
       nodeRun: input.nodeRun,
@@ -329,8 +315,7 @@ export class WorkflowExecutor {
     });
     input.nodeRun.sessionId = input.node.sessionId;
     input.nodeRun.agentInvocationId = invocation.id;
-
-    const output = await this.#invokeAgent({
+    return this.#invokeAgent({
       workflow: input.workflow,
       agentRunner: input.agentRunner,
       run: input.run,
@@ -341,8 +326,6 @@ export class WorkflowExecutor {
       promptBlocks,
       signal: input.signal,
     });
-
-    return output;
   }
 
   async #resolveTaggedEdgeContent(input: {
@@ -350,38 +333,33 @@ export class WorkflowExecutor {
     workflow: Workflow;
     run: WorkflowRun;
     edge: WorkflowEdge;
-    input: string;
+    origin: TransferOrigin;
     signal?: AbortSignal;
   }): Promise<string> {
-    throwIfCancelled(input.signal);
-    if (input.edge.kind !== "tagged-output" || !input.edge.handoff) {
-      return input.input;
-    }
-
-    assertSessionBelongsToAgent(
-      input.workflow,
-      input.edge.handoff.agentId,
-      input.edge.handoff.sessionId,
-    );
-
-    const prompt = renderHandoffPrompt(input.edge.handoff.promptTemplate, input.input);
+    if (input.edge.kind !== "tagged-output" || !input.edge.handoff) return input.origin.output;
+    const prompt = renderHandoffPrompt(input.edge.handoff.promptTemplate, input.origin.output);
     const invocation = this.#createInvocation({
       run: input.run,
-      agentId: input.edge.handoff.agentId,
-      sessionId: input.edge.handoff.sessionId,
+      agentId: input.origin.agentId,
+      sessionId: input.origin.sessionId,
       edgeId: input.edge.id,
       prompt,
     });
-
     return this.#invokeAgent({
       workflow: input.workflow,
       agentRunner: input.agentRunner,
       run: input.run,
       invocation,
-      agentId: input.edge.handoff.agentId,
+      agentId: input.origin.agentId,
       prompt,
       signal: input.signal,
     });
+  }
+
+  #nextForkSessionId(sourceSessionId: string): string {
+    const next = (this.#forkCounts.get(sourceSessionId) ?? 0) + 1;
+    this.#forkCounts.set(sourceSessionId, next);
+    return `${sourceSessionId}-fork-${String(next).padStart(2, "0")}`;
   }
 
   #createInvocation(input: {
@@ -389,6 +367,7 @@ export class WorkflowExecutor {
     nodeRun?: NodeRun;
     agentId: string;
     sessionId?: string;
+    parentSessionId?: string;
     edgeId?: string;
     prompt: string;
   }): AgentInvocation {
@@ -400,6 +379,7 @@ export class WorkflowExecutor {
       edgeId: input.edgeId,
       agentId: input.agentId,
       sessionId: input.sessionId,
+      parentSessionId: input.parentSessionId,
       prompt: input.prompt,
       status: "running",
       startedAt: new Date().toISOString(),
@@ -417,14 +397,12 @@ export class WorkflowExecutor {
     agentId: string;
     prompt: string;
     promptBlocks?: AgentCommandRequest["promptBlocks"];
+    forkFromSessionId?: string;
     signal?: AbortSignal;
   }): Promise<string> {
     throwIfCancelled(input.signal);
     const agent = input.workflow.agents.find((candidate) => candidate.id === input.agentId);
-    if (!agent) {
-      throw new Error(`Missing agent "${input.agentId}".`);
-    }
-
+    if (!agent) throw new Error(`Missing agent "${input.agentId}".`);
     const result = await input.agentRunner({
       agentServerId: resolveAgentServerId(agent),
       prompt: input.prompt,
@@ -432,65 +410,56 @@ export class WorkflowExecutor {
       cwd: this.#cwd,
       runId: input.run.id,
       workflowSessionId: input.invocation.sessionId,
+      forkFromWorkflowSessionId: input.forkFromSessionId,
       signal: input.signal,
-      onTerminalEvent: (event) => {
-        this.#appendAgentTerminalEvent({
-          runId: input.run.id,
-          nodeRunId: input.nodeRun?.id,
-          agentInvocationId: input.invocation.id,
-          event,
-        });
-      },
-      onLifecycleEvent: (event) => {
-        this.#onAgentLifecycle?.({
-          ...event,
-          runId: input.run.id,
-          nodeRunId: input.nodeRun?.id,
-          nodeId: input.invocation.nodeId,
-          edgeId: input.invocation.edgeId,
-          agentInvocationId: input.invocation.id,
-          agentId: input.agentId,
-        });
-      },
-      onPermissionRequest: (request) => {
-        return this.#interactions.requestPermission(
-          this.#interactionContext(input, resolveAgentServerId(agent)),
-          request,
-        );
-      },
-      onElicitationRequest: (request) => {
-        return this.#interactions.requestElicitation(
-          this.#interactionContext(input, resolveAgentServerId(agent)),
-          request,
-        );
-      },
-      onElicitationComplete: (notification) => {
-        this.#interactions.recordElicitationComplete(
-          this.#interactionContext(input, resolveAgentServerId(agent)),
-          notification,
-        );
-      },
+      onTerminalEvent: (event) => this.#appendAgentTerminalEvent({
+        runId: input.run.id,
+        nodeRunId: input.nodeRun?.id,
+        agentInvocationId: input.invocation.id,
+        event,
+      }),
+      onLifecycleEvent: (event) => this.#onAgentLifecycle?.({
+        ...event,
+        runId: input.run.id,
+        nodeRunId: input.nodeRun?.id,
+        nodeId: input.invocation.nodeId,
+        edgeId: input.invocation.edgeId,
+        agentInvocationId: input.invocation.id,
+        agentId: input.agentId,
+      }),
+      onPermissionRequest: (request) => this.#interactions.requestPermission(
+        this.#interactionContext(input, resolveAgentServerId(agent)),
+        request,
+      ),
+      onElicitationRequest: (request) => this.#interactions.requestElicitation(
+        this.#interactionContext(input, resolveAgentServerId(agent)),
+        request,
+      ),
+      onElicitationComplete: (notification) => this.#interactions.recordElicitationComplete(
+        this.#interactionContext(input, resolveAgentServerId(agent)),
+        notification,
+      ),
     });
-
-    if (input.signal?.aborted) {
-      input.invocation.status = "failed";
-      input.invocation.error = "Workflow run cancelled.";
-      input.invocation.completedAt = new Date().toISOString();
-      throw new WorkflowCancelledError();
-    }
-
+    if (input.signal?.aborted) throw new WorkflowCancelledError();
     input.invocation.agentServerId = result.agentServerId;
     input.invocation.acpSessionId = result.sessionId;
-    input.invocation.acpSupportsLoadSession = result.initializeResponse?.agentCapabilities?.loadSession ?? false;
+    input.invocation.sessionId = result.workflowSessionId
+      ?? (input.forkFromSessionId && result.sessionForked !== true
+        ? input.forkFromSessionId
+        : input.invocation.sessionId);
+    input.invocation.parentSessionId = result.sessionForked === true
+      ? result.parentWorkflowSessionId ?? input.forkFromSessionId
+      : undefined;
+    input.invocation.acpSessionForked = result.sessionForked;
+    input.invocation.acpSupportsLoadSession = Boolean(result.initializeResponse?.agentCapabilities?.loadSession);
     input.invocation.acpSupportsResumeSession = Boolean(result.initializeResponse?.agentCapabilities?.sessionCapabilities?.resume);
-
+    input.invocation.acpSupportsForkSession = Boolean(result.initializeResponse?.agentCapabilities?.sessionCapabilities?.fork);
     if (result.exitCode !== 0) {
       input.invocation.status = "failed";
       input.invocation.error = result.output;
       input.invocation.completedAt = new Date().toISOString();
       throw new Error(`Agent "${input.agentId}" failed with exit code ${result.exitCode}.`);
     }
-
     input.invocation.status = "done";
     input.invocation.output = result.output;
     input.invocation.completedAt = new Date().toISOString();
@@ -533,32 +502,7 @@ export class WorkflowExecutor {
 }
 
 function resolveAgentServerId(agent: AgentDefinition): string {
-  if (agent.kind === "external") {
-    return agent.agentServerId;
-  }
-
-  return "unconfigured";
-}
-
-function assertSessionBelongsToAgent(
-  workflow: Workflow,
-  agentId: string,
-  sessionId: string | undefined,
-): void {
-  if (!sessionId) {
-    return;
-  }
-
-  const session = workflow.sessions.find((candidate) => candidate.id === sessionId);
-  if (!session) {
-    throw new Error(`Handoff references missing session "${sessionId}".`);
-  }
-
-  if (session.agentId !== agentId) {
-    throw new Error(
-      `Handoff session "${sessionId}" belongs to agent "${session.agentId}", not "${agentId}".`,
-    );
-  }
+  return agent.kind === "external" ? agent.agentServerId : "unconfigured";
 }
 
 function findEntryNodes(workflow: Workflow): WorkflowNode[] {
@@ -568,17 +512,13 @@ function findEntryNodes(workflow: Workflow): WorkflowNode[] {
 
 function groupEdgesByTarget(edges: WorkflowEdge[]): Map<string, WorkflowEdge[]> {
   const grouped = new Map<string, WorkflowEdge[]>();
-  for (const edge of edges) {
-    grouped.set(edge.targetNodeId, [...(grouped.get(edge.targetNodeId) ?? []), edge]);
-  }
+  for (const edge of edges) grouped.set(edge.targetNodeId, [...(grouped.get(edge.targetNodeId) ?? []), edge]);
   return grouped;
 }
 
 function groupEdgesBySource(edges: WorkflowEdge[]): Map<string, WorkflowEdge[]> {
   const grouped = new Map<string, WorkflowEdge[]>();
-  for (const edge of edges) {
-    grouped.set(edge.sourceNodeId, [...(grouped.get(edge.sourceNodeId) ?? []), edge]);
-  }
+  for (const edge of edges) grouped.set(edge.sourceNodeId, [...(grouped.get(edge.sourceNodeId) ?? []), edge]);
   return grouped;
 }
 

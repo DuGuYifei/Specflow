@@ -64,6 +64,7 @@ export interface LogLine {
 export interface Branch {
   id: string;
   label: string;
+  description?: string;
 }
 
 export interface StepNode {
@@ -74,11 +75,10 @@ export interface StepNode {
   y: number;
   w: number;
   title: string;
-  desc: string;
+  prompt: string;
   sessionId: string | null;
-  updateDoc: boolean;
   locked?: boolean;
-  attachments?: Array<{ label: string }>;
+  images?: Array<{ path: string; label?: string; mimeType?: string }>;
   paths?: string[];
 }
 
@@ -90,8 +90,7 @@ export interface GateNode {
   y: number;
   w: number;
   title: string;
-  gateDesc?: string;
-  sessionId: string | null;
+  decisionCriteria: string;
   branches: Branch[];
 }
 
@@ -126,11 +125,11 @@ export interface Edge {
   id: string;
   from: string;
   to: string;
-  tag?: string;
-  prompt?: string;
+  transmit?: boolean;
+  outputTag?: string;
+  handoffPrompt?: string;
   branch?: string;
   loopback?: boolean;
-  sameSession?: boolean;
 }
 
 export interface Selection {

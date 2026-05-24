@@ -17,7 +17,7 @@ const agentId = "agent-server-codex-acp";
 const sessionId = "session-codex";
 
 describe("WorkflowExecutor", () => {
-  test("runs linear agent nodes and passes output through", async () => {
+  test("runs linear agent nodes and injects explicitly tagged output", async () => {
     const prompts: string[] = [];
     const executor = new WorkflowExecutor({
       agentRunner: createAgentRunner((request) => {
@@ -32,17 +32,17 @@ describe("WorkflowExecutor", () => {
           agentNode("first", "first <specflow_input>"),
           agentNode("second", "second <specflow_input>"),
         ],
-        edges: [passthrough("edge-1", "first", "second")],
+        edges: [tagged("edge-1", "first", "second", "input")],
       }),
       "start",
     );
 
     expect(run.status).toBe("done");
-    expect(prompts).toEqual(["first start", "second first output"]);
+    expect(prompts).toEqual(["first start", "second <input>first output</input>"]);
     expect(run.nodeRuns.map((nodeRun) => nodeRun.nodeId)).toEqual(["first", "second"]);
   });
 
-  test("sends node attachments as ACP content blocks", async () => {
+  test("sends node images and related resources as ACP content blocks", async () => {
     const cwd = await mkdtemp(join(tmpdir(), "specflow-prompt-blocks-"));
     await writeFile(join(cwd, "screenshot.png"), new Uint8Array([1, 2, 3]));
     await writeFile(join(cwd, "note.txt"), "hello text", "utf8");
@@ -51,8 +51,10 @@ describe("WorkflowExecutor", () => {
 
     let promptBlocks: AgentCommandRequest["promptBlocks"];
     const node = agentNode("source", "inspect <specflow_input>");
-    node.attachments = [
+    node.images = [
       { id: "img", kind: "image", path: "screenshot.png", label: "screenshot.png" },
+    ];
+    node.relatedResources = [
       { id: "note", kind: "file", path: "note.txt", label: "note.txt" },
       { id: "audio", kind: "file", path: "capture.wav", label: "capture.wav" },
       { id: "bin", kind: "file", path: "archive.bin", label: "archive.bin" },
@@ -97,15 +99,15 @@ describe("WorkflowExecutor", () => {
   });
 
   test("runs only the selected gate branch", async () => {
+    const requests: AgentCommandRequest[] = [];
     const executor = new WorkflowExecutor({
-      gateEvaluator: {
-        async evaluate() {
-          return { branchId: "rework", reason: "test selection" };
-        },
-      },
       agentRunner: createAgentRunner((request) => {
+        requests.push(request);
         if (request.prompt.startsWith("source")) {
           return "needs review";
+        }
+        if (request.forkFromWorkflowSessionId) {
+          return JSON.stringify({ branchId: "rework", reason: "test selection" });
         }
         return request.prompt;
       }),
@@ -120,9 +122,9 @@ describe("WorkflowExecutor", () => {
           agentNode("rework-node", "rework <specflow_input>"),
         ],
         edges: [
-          passthrough("edge-source-gate", "source", "gate"),
-          passthrough("edge-gate-pass", "gate", "pass-node", "pass"),
-          passthrough("edge-gate-rework", "gate", "rework-node", "rework"),
+          gateInput("edge-source-gate", "source", "gate"),
+          trigger("edge-gate-pass", "gate", "pass-node", "pass"),
+          trigger("edge-gate-rework", "gate", "rework-node", "rework"),
         ],
       }),
     );
@@ -137,6 +139,11 @@ describe("WorkflowExecutor", () => {
       branchId: "rework",
       reason: "test selection",
     });
+    expect(requests[1]?.forkFromWorkflowSessionId).toBe(sessionId);
+    expect(requests[1]?.workflowSessionId).toBe(`${sessionId}-fork-01`);
+    expect(requests[1]?.prompt).toContain('"branchId":"<one available branch id>"');
+    expect(run.agentInvocations.find((invocation) => invocation.nodeId === "gate")?.sessionId).toBe(sessionId);
+    expect(run.agentInvocations.find((invocation) => invocation.nodeId === "gate")?.parentSessionId).toBeUndefined();
   });
 
   test("injects tagged output into the target prompt", async () => {
@@ -207,8 +214,6 @@ describe("WorkflowExecutor", () => {
               xmlTagName: "component_tree",
             },
             handoff: {
-              agentId,
-              sessionId,
               promptTemplate: { template: "handoff <specflow_input>" },
             },
           },
@@ -279,8 +284,6 @@ describe("WorkflowExecutor", () => {
               xmlTagName: "component_tree",
             },
             handoff: {
-              agentId,
-              sessionId,
               promptTemplate: { template: "handoff <specflow_input>" },
             },
           },
@@ -589,8 +592,7 @@ function agentNode(id: string, template: string): AgentNode {
     promptTemplate: { template },
     agentId,
     sessionId,
-    updateSpecDoc: false,
-    attachments: [],
+    images: [],
     relatedResources: [],
   };
 }
@@ -603,12 +605,11 @@ function gateNode(id: string, branches: string[]): GateNode {
     behavior: "functional",
     promptTemplate: { template: "gate <specflow_input> <specflow_branches>" },
     decisionCriteria: "choose a branch",
-    inputVariable: "specflow_input",
     branches: branches.map((branch) => ({ id: branch, label: branch })),
   };
 }
 
-function passthrough(
+function trigger(
   id: string,
   sourceNodeId: string,
   targetNodeId: string,
@@ -616,10 +617,33 @@ function passthrough(
 ): WorkflowEdge {
   return {
     id,
-    kind: "passthrough",
+    kind: "trigger",
     sourceNodeId,
     targetNodeId,
     sourcePortId,
+  };
+}
+
+function gateInput(id: string, sourceNodeId: string, targetNodeId: string): WorkflowEdge {
+  return {
+    id,
+    kind: "gate-input",
+    sourceNodeId,
+    targetNodeId,
+  };
+}
+
+function tagged(id: string, sourceNodeId: string, targetNodeId: string, tag: string): WorkflowEdge {
+  return {
+    id,
+    kind: "tagged-output",
+    sourceNodeId,
+    targetNodeId,
+    outputTag: {
+      identifier: tag,
+      promptReference: `specflow_${tag}`,
+      xmlTagName: tag,
+    },
   };
 }
 

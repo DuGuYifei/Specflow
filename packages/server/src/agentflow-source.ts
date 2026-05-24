@@ -24,7 +24,7 @@ export function parseAgentFlowSource(raw: string, workflowId: string): AgentFlow
   const nodeIds = new Set(nodes.map((node) => node.id));
   const edges = parseEdges(source.edges, nodes, nodeIds);
 
-  return {
+  const doc: AgentFlowDoc = {
     id: workflowId,
     name: requireString(source.name, "name"),
     sessions,
@@ -32,6 +32,8 @@ export function parseAgentFlowSource(raw: string, workflowId: string): AgentFlow
     edges,
     variables: parseVariables(source.variables),
   };
+  assertResolvedDoc(doc);
+  return doc;
 }
 
 export function stringifyAgentFlowSource(doc: AgentFlowDoc): string {
@@ -117,23 +119,21 @@ function parseNodes(raw: Record<string, unknown>, sessionIds: Set<string>): Agen
       };
     }
 
-    const sessionId = requireString(node.session, `node "${id}".session`);
-    if (!sessionIds.has(sessionId)) {
-      throw new Error(`Node "${id}" references missing session "${sessionId}".`);
-    }
-
     if (kind === "step") {
+      const sessionId = requireString(node.session, `node "${id}".session`);
+      if (!sessionIds.has(sessionId)) {
+        throw new Error(`Node "${id}" references missing session "${sessionId}".`);
+      }
       stepNumber += 1;
       return {
         kind,
         id,
         num: optionalString(node.num) ?? String(stepNumber).padStart(2, "0"),
         title,
-        desc: optionalString(node.desc) ?? "",
+        prompt: optionalString(node.prompt) ?? "",
         sessionId,
-        updateDoc: node.updateDoc === true,
         ...(node.locked === true ? { locked: true } : {}),
-        ...(Array.isArray(node.attachments) ? { attachments: parseAttachments(node.attachments, id) } : {}),
+        ...(Array.isArray(node.images) ? { images: parseImages(node.images, id) } : {}),
         ...(Array.isArray(node.paths) ? { paths: parsePaths(node.paths, id) } : {}),
       };
     }
@@ -144,8 +144,7 @@ function parseNodes(raw: Record<string, unknown>, sessionIds: Set<string>): Agen
         id,
         num: optionalString(node.num) ?? `G${gateNumber}`,
         title,
-        gateDesc: optionalString(node.gateDesc),
-        sessionId,
+        decisionCriteria: optionalString(node.decisionCriteria) ?? "",
         branches: parseBranches(asRecord(node.branches, `node "${id}".branches`), id),
       };
     }
@@ -157,7 +156,11 @@ function parseBranches(raw: Record<string, unknown>, nodeId: string): CanvasBran
   const branches = Object.entries(raw).map(([id, input]) => {
     assertSymbolKey(id, `node "${nodeId}" branch key`);
     const branch = input == null ? {} : asRecord(input, `node "${nodeId}" branch "${id}"`);
-    return { id, label: optionalString(branch.label) ?? id };
+    return {
+      id,
+      label: optionalString(branch.label) ?? id,
+      ...(optionalString(branch.description) ? { description: optionalString(branch.description) } : {}),
+    };
   });
   if (branches.length === 0) {
     throw new Error(`Gate node "${nodeId}" must define at least one branch.`);
@@ -188,11 +191,11 @@ function parseEdges(raw: unknown, nodes: AgentFlowNode[], nodeIds: Set<string>):
       id: edgeIdFromReferences({ from, to, branch }),
       from,
       to,
-      ...(optionalString(edge.tag) ? { tag: optionalString(edge.tag)! } : {}),
-      ...(optionalString(edge.prompt) ? { prompt: optionalString(edge.prompt)! } : {}),
+      ...(edge.transmit === true ? { transmit: true } : {}),
+      ...(optionalString(edge.outputTag) ? { outputTag: optionalString(edge.outputTag)! } : {}),
+      ...(optionalString(edge.handoffPrompt) ? { handoffPrompt: optionalString(edge.handoffPrompt)! } : {}),
       ...(branch ? { branch } : {}),
       ...(edge.loopback === true ? { loopback: true } : {}),
-      ...(typeof edge.sameSession === "boolean" ? { sameSession: edge.sameSession } : {}),
     };
     if (edgeIds.has(parsed.id)) {
       throw new Error(`Duplicate edge "${parsed.id}".`);
@@ -221,11 +224,10 @@ function serializeNode(node: AgentFlowNode): Record<string, unknown> {
       kind: node.kind,
       num: node.num,
       title: node.title,
-      desc: node.desc,
+      prompt: node.prompt,
       session: node.sessionId,
-      updateDoc: node.updateDoc,
       locked: node.locked,
-      attachments: node.attachments,
+      images: node.images,
       paths: node.paths,
     });
   }
@@ -233,11 +235,13 @@ function serializeNode(node: AgentFlowNode): Record<string, unknown> {
     kind: node.kind,
     num: node.num,
     title: node.title,
-    gateDesc: node.gateDesc,
-    session: node.sessionId,
+    decisionCriteria: node.decisionCriteria,
     branches: Object.fromEntries(node.branches.map((branch) => [
       branch.id,
-      branch.label === branch.id ? {} : { label: branch.label },
+      compact({
+        label: branch.label === branch.id ? undefined : branch.label,
+        description: branch.description,
+      }),
     ])),
   });
 }
@@ -254,7 +258,7 @@ function assertResolvedDoc(doc: AgentFlowDoc): void {
     assertSymbolKey(node.id, "node key");
     if (nodeIds.has(node.id)) throw new Error(`Duplicate node "${node.id}".`);
     nodeIds.add(node.id);
-    if (node.kind !== "input" && node.kind !== "end" && !sessionIds.has(node.sessionId ?? "")) {
+    if (node.kind === "step" && !sessionIds.has(node.sessionId ?? "")) {
       throw new Error(`Node "${node.id}" references missing session "${node.sessionId}".`);
     }
     if (node.kind === "gate") {
@@ -272,6 +276,7 @@ function assertResolvedDoc(doc: AgentFlowDoc): void {
       .map((node) => [node.id, new Set(node.branches.map((branch) => branch.id))]),
   );
   const edgeIds = new Set<string>();
+  const businessInputsByGate = new Map<string, number>();
   for (const edge of doc.edges) {
     if (!nodeIds.has(edge.from) || !nodeIds.has(edge.to)) {
       throw new Error(`Edge "${edge.id}" references a missing node.`);
@@ -279,16 +284,33 @@ function assertResolvedDoc(doc: AgentFlowDoc): void {
     if (edge.branch && !branchesByGate.get(edge.from)?.has(edge.branch)) {
       throw new Error(`Edge from "${edge.from}" references missing branch "${edge.branch}".`);
     }
+    const target = doc.nodes.find((node) => node.id === edge.to);
+    const source = doc.nodes.find((node) => node.id === edge.from);
+    if (edge.outputTag && !/^[A-Za-z_][A-Za-z0-9_.-]*$/.test(edge.outputTag)) {
+      throw new Error(`Edge "${edge.id}" outputTag must be an XML-safe tag name.`);
+    }
+    if (target?.kind === "gate" && source?.kind !== "input") {
+      const count = (businessInputsByGate.get(target.id) ?? 0) + 1;
+      if (count > 1) throw new Error(`Gate node "${target.id}" accepts exactly one business input edge.`);
+      businessInputsByGate.set(target.id, count);
+    }
+    if (target?.kind === "gate" && (edge.transmit || edge.outputTag || edge.handoffPrompt)) {
+      throw new Error(`Gate input edge "${edge.id}" cannot declare transmission properties.`);
+    }
     const id = edgeIdFromReferences(edge);
     if (edgeIds.has(id)) throw new Error(`Duplicate edge "${id}".`);
     edgeIds.add(id);
   }
 }
 
-function parseAttachments(raw: unknown[], nodeId: string): Array<{ label: string }> {
+function parseImages(raw: unknown[], nodeId: string): Array<{ path: string; label?: string; mimeType?: string }> {
   return raw.map((input, index) => {
-    const attachment = asRecord(input, `node "${nodeId}".attachments[${index}]`);
-    return { label: requireString(attachment.label, `node "${nodeId}".attachments[${index}].label`) };
+    const image = asRecord(input, `node "${nodeId}".images[${index}]`);
+    return compact({
+      path: requireString(image.path, `node "${nodeId}".images[${index}].path`),
+      label: optionalString(image.label),
+      mimeType: optionalString(image.mimeType),
+    });
   });
 }
 

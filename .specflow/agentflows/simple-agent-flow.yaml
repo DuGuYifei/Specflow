@@ -16,19 +16,17 @@ nodes:
     kind: step
     num: "01"
     title: Add one
-    desc: 1 + <specflow_value> = ?
+    prompt: 1 + <specflow_value> = ?
     session: claude-acp
-    updateDoc: false
     paths: []
   n2:
     kind: step
     num: "02"
     title: Add two
-    desc: |-
-      Previous output: <specflow_input>
+    prompt: |-
+      Continue with the previous result in this session.
       + 2 = ?
     session: claude-acp
-    updateDoc: false
   end1:
     kind: end
     num: END
@@ -36,9 +34,7 @@ nodes:
 edges:
   - from: in1
     to: n1
-    sameSession: false
   - from: n1
     to: n2
-    sameSession: true
   - from: n2
     to: end1

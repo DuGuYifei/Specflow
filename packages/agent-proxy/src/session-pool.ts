@@ -1,6 +1,6 @@
 import { AgentServerStore } from "./store/agent-server-store";
-import type { AgentRunRequest, AgentRunResult, AgentServerId } from "./types";
-import { AcpAgentSession, runAcpAgent } from "./runtimes/acp/connection";
+import type { AgentRunRequest, AgentRunResult, AgentServerId, ResolvedAgentServer } from "./types";
+import { AcpAgentConnection, runAcpAgent } from "./runtimes/acp/connection";
 import { runHeadlessAgent } from "./runtimes/headless/command";
 import { withPolicyDirectories } from "./runtime-policy";
 
@@ -9,13 +9,17 @@ export interface AgentProxySessionPoolOptions {
   cacheDir?: string;
 }
 
-interface SessionEntry {
-  session: Promise<AcpAgentSession>;
+interface ConnectionEntry {
+  connection: Promise<AcpAgentConnection>;
 }
 
+/**
+ * Maintains one ACP process/connection per effective agent configuration. The
+ * ACP connection owns multiple workflow sessions and optional forked sessions.
+ */
 export class AgentProxySessionPool {
   readonly #store: AgentServerStore;
-  readonly #sessions = new Map<string, SessionEntry>();
+  readonly #connections = new Map<string, ConnectionEntry>();
 
   constructor(options: AgentProxySessionPoolOptions) {
     this.#store = new AgentServerStore({ root: options.root, cacheDir: options.cacheDir });
@@ -23,62 +27,57 @@ export class AgentProxySessionPool {
 
   async run(request: AgentRunRequest): Promise<AgentRunResult> {
     const resolved = await this.#resolve(request.agentServerId);
-    if (resolved.source === "headless") {
-      return runHeadlessAgent(resolved, request);
-    }
+    if (resolved.source === "headless") return runHeadlessAgent(resolved, request);
+    if (!request.workflowSessionId) return runAcpAgent(resolved, withPolicyDirectories(resolved, request));
 
-    if (!request.workflowSessionId) {
-      return runAcpAgent(resolved, withPolicyDirectories(resolved, request));
-    }
-
-    const key = sessionKey(request);
-    let entry = this.#sessions.get(key);
+    const normalizedRequest = withPolicyDirectories(resolved, request);
+    const key = connectionKey(normalizedRequest);
+    let entry = this.#connections.get(key);
     if (!entry) {
-      entry = {
-        session: this.#createSession(request),
-      };
-      this.#sessions.set(key, entry);
+      entry = { connection: this.#createConnection(resolved, normalizedRequest) };
+      this.#connections.set(key, entry);
     }
-
-    let session: AcpAgentSession;
+    let connection: AcpAgentConnection;
     try {
-      session = await entry.session;
+      connection = await entry.connection;
     } catch (error) {
-      this.#sessions.delete(key);
+      this.#connections.delete(key);
       throw error;
     }
-    const result = await session.prompt(request);
+    const result = await connection.prompt(normalizedRequest);
     if (result.exitCode !== 0) {
-      await session.close().catch(() => {});
-      this.#sessions.delete(key);
+      await connection.close().catch(() => {});
+      this.#connections.delete(key);
     }
     return result;
   }
 
   async closeAll(): Promise<void> {
-    const sessions = [...this.#sessions.values()];
-    this.#sessions.clear();
-    await Promise.all(sessions.map(async (entry) => {
-      const session = await entry.session.catch(() => undefined);
-      await session?.close();
+    const connections = [...this.#connections.values()];
+    this.#connections.clear();
+    await Promise.all(connections.map(async (entry) => {
+      const connection = await entry.connection.catch(() => undefined);
+      await connection?.close();
     }));
   }
 
-  async #createSession(request: AgentRunRequest): Promise<AcpAgentSession> {
-    const resolved = await this.#resolve(request.agentServerId);
+  async #createConnection(
+    resolved: ResolvedAgentServer,
+    request: AgentRunRequest,
+  ): Promise<AcpAgentConnection> {
     if (resolved.source === "headless") {
       throw new Error(`Headless agent sessions are not pooled: ${request.agentServerId}`);
     }
-    const session = new AcpAgentSession({
+    const connection = new AcpAgentConnection({
       resolved,
       cwd: request.cwd,
-      additionalDirectories: withPolicyDirectories(resolved, request).additionalDirectories,
+      additionalDirectories: request.additionalDirectories,
     });
     try {
-      await session.start(request);
-      return session;
+      await connection.start(request);
+      return connection;
     } catch (error) {
-      await session.close().catch(() => {});
+      await connection.close().catch(() => {});
       throw error;
     }
   }
@@ -88,11 +87,10 @@ export class AgentProxySessionPool {
   }
 }
 
-function sessionKey(request: AgentRunRequest): string {
+function connectionKey(request: AgentRunRequest): string {
   return JSON.stringify({
     cwd: request.cwd,
     agentServerId: request.agentServerId,
-    workflowSessionId: request.workflowSessionId,
     additionalDirectories: request.additionalDirectories ?? [],
   });
 }

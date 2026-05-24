@@ -29,6 +29,8 @@ import {
   removeLocalAgentServer,
   upsertLocalAgentServer,
 } from "./agent-server-config";
+import { mkdir, writeFile } from "node:fs/promises";
+import { basename, dirname, extname, join } from "node:path";
 
 // ── simple in-process event bus ───────────────────────────────────────────────
 
@@ -909,6 +911,49 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
       }
     }
 
+    // POST /api/canvases/:id/assets
+    const assetsMatch = pathname.match(/^\/api\/canvases\/([^/]+)\/assets$/);
+    if (assetsMatch && request.method === "POST") {
+      const workflowId = assetsMatch[1];
+      const kind = url.searchParams.get("kind");
+      const directory = url.searchParams.get("directory") === "true";
+      if (kind !== "image" && kind !== "path") {
+        return Response.json({ error: "Invalid asset kind" }, { status: 400 });
+      }
+      const form = await request.formData();
+      const files = form.getAll("files").filter((value): value is File => value instanceof File);
+      const relativePaths = form.getAll("relativePaths").filter((value): value is string => typeof value === "string");
+      if (files.length === 0) return Response.json({ error: "No files supplied" }, { status: 400 });
+      const base = join(root, ".specflow", "assets", workflowId, kind === "image" ? "images" : "resources");
+      await mkdir(base, { recursive: true });
+      if (kind === "image") {
+        const images: Array<{ path: string; label: string; mimeType?: string }> = [];
+        for (const file of files) {
+          if (!file.type.startsWith("image/")) return Response.json({ error: "Images only" }, { status: 400 });
+          const extension = extname(file.name) || mimeExtension(file.type);
+          const filename = `${uuidv7()}${extension}`;
+          await writeFile(join(base, filename), new Uint8Array(await file.arrayBuffer()));
+          images.push({
+            path: `.specflow/assets/${workflowId}/images/${filename}`,
+            label: basename(file.name) || filename,
+            ...(file.type ? { mimeType: file.type } : {}),
+          });
+        }
+        return Response.json({ paths: images.map((image) => image.path), images });
+      }
+      const importedPaths = new Set<string>();
+      for (const [index, file] of files.entries()) {
+        const safePath = safeAssetPath(relativePaths[index] ?? file.name);
+        const output = join(base, safePath);
+        await mkdir(dirname(output), { recursive: true });
+        await writeFile(output, new Uint8Array(await file.arrayBuffer()));
+        importedPaths.add(directory
+          ? `.specflow/assets/${workflowId}/resources/${safePath.split("/")[0]}/`
+          : `.specflow/assets/${workflowId}/resources/${safePath}`);
+      }
+      return Response.json({ paths: [...importedPaths] });
+    }
+
     // POST /api/canvases/:id/run
     const runMatch = pathname.match(/^\/api\/canvases\/([^/]+)\/run$/);
     if (runMatch && request.method === "POST") {
@@ -1097,4 +1142,17 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function safeAssetPath(name: string): string {
+  const parts = name.replaceAll("\\", "/").split("/").filter((part) => part && part !== "." && part !== "..");
+  return parts.map((part) => part.replace(/[^A-Za-z0-9._-]/g, "_")).join("/") || `asset-${uuidv7()}`;
+}
+
+function mimeExtension(mimeType: string): string {
+  if (mimeType === "image/png") return ".png";
+  if (mimeType === "image/jpeg") return ".jpg";
+  if (mimeType === "image/webp") return ".webp";
+  if (mimeType === "image/gif") return ".gif";
+  return ".bin";
 }

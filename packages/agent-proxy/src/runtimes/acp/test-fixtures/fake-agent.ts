@@ -46,6 +46,7 @@ class FakeAgent implements acp.Agent {
         sessionCapabilities: {
           close: {},
           ...(this.#restoreCapabilities.has("resume") ? { resume: {} } : {}),
+          ...(this.#restoreCapabilities.has("fork") ? { fork: {} } : {}),
         },
       },
       authMethods: this.#authMethods.map((method) => this.#authMethod(method)),
@@ -69,6 +70,15 @@ class FakeAgent implements acp.Agent {
     this.#assertAuthenticated();
     const sessionId = uuidv7();
     this.#sessions.set(sessionId, { promptCount: 0 });
+    return this.#sessionResponse(sessionId);
+  }
+
+  async unstable_forkSession(params: { sessionId: string }): Promise<acp.NewSessionResponse> {
+    this.#assertAuthenticated();
+    const parent = this.#sessions.get(params.sessionId);
+    if (!parent) throw new Error(`Unknown session ${params.sessionId}`);
+    const sessionId = uuidv7();
+    this.#sessions.set(sessionId, { promptCount: parent.promptCount });
     return this.#sessionResponse(sessionId);
   }
 

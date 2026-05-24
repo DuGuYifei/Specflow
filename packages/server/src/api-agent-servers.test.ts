@@ -239,9 +239,8 @@ describe("agent server API", () => {
         y: 0,
         w: 200,
         title: "Prompt",
-        desc: "Needs auth",
+        prompt: "Needs auth",
         sessionId: "s1",
-        updateDoc: false,
       }],
       edges: [],
     }, root);

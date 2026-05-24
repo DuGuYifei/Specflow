@@ -7,133 +7,87 @@ interface ConnectionPanelProps {
   edge: Edge;
   fromNode?: WorkflowNode;
   toNode?: WorkflowNode;
+  transferSourceNode?: WorkflowNode;
   viewMode: 'edit' | 'run';
   onClose: () => void;
-  onEditEdge?: (id: string, patch: { tag?: string; prompt?: string }) => void;
+  onEditEdge?: (id: string, patch: Partial<Edge>) => void;
   onDeleteEdge?: (id: string) => void;
 }
 
-export function ConnectionPanel({ edge, fromNode, toNode, viewMode, onClose, onEditEdge, onDeleteEdge }: ConnectionPanelProps) {
-  if (edge.sameSession) {
-    return (
-      <RightPanel
-        label={<><Icon name="link" size={11} />Same-session connection</>}
-        title={<span style={{ fontSize: 14 }}>Implicit handoff</span>}
-        onClose={onClose}
-      >
-        <div className="code-hint">
-          Both nodes run in the <strong>same session</strong>. Output and input flow through the live conversation — no separate hand-off prompt or output tag is needed.
-        </div>
-        <div className="section-title">From → To</div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <div className="conn-pill">
-            <div className="nbox"><span className="nid">{fromNode?.num}</span><span className="nname">{fromNode?.title}</span></div>
-          </div>
-          <div className="conn-pill">
-            <div className="nbox"><span className="nid">{toNode?.num}</span><span className="nname">{toNode?.title}</span></div>
-          </div>
-        </div>
-        {viewMode === 'edit' && onDeleteEdge && (
-          <div style={{ marginTop: 18 }}>
-            <button className="btn ghost" style={{ color: 'var(--err)' }} onClick={() => { onDeleteEdge(edge.id); onClose(); }}>
-              <Icon name="trash" size={12} />Delete
-            </button>
-          </div>
-        )}
-      </RightPanel>
-    );
-  }
-
-  if (fromNode?.kind === 'gate') {
-    return (
-      <RightPanel
-        label={<><Icon name="route" size={11} />Gate branch</>}
-        title={<span style={{ fontSize: 14 }}>{edge.branch} → {toNode?.title}</span>}
-        onClose={onClose}
-      >
-        <div className="code-hint">
-          Gate output edges have no prompt or tag — the gate&apos;s input is forwarded as-is to whichever branch it picks.
-        </div>
-        {viewMode === 'edit' && onDeleteEdge && (
-          <div style={{ marginTop: 18 }}>
-            <button className="btn ghost" style={{ color: 'var(--err)' }} onClick={() => { onDeleteEdge(edge.id); onClose(); }}>
-              <Icon name="trash" size={12} />Delete
-            </button>
-          </div>
-        )}
-      </RightPanel>
-    );
-  }
-
-  return <EditableConnectionPanel edge={edge} fromNode={fromNode} toNode={toNode} viewMode={viewMode} onClose={onClose} onEditEdge={onEditEdge} onDeleteEdge={onDeleteEdge} />;
+function sessionId(node: WorkflowNode | undefined): string | null {
+  return node?.kind === 'step' ? node.sessionId : null;
 }
 
-function EditableConnectionPanel({ edge, fromNode, toNode, viewMode, onClose, onEditEdge, onDeleteEdge }: ConnectionPanelProps) {
-  const [tag, setTag] = useState(edge.tag ?? '');
-  const [prompt, setPrompt] = useState(edge.prompt ?? '');
+export function ConnectionPanel(props: ConnectionPanelProps) {
+  const { edge, fromNode, toNode, transferSourceNode = fromNode, viewMode, onClose, onEditEdge, onDeleteEdge } = props;
+  const gateInput = toNode?.kind === 'gate';
+  const sameSession = Boolean(sessionId(transferSourceNode) && sessionId(transferSourceNode) === sessionId(toNode));
+  if (gateInput) {
+    return (
+      <RightPanel label={<><Icon name="route" size={11} />Gate input</>} title="Decision context" onClose={onClose}>
+        <div className="code-hint">This edge supplies the previous step output for branch selection. It has no output tag or handoff configuration.</div>
+        {viewMode === 'edit' && <DeleteButton edge={edge} onDeleteEdge={onDeleteEdge} onClose={onClose} />}
+      </RightPanel>
+    );
+  }
+  if (sameSession) {
+    return (
+      <RightPanel label={<><Icon name="link" size={11} />Same-session connection</>} title="Continue conversation" onClose={onClose}>
+        <div className="code-hint">The selected target continues in the same session as the content-producing step. No explicit output transfer is needed.</div>
+        {fromNode?.kind === 'gate' && <div className="code-hint">This branch continues the input step&apos;s session after the gate selects it.</div>}
+        {viewMode === 'edit' && <DeleteButton edge={edge} onDeleteEdge={onDeleteEdge} onClose={onClose} />}
+      </RightPanel>
+    );
+  }
+  return <TransferPanel {...props} transferSourceNode={transferSourceNode} />;
+}
+
+function TransferPanel({ edge, fromNode, toNode, transferSourceNode, viewMode, onClose, onEditEdge, onDeleteEdge }: ConnectionPanelProps) {
+  const [transmit, setTransmit] = useState(edge.transmit === true);
+  const [outputTag, setOutputTag] = useState(edge.outputTag ?? '');
+  const [handoffPrompt, setHandoffPrompt] = useState(edge.handoffPrompt ?? '');
   const readonly = viewMode === 'run';
-
-  const handleSave = () => {
-    onEditEdge?.(edge.id, { tag, prompt });
-  };
-
+  const viaGate = fromNode?.kind === 'gate';
+  const validOutputTag = /^[A-Za-z_][A-Za-z0-9_.-]*$/.test(outputTag);
   return (
-    <RightPanel
-      label={
+    <RightPanel label={<><Icon name="route" size={11} />Connection</>} title={`${transferSourceNode?.title ?? ''} -> ${toNode?.title ?? ''}`} onClose={onClose}>
+      {viaGate && <div className="code-hint">After this branch is selected, transferred content comes from the step before the gate.</div>}
+      <div className="section-title">Transfer output</div>
+      <div className="output-card" style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+        <button className={`switch${transmit ? ' on' : ''}`} disabled={readonly} onClick={() => setTransmit(!transmit)} />
+        <span>{transmit ? 'Pass explicit content to the target session.' : 'Activate target without passing explicit content.'}</span>
+      </div>
+      {transmit && (
         <>
-          <Icon name="route" size={11} />Connection
-          {edge.loopback && <span style={{ color: 'var(--ink-3)' }}> · loopback</span>}
+          <div className="section-title">Output tag</div>
+          <input className="input" value={outputTag} disabled={readonly} placeholder="implementation" onChange={(event) => setOutputTag(event.target.value.replace(/[^A-Za-z0-9_.-]/g, ''))} />
+          <div className="code-hint">
+            Reference in the target prompt as <code>&lt;specflow_{outputTag || 'tag_name'}&gt;</code>. At runtime it becomes <code>&lt;{outputTag || 'tag_name'}&gt;...content...&lt;/{outputTag || 'tag_name'}&gt;</code>.
+          </div>
+          {outputTag && !validOutputTag && <div className="code-hint">Output tag must start with a letter or underscore.</div>}
+          <div className="section-title">Handoff prompt</div>
+          <textarea className="textarea code" rows={5} value={handoffPrompt} disabled={readonly} onChange={(event) => setHandoffPrompt(event.target.value)} placeholder="Optional: ask the source step to format or summarize its last output before transferring it." />
+          <div className="code-hint">When empty, the source step&apos;s last output is transferred unchanged. When set, this prompt runs in the source session because it has the producing context.</div>
         </>
-      }
-      title={
-        <span style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14 }}>
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-3)' }}>{fromNode?.num}</span>
-          <span style={{ color: 'var(--ink-3)' }}>→</span>
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-3)' }}>{toNode?.num}</span>
-        </span>
-      }
-      onClose={onClose}
-    >
-      <div className="section-title">
-        <Icon name="tag" size={10} />Output tag
-        <span style={{ color: 'var(--ink-4)', fontWeight: 400, marginLeft: 'auto', fontFamily: 'var(--font-mono)' }}>identifier</span>
-      </div>
-      <input
-        className="input"
-        style={{ fontFamily: 'var(--font-mono)' }}
-        value={tag}
-        disabled={readonly}
-        onChange={(e) => setTag(e.target.value)}
-      />
-      <div className="code-hint">
-        Reference in the next prompt as <code>&lt;specflow_{tag || 'tag_name'}&gt;</code>.<br />
-        At runtime it&apos;s substituted with{' '}
-        <code>&lt;{tag || 'tag_name'}&gt;…content…&lt;/{tag || 'tag_name'}&gt;</code>.
-      </div>
-
-      <div className="section-title">
-        Hand-off prompt
-        <span style={{ color: 'var(--ink-4)', fontWeight: 400, marginLeft: 'auto', fontFamily: 'var(--font-mono)' }}>optional</span>
-      </div>
-      <textarea
-        className="textarea code"
-        rows={5}
-        value={prompt}
-        disabled={readonly}
-        onChange={(e) => setPrompt(e.target.value)}
-        placeholder="How should the previous node format its output?"
-      />
-
+      )}
       {!readonly && (
         <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 18 }}>
-          <button className="btn ghost" style={{ color: 'var(--err)' }} onClick={() => { onDeleteEdge?.(edge.id); onClose(); }}>
-            <Icon name="trash" size={12} />Delete
-          </button>
-          <button className="btn primary" onClick={handleSave}>
-            <Icon name="check" size={12} />Save
-          </button>
+          <DeleteButton edge={edge} onDeleteEdge={onDeleteEdge} onClose={onClose} />
+          <button className="btn primary" disabled={transmit && !validOutputTag} onClick={() => onEditEdge?.(edge.id, {
+            transmit,
+            outputTag: transmit ? outputTag : undefined,
+            handoffPrompt: transmit && handoffPrompt ? handoffPrompt : undefined,
+          })}><Icon name="check" size={12} />Save</button>
         </div>
       )}
     </RightPanel>
+  );
+}
+
+function DeleteButton({ edge, onDeleteEdge, onClose }: Pick<ConnectionPanelProps, 'edge' | 'onDeleteEdge' | 'onClose'>) {
+  return (
+    <button className="btn ghost" style={{ color: 'var(--err)' }} onClick={() => { onDeleteEdge?.(edge.id); onClose(); }}>
+      <Icon name="trash" size={12} />Delete
+    </button>
   );
 }

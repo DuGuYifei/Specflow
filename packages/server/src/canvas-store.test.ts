@@ -23,9 +23,8 @@ nodes:
   build:
     kind: step
     title: Build
-    desc: Implement
+    prompt: Implement
     session: codex
-    updateDoc: false
   done:
     kind: end
     title: Done
@@ -62,6 +61,49 @@ nodes:
     session: missing
 edges: []
 `, "invalid-flow")).toThrow('missing session "missing"');
+  });
+
+  it("rejects transfer configuration and multiple business inputs on gate input edges", () => {
+    const base = `version: 1
+name: Invalid gate
+sessions:
+  codex:
+    agentServerId: codex-acp
+nodes:
+  first:
+    kind: step
+    title: First
+    prompt: First
+    session: codex
+  second:
+    kind: step
+    title: Second
+    prompt: Second
+    session: codex
+  decide:
+    kind: gate
+    title: Decide
+    decisionCriteria: Pick a branch
+    branches:
+      pass:
+        label: pass
+edges:
+`;
+    expect(() => parseAgentFlowSource(`${base}  - from: first
+    to: decide
+    transmit: true
+    outputTag: result
+`, "gate-transfer")).toThrow("cannot declare transmission properties");
+    expect(() => parseAgentFlowSource(`${base}  - from: first
+    to: decide
+  - from: second
+    to: decide
+`, "gate-input-count")).toThrow("accepts exactly one business input edge");
+    expect(() => parseAgentFlowSource(`${base}  - from: first
+    to: second
+    transmit: true
+    outputTag: 123-invalid
+`, "invalid-output-tag")).toThrow("XML-safe tag name");
   });
 
   it("initializes agentflows, gitignored canvas layouts, and seed data", async () => {
@@ -132,7 +174,7 @@ edges: []
       name: "Regenerate",
       sessions: [{ id: "s1", name: "main", agentServerId: "codex-acp" }],
       nodes: [
-        { kind: "step", id: "a", num: "01", x: 10, y: 20, w: 220, title: "A", desc: "A", sessionId: "s1", updateDoc: false },
+        { kind: "step", id: "a", num: "01", x: 10, y: 20, w: 220, title: "A", prompt: "A", sessionId: "s1" },
         { kind: "end", id: "done", num: "END", x: 300, y: 20, w: 140, title: "Done", sessionId: null },
       ],
       edges: [{ id: "e1", from: "a", to: "done" }],
@@ -192,9 +234,8 @@ nodes:
     y: 0
     w: 220
     title: Step
-    desc: Run <specflow_value>
+    prompt: Run <specflow_value>
     sessionId: s1
-    updateDoc: false
   - kind: end
     id: done
     num: END

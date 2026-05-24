@@ -45,8 +45,7 @@ function stepNode(id: string, x: number, y: number, w: number): Extract<Workflow
     y,
     w,
     title: id,
-    desc: "",
+    prompt: "",
     sessionId: "s1",
-    updateDoc: false,
   };
 }

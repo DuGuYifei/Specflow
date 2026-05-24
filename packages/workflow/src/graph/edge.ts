@@ -9,7 +9,7 @@ interface BaseEdge {
   kind: WorkflowEdgeKind;
 }
 
-export type WorkflowEdgeKind = "passthrough" | "tagged-output";
+export type WorkflowEdgeKind = "trigger" | "gate-input" | "tagged-output";
 
 export interface OutputTagBinding {
   identifier: string;
@@ -18,17 +18,22 @@ export interface OutputTagBinding {
 }
 
 export interface EdgeHandoff {
-  agentId: string;
-  sessionId?: string;
   promptTemplate: PromptTemplate;
 }
 
 /**
- * A plain connection with no output transformation.
- * The previous node output is forwarded to the target node unchanged.
+ * Activates a downstream node without carrying explicit content.
  */
-export interface PassthroughEdge extends BaseEdge {
-  kind: "passthrough";
+export interface TriggerEdge extends BaseEdge {
+  kind: "trigger";
+}
+
+/**
+ * Supplies the single upstream output to a gate. Gate inputs have no authored
+ * transfer properties; the gate needs its predecessor's output for routing.
+ */
+export interface GateInputEdge extends BaseEdge {
+  kind: "gate-input";
 }
 
 /**
@@ -41,4 +46,4 @@ export interface TaggedOutputEdge extends BaseEdge {
   handoff?: EdgeHandoff;
 }
 
-export type WorkflowEdge = PassthroughEdge | TaggedOutputEdge;
+export type WorkflowEdge = TriggerEdge | GateInputEdge | TaggedOutputEdge;

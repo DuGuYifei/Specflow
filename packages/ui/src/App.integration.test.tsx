@@ -228,9 +228,8 @@ function sampleCanvas() {
       y: 120,
       w: 240,
       title: "Echo",
-      desc: "echo prompt",
+      prompt: "echo prompt",
         sessionId: "main",
-      updateDoc: false,
     }],
     edges: [],
   };

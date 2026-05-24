@@ -171,8 +171,8 @@ function sampleCanvas(): CanvasDoc {
     name: "Workflow",
     sessions: [{ id: "s1", name: "main", agentServerId: "codex-acp" }],
     nodes: [
-      { kind: "step", id: "n1", num: "01", x: 10, y: 20, w: 220, title: "Step 1", desc: "Do it", sessionId: "s1", updateDoc: false },
-      { kind: "step", id: "n2", num: "02", x: 260, y: 20, w: 220, title: "Step 2", desc: "Do more", sessionId: "s1", updateDoc: false },
+      { kind: "step", id: "n1", num: "01", x: 10, y: 20, w: 220, title: "Step 1", prompt: "Do it", sessionId: "s1" },
+      { kind: "step", id: "n2", num: "02", x: 260, y: 20, w: 220, title: "Step 2", prompt: "Do more", sessionId: "s1" },
       { kind: "end", id: "done", num: "END", x: 520, y: 20, w: 140, title: "Done", sessionId: null },
     ],
     edges: [

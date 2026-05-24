@@ -1,6 +1,7 @@
 export interface CanvasBranch {
   id: string;
   label: string;
+  description?: string;
 }
 
 export interface CanvasSession {
@@ -18,11 +19,10 @@ export interface CanvasStepNode {
   y: number;
   w: number;
   title: string;
-  desc: string;
+  prompt: string;
   sessionId: string | null;
-  updateDoc: boolean;
   locked?: boolean;
-  attachments?: Array<{ label: string }>;
+  images?: Array<{ path: string; label?: string; mimeType?: string }>;
   paths?: string[];
 }
 
@@ -34,8 +34,7 @@ export interface CanvasGateNode {
   y: number;
   w: number;
   title: string;
-  gateDesc?: string;
-  sessionId: string | null;
+  decisionCriteria: string;
   branches: CanvasBranch[];
 }
 
@@ -70,11 +69,11 @@ export interface CanvasEdge {
   id: string;
   from: string;
   to: string;
-  tag?: string;
-  prompt?: string;
+  transmit?: boolean;
+  outputTag?: string;
+  handoffPrompt?: string;
   branch?: string;
   loopback?: boolean;
-  sameSession?: boolean;
 }
 
 export interface CanvasVariable {

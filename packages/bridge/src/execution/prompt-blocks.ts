@@ -14,7 +14,7 @@ export interface BuildPromptBlocksInput {
 }
 
 export async function buildPromptBlocksForNode(input: BuildPromptBlocksInput): Promise<PromptBlocks | undefined> {
-  const refs = [...input.node.attachments, ...input.node.relatedResources];
+  const refs = [...input.node.images, ...input.node.relatedResources];
   if (refs.length === 0) return undefined;
 
   const blocks: PromptBlocks = [{ type: "text", text: input.prompt }];

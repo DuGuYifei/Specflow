@@ -423,11 +423,13 @@ function AgentSessionsTab({
                           <span>{session.invocations.length} invocations</span>
                           <span>·</span>
                           <span>{formatShortDate(session.lastSeenAt)}</span>
+                          {session.parentSpecflowSessionId && <span>· fork of {session.parentSpecflowSessionId}</span>}
                         </div>
                       </div>
                       <div className="history-actions">
                         <CapabilityBadge label="load" enabled={session.acpSupportsLoadSession} />
                         <CapabilityBadge label="resume" enabled={session.acpSupportsResumeSession} />
+                        <CapabilityBadge label="fork" enabled={session.acpSupportsForkSession} />
                         <button
                           className="btn sm"
                           disabled={!session.acpSupportsLoadSession && !session.acpSupportsResumeSession}

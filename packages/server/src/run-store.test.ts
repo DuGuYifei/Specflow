@@ -74,7 +74,7 @@ function sampleCanvas(): CanvasDoc {
     name: "Workflow",
     sessions: [{ id: "s1", name: "main", agentServerId: "codex-acp" }],
     nodes: [
-      { kind: "step", id: "n1", num: "01", x: 10, y: 20, w: 220, title: "Step", desc: "Do it", sessionId: "s1", updateDoc: false },
+      { kind: "step", id: "n1", num: "01", x: 10, y: 20, w: 220, title: "Step", prompt: "Do it", sessionId: "s1" },
       { kind: "end", id: "done", num: "END", x: 300, y: 20, w: 140, title: "Done", sessionId: null },
     ],
     edges: [{ id: "e1", from: "n1", to: "done" }],

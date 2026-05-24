@@ -20,9 +20,8 @@ const doc: AgentFlowDoc = {
       id: "n1",
       num: "01",
       title: "Add one",
-      desc: "1 + <specflow_value> = ?",
+      prompt: "1 + <specflow_value> = ?",
       sessionId: "s1",
-      updateDoc: false,
     },
   ],
   edges: [{ id: "e-input", from: "in1", to: "n1" }],
@@ -32,7 +31,7 @@ describe("prepareCanvasRun", () => {
   it("reports missing input nodes without defaults", () => {
     const prepared = prepareCanvasRun(doc);
     expect(prepared.missingVariables.map((v) => v.name)).toEqual(["specflow_value"]);
-    expect(findStep(prepared.doc, "n1").desc).toBe("1 +  = ?");
+    expect(findStep(prepared.doc, "n1").prompt).toBe("1 +  = ?");
   });
 
   it("substitutes provided variable values into step prompts", () => {
@@ -43,7 +42,7 @@ describe("prepareCanvasRun", () => {
       value: "1",
       source: "override",
     });
-    expect(findStep(prepared.doc, "n1").desc).toBe("1 + 1 = ?");
+    expect(findStep(prepared.doc, "n1").prompt).toBe("1 + 1 = ?");
   });
 
   it("treats empty overrides as missing", () => {

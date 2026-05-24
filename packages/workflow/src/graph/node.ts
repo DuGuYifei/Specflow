@@ -11,7 +11,6 @@ export interface BaseWorkflowNode<TKind extends WorkflowNodeKind = WorkflowNodeK
   id: string;
   kind: TKind;
   title: string;
-  description?: string;
   promptTemplate: PromptTemplate;
   position?: NodePosition;
 }
@@ -19,8 +18,7 @@ export interface BaseWorkflowNode<TKind extends WorkflowNodeKind = WorkflowNodeK
 export interface AgentNode extends BaseWorkflowNode<"agent"> {
   agentId: string;
   sessionId: string;
-  updateSpecDoc: boolean;
-  attachments: WorkflowResourceRef[];
+  images: WorkflowResourceRef[];
   relatedResources: WorkflowResourceRef[];
 }
 
@@ -38,7 +36,6 @@ export interface GateBranch {
 
 export interface GateNode extends FunctionalNode<"gate"> {
   decisionCriteria: string;
-  inputVariable: string;
   branches: GateBranch[];
 }
 

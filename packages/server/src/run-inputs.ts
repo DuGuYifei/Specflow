@@ -55,8 +55,8 @@ export function prepareCanvasRun(
     s?.replace(tokenRx, (orig, key: string) => (key in effectiveValues ? effectiveValues[key] : orig));
 
   const substitutedNodes = doc.nodes.map((n) => {
-    if (n.kind === "step") return { ...n, desc: substitute(n.desc) ?? "" };
-    if (n.kind === "gate") return { ...n, gateDesc: substitute(n.gateDesc) };
+    if (n.kind === "step") return { ...n, prompt: substitute(n.prompt) ?? "" };
+    if (n.kind === "gate") return { ...n, decisionCriteria: substitute(n.decisionCriteria) ?? "" };
     return n;
   });
 

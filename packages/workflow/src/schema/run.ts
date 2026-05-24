@@ -42,9 +42,12 @@ export interface AgentInvocation {
   agentId: string;
   agentServerId?: string;
   sessionId?: string;
+  parentSessionId?: string;
   acpSessionId?: string;
   acpSupportsLoadSession?: boolean;
   acpSupportsResumeSession?: boolean;
+  acpSupportsForkSession?: boolean;
+  acpSessionForked?: boolean;
   prompt: string;
   status: "running" | "done" | "failed";
   startedAt: string;

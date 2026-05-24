@@ -1,34 +1,24 @@
 import type { GateDecision, GateNode } from "@specflow/workflow";
 
-export interface GateEvaluationInput {
-  node: GateNode;
-  input: string;
-  prompt: string;
-}
-
-export interface GateEvaluator {
-  evaluate(input: GateEvaluationInput): Promise<GateDecision>;
-}
-
-export class DeterministicGateEvaluator implements GateEvaluator {
-  async evaluate(input: GateEvaluationInput): Promise<GateDecision> {
-    const normalizedInput = input.input.toLowerCase();
-    const matchingBranch = input.node.branches.find((branch) => {
-      return normalizedInput.includes(branch.id.toLowerCase())
-        || normalizedInput.includes(branch.label.toLowerCase());
-    });
-
-    const fallbackBranch = input.node.branches[0];
-    if (!matchingBranch && !fallbackBranch) {
-      throw new Error(`Gate node "${input.node.id}" has no branches.`);
-    }
-
-    const branch = matchingBranch ?? fallbackBranch;
-    return {
-      branchId: branch.id,
-      reason: matchingBranch
-        ? `Matched branch "${branch.label}" from input.`
-        : `Defaulted to first branch "${branch.label}".`,
-    };
+export function parseGateDecision(node: GateNode, output: string): GateDecision {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(output.trim());
+  } catch {
+    throw new Error(`Gate node "${node.id}" returned invalid JSON.`);
   }
+  if (!parsed || typeof parsed !== "object") {
+    throw new Error(`Gate node "${node.id}" returned an invalid decision object.`);
+  }
+  const decision = parsed as { branchId?: unknown; reason?: unknown };
+  if (typeof decision.branchId !== "string" || !node.branches.some((branch) => branch.id === decision.branchId)) {
+    throw new Error(`Gate node "${node.id}" selected an unknown branch.`);
+  }
+  if (decision.reason !== undefined && typeof decision.reason !== "string") {
+    throw new Error(`Gate node "${node.id}" returned a non-string reason.`);
+  }
+  return {
+    branchId: decision.branchId,
+    ...(typeof decision.reason === "string" ? { reason: decision.reason } : {}),
+  };
 }

@@ -40,6 +40,18 @@ function edgeMid(from: { x: number; y: number }, to: { x: number; y: number }, l
   return { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 };
 }
 
+function transferSource(edge: Edge, nodes: WorkflowNode[], edges: Edge[]): WorkflowNode | undefined {
+  const source = nodes.find((node) => node.id === edge.from);
+  if (source?.kind !== 'gate') return source;
+  const inputEdge = edges.find((candidate) =>
+    candidate.to === source.id && nodes.find((node) => node.id === candidate.from)?.kind !== 'input',
+  );
+  const input = nodes.find((node) => inputEdge?.from === node.id);
+  return input?.kind === 'gate'
+    ? transferSource(inputEdge!, nodes, edges)
+    : input;
+}
+
 const NODE_H: Record<string, number> = { step: 120, gate: 110, end: 36, input: 72 };
 
 export interface CanvasFitResult {
@@ -113,11 +125,6 @@ function StepCard({ n, session, selected, runState, onMouseDown, onSelect }: Ste
       <div className="node-head">
         <span className="node-id">{n.num}</span>
         {n.locked && <span className="lock-badge"><Icon name="lock" size={10} /></span>}
-        {n.updateDoc && (
-          <span className="doc-badge" title="Updates SPECFLOW.md after this step">
-            <Icon name="file" size={9} />doc
-          </span>
-        )}
         <span className="node-state-icon">
           {runState === 'running' && <><Icon name="loader" size={11} style={{ animation: 'spin 1.4s linear infinite' }} />running</>}
           {runState === 'success' && <><Icon name="check"  size={11} style={{ color: 'oklch(0.55 0.13 145)' }} />done</>}
@@ -126,10 +133,10 @@ function StepCard({ n, session, selected, runState, onMouseDown, onSelect }: Ste
         </span>
       </div>
       <h3 className="node-title">{n.title}</h3>
-      <p className="node-desc">{n.desc}</p>
+      <p className="node-desc">{n.prompt}</p>
       <div className="node-meta">
-        {(n.attachments || []).map((a, i) => (
-          <span className="chip attach" key={i}><Icon name="image" size={10} />{a.label}</span>
+        {(n.images || []).map((a, i) => (
+          <span className="chip attach" key={i}><Icon name="attachment-img" size={10} />{a.label ?? a.path}</span>
         ))}
         {(n.paths || []).map((p, i) => (
           <span className="chip path" key={i}>
@@ -445,16 +452,11 @@ export function Canvas({
             const fromN = nodesRef.current.find((n) => n.id === dragInfo.fromId);
             const toN   = nodesRef.current.find((n) => n.id === toId);
             if (fromN && toN && toN.kind !== 'input') {
-              const sameSession =
-                fromN.kind !== 'gate' && toN.kind !== 'gate' && toN.kind !== 'end' &&
-                fromN.kind !== 'input' &&
-                fromN.sessionId != null && fromN.sessionId === toN.sessionId;
               const edge = {
                 id: edgeKey({ from: dragInfo.fromId, to: toId, branch: dragInfo.branch }),
                 from: dragInfo.fromId,
                 to: toId,
                 branch: dragInfo.branch,
-                sameSession,
               };
               if (!edgesRef.current.some((existing) => existing.id === edge.id)) onAddEdge(edge);
             }
@@ -493,9 +495,9 @@ export function Canvas({
 
       let newNode: WorkflowNode;
       if (mode === 'add-step') {
-        newNode = { kind: 'step', id, num, x: pos.x - 110, y: pos.y - 60, w: 220, title: 'Untitled', desc: '', sessionId: firstSession, updateDoc: false };
+        newNode = { kind: 'step', id, num, x: pos.x - 110, y: pos.y - 60, w: 220, title: 'Untitled', prompt: '', sessionId: firstSession };
       } else if (mode === 'add-gate') {
-        newNode = { kind: 'gate', id, num, x: pos.x - 110, y: pos.y - 55, w: 220, title: 'Decision', sessionId: firstSession, branches: [{ id: 'pass', label: 'pass' }, { id: 'fix', label: 'fix' }] };
+        newNode = { kind: 'gate', id, num, x: pos.x - 110, y: pos.y - 55, w: 220, title: 'Decision', decisionCriteria: '', branches: [{ id: 'pass', label: 'pass' }, { id: 'fix', label: 'fix' }] };
       } else if (mode === 'add-input') {
         newNode = { kind: 'input', id, num, x: pos.x - 100, y: pos.y - 36, w: 200, title: 'Run input', variableName: `specflow_var${nodesRef.current.filter((n) => n.kind === 'input').length + 1}`, sessionId: null };
       } else {
@@ -616,6 +618,8 @@ export function Canvas({
             const fromN = nodeById[e.from];
             const toN   = nodeById[e.to];
             if (!fromN || !toN) return null;
+            const contentSource = transferSource(e, nodes, edges);
+            const sameSession = contentSource?.kind === 'step' && toN.kind === 'step' && contentSource.sessionId === toN.sessionId;
             const from = nodeAnchorOut(fromN, e.branch);
             const to   = nodeAnchorIn(toN);
             const d    = edgePath(from, to, e.loopback);
@@ -627,12 +631,12 @@ export function Canvas({
               ? 'var(--ink-3)'
               : active
                 ? 'var(--running)'
-                : e.sameSession ? 'var(--ink-3)' : 'var(--ink-2)';
+                : sameSession ? 'var(--ink-3)' : 'var(--ink-2)';
             const dash = e.loopback
               ? '4 4'
               : active
                 ? '6 4'
-                : e.sameSession ? '2 4' : '';
+                : sameSession ? '2 4' : '';
             const markerId = e.loopback ? 'arrow-loopback' : active ? 'arrow-running' : 'arrow';
 
             return (
@@ -675,7 +679,8 @@ export function Canvas({
           const fromN = nodeById[e.from];
           const toN   = nodeById[e.to];
           if (!fromN || !toN) return null;
-          if (fromN.kind === 'gate') return null;
+          const contentSource = transferSource(e, nodes, edges);
+          const sameSession = contentSource?.kind === 'step' && toN.kind === 'step' && contentSource.sessionId === toN.sessionId;
 
           const from = nodeAnchorOut(fromN, e.branch);
           const to   = nodeAnchorIn(toN);
@@ -696,7 +701,15 @@ export function Canvas({
             );
           }
 
-          if (e.sameSession) {
+          if (toN.kind === 'gate') {
+            return (
+              <div key={`tag-${e.id}`} className="edge-tag" style={{ left: m.x, top: m.y, fontSize: 9.5, opacity: 0.7 }}>
+                <Icon name="route" size={9} />gate input
+              </div>
+            );
+          }
+
+          if (sameSession) {
             return (
               <div
                 key={`tag-${e.id}`}
@@ -713,12 +726,12 @@ export function Canvas({
           return (
             <div
               key={`tag-${e.id}`}
-              className={`edge-tag${e.tag ? '' : ' empty'}${isSelected ? ' selected' : ''}`}
+              className={`edge-tag${e.outputTag ? '' : ' empty'}${isSelected ? ' selected' : ''}`}
               style={{ left: m.x, top: m.y }}
               onClick={(ev) => { ev.stopPropagation(); onSelectEdge(e.id); }}
             >
               {e.loopback && <Icon name="rotate" size={10} />}
-              {e.tag ? <span className="tag-key">&lt;{e.tag}&gt;</span> : <span>+ tag</span>}
+              {e.transmit && e.outputTag ? <span className="tag-key">&lt;specflow_{e.outputTag}&gt;</span> : <span>no transfer</span>}
             </div>
           );
         })}
@@ -763,7 +776,7 @@ export function Canvas({
         {/* hover prompt preview */}
         {hoverEdge && (() => {
           const e = edges.find((x) => x.id === hoverEdge);
-          if (!e || !e.prompt || e.sameSession) return null;
+          if (!e || !e.handoffPrompt) return null;
           const fromN = nodeById[e.from];
           const toN   = nodeById[e.to];
           if (!fromN || !toN) return null;
@@ -771,7 +784,7 @@ export function Canvas({
           return (
             <div className="edge-preview" style={{ left: m.x + 20, top: m.y + 14 }}>
               <span className="pp-label">handoff prompt</span>
-              {e.prompt}
+              {e.handoffPrompt}
             </div>
           );
         })()}

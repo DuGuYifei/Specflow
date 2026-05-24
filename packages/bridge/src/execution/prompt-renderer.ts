@@ -33,14 +33,29 @@ export function renderHandoffPrompt(template: PromptTemplate, input: string): st
 }
 
 export function renderGatePrompt(node: GateNode, input: string): string {
-  return renderPromptTemplate({
+  const criteria = renderPromptTemplate({
     template: node.promptTemplate,
-    variables: {
-      [node.inputVariable]: input,
-      specflow_input: input,
-      specflow_branches: node.branches.map((branch) => branch.id).join(", "),
-    },
+    variables: { specflow_input: input },
   });
+  const branches = JSON.stringify(node.branches.map((branch) => ({
+    id: branch.id,
+    label: branch.label,
+    description: branch.description ?? "",
+  })));
+  return [
+    "Select exactly one workflow branch based on the prior node output.",
+    "",
+    "Decision criteria:",
+    criteria,
+    "",
+    "Prior node output:",
+    `<specflow_input>${input}</specflow_input>`,
+    "",
+    `Available branches: ${branches}`,
+    "",
+    "Return only valid JSON matching this schema, with no markdown or extra text:",
+    '{"branchId":"<one available branch id>","reason":"<short explanation>"}',
+  ].join("\n");
 }
 
 export function createTaggedEdgeVariable(edge: WorkflowEdge, content: string): Record<string, string> {

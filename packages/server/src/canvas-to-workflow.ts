@@ -1,12 +1,19 @@
 import type {
   AgentNode,
   GateNode,
-  PassthroughEdge,
+  GateInputEdge,
   TaggedOutputEdge,
+  TriggerEdge,
   Workflow,
 } from "@specflow/workflow";
 import { uuidv7 } from "@specflow/shared";
-import type { AgentFlowDoc, AgentFlowStepNode, CanvasEdge, CanvasSession } from "./canvas-doc";
+import type {
+  AgentFlowDoc,
+  AgentFlowStepNode,
+  CanvasEdge,
+  CanvasNode,
+  CanvasSession,
+} from "./canvas-doc";
 
 export const DEFAULT_AGENT_SERVER_ID = "unconfigured";
 
@@ -25,18 +32,9 @@ function agentIdForServer(agentServerId: string): string {
 }
 
 export function canvasToWorkflow(doc: AgentFlowDoc): Workflow {
-  const endNodeIds = new Set(
-    doc.nodes.filter((n) => n.kind === "end").map((n) => n.id),
-  );
-
-  const inputNodeIds = new Set(
-    doc.nodes.filter((n) => n.kind === "input").map((n) => n.id),
-  );
-
-  const loopbackEdgeIds = new Set(
-    doc.edges.filter((e) => e.loopback).map((e) => e.id),
-  );
-
+  const endNodeIds = new Set(doc.nodes.filter((node) => node.kind === "end").map((node) => node.id));
+  const inputNodeIds = new Set(doc.nodes.filter((node) => node.kind === "input").map((node) => node.id));
+  const loopbackEdgeIds = new Set(doc.edges.filter((edge) => edge.loopback).map((edge) => edge.id));
   const agentServerIds = new Set<string>(doc.sessions.map(agentServerIdForSession));
 
   const agents: Workflow["agents"] = [...agentServerIds].map((agentServerId) => ({
@@ -46,110 +44,130 @@ export function canvasToWorkflow(doc: AgentFlowDoc): Workflow {
     agentServerId,
   }));
 
-  const sessions: Workflow["sessions"] = doc.sessions.map((s) => ({
-    id: s.id,
-    name: s.name,
-    agentId: agentIdForServer(agentServerIdForSession(s)),
+  const sessions: Workflow["sessions"] = doc.sessions.map((session) => ({
+    id: session.id,
+    name: session.name,
+    agentId: agentIdForServer(agentServerIdForSession(session)),
     createdAt: new Date().toISOString(),
   }));
 
   const nodes: Workflow["nodes"] = doc.nodes
-    .filter((n) => n.kind !== "end" && n.kind !== "input")
-    .map((n) => {
-      if (n.kind === "step") {
-        return buildAgentNode(n, doc);
-      }
-      if (n.kind === "gate") {
-        return {
-          id: n.id,
-          kind: "gate",
-          behavior: "functional",
-          title: n.title,
-          description: n.gateDesc,
-          promptTemplate: { template: n.gateDesc ?? "" },
-          decisionCriteria: n.gateDesc ?? "",
-          inputVariable: "specflow_input",
-          branches: n.branches.map((b) => ({ id: b.id, label: b.label })),
-        } satisfies GateNode;
-      }
-      throw new Error(`Unknown node kind: ${(n as { kind: string }).kind}`);
+    .filter((node) => node.kind !== "end" && node.kind !== "input")
+    .map((node) => {
+      if (node.kind === "step") return buildAgentNode(node, doc);
+      return {
+        id: node.id,
+        kind: "gate",
+        behavior: "functional",
+        title: node.title,
+        promptTemplate: { template: node.decisionCriteria },
+        decisionCriteria: node.decisionCriteria,
+        branches: node.branches.map((branch) => ({
+          id: branch.id,
+          label: branch.label,
+          description: branch.description,
+        })),
+      } satisfies GateNode;
     });
 
   const edges: Workflow["edges"] = doc.edges
-    .filter((e) => !loopbackEdgeIds.has(e.id))
-    .filter((e) => !endNodeIds.has(e.to) && !endNodeIds.has(e.from))
-    .filter((e) => !inputNodeIds.has(e.from))   // variable injection edges are not workflow edges
-    .map((e) => buildEdge(e, doc));
+    .filter((edge) => !loopbackEdgeIds.has(edge.id))
+    .filter((edge) => !endNodeIds.has(edge.to) && !endNodeIds.has(edge.from))
+    .filter((edge) => !inputNodeIds.has(edge.from))
+    .map((edge) => buildEdge(edge, doc));
 
-  return {
-    id: doc.id,
-    name: doc.name,
-    agents,
-    sessions,
-    nodes,
-    edges,
-  };
+  return { id: doc.id, name: doc.name, agents, sessions, nodes, edges };
 }
 
-function buildAgentNode(n: AgentFlowStepNode, doc: AgentFlowDoc): AgentNode {
-  const session = doc.sessions.find((s) => s.id === n.sessionId);
+function buildAgentNode(node: AgentFlowStepNode, doc: AgentFlowDoc): AgentNode {
+  const session = doc.sessions.find((candidate) => candidate.id === node.sessionId);
   return {
-    id: n.id,
+    id: node.id,
     kind: "agent",
-    title: n.title,
-    description: n.desc,
-    promptTemplate: { template: n.desc ?? "" },
-    agentId: session ? agentIdForServer(agentServerIdForSession(session)) : agentIdForServer(DEFAULT_AGENT_SERVER_ID),
-    sessionId: n.sessionId ?? "",
-    updateSpecDoc: n.updateDoc,
-    attachments: (n.attachments ?? []).map((a) => ({
+    title: node.title,
+    promptTemplate: { template: node.prompt },
+    agentId: session
+      ? agentIdForServer(agentServerIdForSession(session))
+      : agentIdForServer(DEFAULT_AGENT_SERVER_ID),
+    sessionId: node.sessionId ?? "",
+    images: (node.images ?? []).map((image) => ({
       id: uuidv7(),
-      kind: "file",
-      path: a.label,
-      label: a.label,
+      kind: "image",
+      path: image.path,
+      label: image.label,
+      mimeType: image.mimeType,
     })),
-    relatedResources: (n.paths ?? []).map((p) => ({
+    relatedResources: (node.paths ?? []).map((path) => ({
       id: uuidv7(),
       kind: "file",
-      path: p,
+      path,
     })),
   };
 }
 
-function buildEdge(e: CanvasEdge, doc: AgentFlowDoc): PassthroughEdge | TaggedOutputEdge {
-  // Gate-branch edge or same-session edge → passthrough
-  if (e.branch || e.sameSession) {
+function buildEdge(edge: CanvasEdge, doc: AgentFlowDoc): TriggerEdge | GateInputEdge | TaggedOutputEdge {
+  const source = findNode(doc, edge.from);
+  const target = findNode(doc, edge.to);
+
+  if (target.kind === "gate") {
     return {
-      id: e.id,
-      kind: "passthrough",
-      sourceNodeId: e.from,
-      targetNodeId: e.to,
-      sourcePortId: e.branch,
-    } satisfies PassthroughEdge;
+      id: edge.id,
+      kind: "gate-input",
+      sourceNodeId: edge.from,
+      targetNodeId: edge.to,
+    };
   }
 
-  // Cross-session tagged edge
-  const toNode = doc.nodes.find((n) => n.id === e.to);
-  const toSessionId = toNode && toNode.kind !== "end" && toNode.kind !== "input" ? toNode.sessionId : undefined;
-  const toSession = doc.sessions.find((s) => s.id === toSessionId);
+  const effectiveSource = source.kind === "gate" ? predecessorOfGate(source.id, doc) : source;
+  const sourceSessionId = effectiveSource.kind === "step" ? effectiveSource.sessionId : undefined;
+  const targetSessionId = target.kind === "step" ? target.sessionId : undefined;
+  const sameSession = Boolean(sourceSessionId && sourceSessionId === targetSessionId);
 
-  const tag = e.tag ?? e.id;
+  if (sameSession || edge.transmit !== true) {
+    return {
+      id: edge.id,
+      kind: "trigger",
+      sourceNodeId: edge.from,
+      targetNodeId: edge.to,
+      sourcePortId: edge.branch,
+    };
+  }
+
+  if (!edge.outputTag) {
+    throw new Error(`Transmitting edge "${edge.id}" must define outputTag.`);
+  }
   return {
-    id: e.id,
+    id: edge.id,
     kind: "tagged-output",
-    sourceNodeId: e.from,
-    targetNodeId: e.to,
+    sourceNodeId: edge.from,
+    targetNodeId: edge.to,
+    sourcePortId: edge.branch,
     outputTag: {
-      identifier: tag,
-      xmlTagName: tag,
-      promptReference: tag,
+      identifier: edge.outputTag,
+      xmlTagName: edge.outputTag,
+      promptReference: `specflow_${edge.outputTag}`,
     },
-    handoff: e.prompt
-      ? {
-          agentId: toSession ? agentIdForServer(agentServerIdForSession(toSession)) : agentIdForServer(DEFAULT_AGENT_SERVER_ID),
-          sessionId: toSessionId ?? undefined,
-          promptTemplate: { template: e.prompt },
-        }
+    handoff: edge.handoffPrompt
+      ? { promptTemplate: { template: edge.handoffPrompt } }
       : undefined,
-  } satisfies TaggedOutputEdge;
+  };
+}
+
+function predecessorOfGate(gateId: string, doc: AgentFlowDoc): CanvasNode {
+  const edge = doc.edges.find((candidate) => {
+    if (candidate.to !== gateId || candidate.loopback) return false;
+    return doc.nodes.find((node) => node.id === candidate.from)?.kind !== "input";
+  });
+  if (!edge) throw new Error(`Gate node "${gateId}" requires one business input edge.`);
+  const source = findNode(doc, edge.from);
+  if (source.kind === "input" || source.kind === "end") {
+    throw new Error(`Gate node "${gateId}" requires one business input edge.`);
+  }
+  return source.kind === "gate" ? predecessorOfGate(source.id, doc) : source;
+}
+
+function findNode(doc: AgentFlowDoc, id: string): CanvasNode {
+  const node = doc.nodes.find((candidate) => candidate.id === id);
+  if (!node) throw new Error(`Missing node "${id}".`);
+  return node as CanvasNode;
 }

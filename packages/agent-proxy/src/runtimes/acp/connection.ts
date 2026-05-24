@@ -146,12 +146,12 @@ interface AcpSessionTurn {
   output: string;
 }
 
-export class AcpAgentSession {
+export class AcpAgentConnection {
   readonly #resolved: ResolvedAgentServer;
   readonly #cwd: string;
   readonly #additionalDirectories: string[] | undefined;
   readonly #client: AcpAgentClient;
-  #sessionId: string | undefined;
+  readonly #sessions = new Map<string, string>();
   #initializeResponse: acp.InitializeResponse | undefined;
   #currentTurn: AcpSessionTurn | undefined;
   #queue: Promise<unknown> = Promise.resolve();
@@ -192,10 +192,6 @@ export class AcpAgentSession {
     });
   }
 
-  get sessionId(): string | undefined {
-    return this.#sessionId;
-  }
-
   async start(request: AgentRunRequest): Promise<void> {
     request.onLifecycleEvent?.({
       type: "process_started",
@@ -214,19 +210,6 @@ export class AcpAgentSession {
     if (this.#initializeResponse.protocolVersion !== acp.PROTOCOL_VERSION) {
       throw new Error(`Unsupported ACP protocol version: ${this.#initializeResponse.protocolVersion}`);
     }
-    const session = await this.#client.connection.newSession({
-      cwd: this.#cwd,
-      additionalDirectories: this.#additionalDirectories,
-      mcpServers: request.mcpServers ?? [],
-    });
-    this.#sessionId = session.sessionId;
-    request.onLifecycleEvent?.({
-      type: "session_created",
-      agentServerId: request.agentServerId,
-      sessionId: this.#sessionId,
-      at: new Date().toISOString(),
-    });
-    await applySessionDefaults(this.#client.connection, this.#sessionId, session, this.#resolved);
   }
 
   async prompt(request: AgentRunRequest): Promise<AgentRunResult> {
@@ -239,17 +222,15 @@ export class AcpAgentSession {
     if (this.#closed) return;
     this.#closed = true;
     await this.#queue.catch(() => {});
-    if (this.#sessionId) {
-      await this.#client.connection.closeSession({ sessionId: this.#sessionId }).catch(() => {});
-    }
+    await Promise.all([...new Set(this.#sessions.values())]
+      .map((sessionId) => this.#client.connection.closeSession({ sessionId }).catch(() => {})));
     await this.#client.close();
   }
 
   async #prompt(request: AgentRunRequest): Promise<AgentRunResult> {
     if (this.#closed) throw new Error("ACP session is already closed.");
-    if (!this.#sessionId) throw new Error("ACP session has not been started.");
-
-    const sessionId = this.#sessionId;
+    const resolvedSession = await this.#resolveSession(request);
+    const sessionId = resolvedSession.sessionId;
     const turn: AcpSessionTurn = { request, output: "" };
     this.#currentTurn = turn;
     const abort = () => {
@@ -293,6 +274,9 @@ export class AcpAgentSession {
         sessionId,
         stopReason: promptResult.stopReason,
         initializeResponse: this.#initializeResponse,
+        workflowSessionId: resolvedSession.workflowSessionId,
+        parentWorkflowSessionId: resolvedSession.parentWorkflowSessionId,
+        sessionForked: resolvedSession.sessionForked,
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -319,11 +303,84 @@ export class AcpAgentSession {
         output: turn.output || message,
         sessionId,
         initializeResponse: this.#initializeResponse,
+        workflowSessionId: resolvedSession.workflowSessionId,
+        parentWorkflowSessionId: resolvedSession.parentWorkflowSessionId,
+        sessionForked: resolvedSession.sessionForked,
       };
     } finally {
       request.signal?.removeEventListener("abort", abort);
       this.#currentTurn = undefined;
     }
+  }
+
+  async #resolveSession(request: AgentRunRequest): Promise<{
+    sessionId: string;
+    workflowSessionId?: string;
+    parentWorkflowSessionId?: string;
+    sessionForked?: boolean;
+  }> {
+    const key = request.workflowSessionId;
+    if (!key) {
+      const session = await this.#createSession(request);
+      return { sessionId: session };
+    }
+    const existing = this.#sessions.get(key);
+    if (existing) return { sessionId: existing, workflowSessionId: key };
+
+    if (request.forkFromWorkflowSessionId) {
+      const parentKey = request.forkFromWorkflowSessionId;
+      const parentSessionId = this.#sessions.get(parentKey);
+      if (!parentSessionId) {
+        throw new Error(`Cannot fork missing workflow session "${parentKey}".`);
+      }
+      if (this.#initializeResponse?.agentCapabilities?.sessionCapabilities?.fork) {
+        const forked = await this.#client.connection.unstable_forkSession({
+          sessionId: parentSessionId,
+          cwd: this.#cwd,
+          additionalDirectories: this.#additionalDirectories,
+          mcpServers: request.mcpServers ?? [],
+        });
+        this.#sessions.set(key, forked.sessionId);
+        request.onLifecycleEvent?.({
+          type: "session_forked",
+          agentServerId: request.agentServerId,
+          sessionId: forked.sessionId,
+          parentSessionId,
+          at: new Date().toISOString(),
+        });
+        return {
+          sessionId: forked.sessionId,
+          workflowSessionId: key,
+          parentWorkflowSessionId: parentKey,
+          sessionForked: true,
+        };
+      }
+      return {
+        sessionId: parentSessionId,
+        workflowSessionId: parentKey,
+        sessionForked: false,
+      };
+    }
+
+    const sessionId = await this.#createSession(request);
+    this.#sessions.set(key, sessionId);
+    return { sessionId, workflowSessionId: key };
+  }
+
+  async #createSession(request: AgentRunRequest): Promise<string> {
+    const session = await this.#client.connection.newSession({
+      cwd: this.#cwd,
+      additionalDirectories: this.#additionalDirectories,
+      mcpServers: request.mcpServers ?? [],
+    });
+    request.onLifecycleEvent?.({
+      type: "session_created",
+      agentServerId: request.agentServerId,
+      sessionId: session.sessionId,
+      at: new Date().toISOString(),
+    });
+    await applySessionDefaults(this.#client.connection, session.sessionId, session, this.#resolved);
+    return session.sessionId;
   }
 }
 

@@ -12,11 +12,14 @@ export interface AgentSessionRecord {
   id: string;
   workflowId: string;
   specflowSessionId?: string;
+  parentSpecflowSessionId?: string;
   agentId: string;
   agentServerId: string;
   acpSessionId: string;
   acpSupportsLoadSession: boolean;
   acpSupportsResumeSession: boolean;
+  acpSupportsForkSession: boolean;
+  acpSessionForked: boolean;
   firstSeenAt: string;
   lastSeenAt: string;
   latestRunId: string;
@@ -114,11 +117,14 @@ export function buildAgentSessionsForRun(record: RunRecord): AgentSessionRecord[
         id,
         workflowId: record.workflowId,
         specflowSessionId: invocation.sessionId,
+        parentSpecflowSessionId: invocation.parentSessionId,
         agentId: invocation.agentId,
         agentServerId: invocation.agentServerId,
         acpSessionId: invocation.acpSessionId,
         acpSupportsLoadSession: Boolean(invocation.acpSupportsLoadSession),
         acpSupportsResumeSession: Boolean(invocation.acpSupportsResumeSession),
+        acpSupportsForkSession: Boolean(invocation.acpSupportsForkSession),
+        acpSessionForked: Boolean(invocation.acpSessionForked),
         firstSeenAt: invocation.startedAt,
         lastSeenAt: seenAt,
         latestRunId: record.id,
@@ -135,6 +141,9 @@ export function buildAgentSessionsForRun(record: RunRecord): AgentSessionRecord[
     existing.agentId = invocation.agentId;
     existing.acpSupportsLoadSession ||= Boolean(invocation.acpSupportsLoadSession);
     existing.acpSupportsResumeSession ||= Boolean(invocation.acpSupportsResumeSession);
+    existing.acpSupportsForkSession ||= Boolean(invocation.acpSupportsForkSession);
+    existing.acpSessionForked ||= Boolean(invocation.acpSessionForked);
+    existing.parentSpecflowSessionId ??= invocation.parentSessionId;
     existing.firstSeenAt = minIso(existing.firstSeenAt, invocation.startedAt);
     if (seenAt >= existing.lastSeenAt) {
       existing.lastSeenAt = seenAt;
