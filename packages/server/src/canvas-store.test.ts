@@ -284,13 +284,25 @@ edges:
 
     const docsCanvas = JSON.parse(await readFile(join(root, ".specflow", "canvas", "example-create-specflow-doc-flow.json"), "utf8"));
     expect(docsCanvas.workflowId).toBe("example-create-specflow-doc-flow");
+
+    const homepageFlowRaw = await readFile(join(root, ".specflow", "agentflows", "example-specflow-homepage-flow.yaml"), "utf8");
+    const homepageFlow = parseAgentFlowSource(homepageFlowRaw, "example-specflow-homepage-flow");
+    expect(homepageFlow.nodes.find((node) => node.id === "source-project-path")?.kind).toBe("input");
+    expect(homepageFlow.nodes.find((node) => node.id === "source-readiness")?.kind).toBe("gate");
+    expect(homepageFlow.nodes.find((node) => node.id === "release-decision")?.kind).toBe("gate");
+    expect(homepageFlowRaw).toContain("specflow_source_project_path");
+    expect(homepageFlowRaw).toContain("Additional directories");
+    expect(homepageFlowRaw).toContain("commercial developer-product quality bar");
+
+    const homepageCanvas = JSON.parse(await readFile(join(root, ".specflow", "canvas", "example-specflow-homepage-flow.json"), "utf8"));
+    expect(homepageCanvas.workflowId).toBe("example-specflow-homepage-flow");
   });
 
   it("creates a first-run workspace and seeds the selected agent server", async () => {
     const root = await mkdtemp(join(tmpdir(), "specflow-first-run-"));
     await initWorkspace(root, { createIfMissing: true, seedAgentServerId: "chosen-code-acp" });
 
-    for (const workflowId of ["example-code-frontend-flow", "example-create-specflow-doc-flow"]) {
+    for (const workflowId of ["example-code-frontend-flow", "example-create-specflow-doc-flow", "example-specflow-homepage-flow"]) {
       const agentflow = parseAgentFlowSource(
         await readFile(join(root, ".specflow", "agentflows", `${workflowId}.yaml`), "utf8"),
         workflowId,
