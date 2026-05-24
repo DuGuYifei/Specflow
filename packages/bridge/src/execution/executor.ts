@@ -150,6 +150,8 @@ export class WorkflowExecutor {
       const pendingInputs = new Map<string, PendingNodeInput>();
       const queue = findEntryNodes(workflow).map((node) => node.id);
       const completedNodes = new Set<string>();
+      const skippedNodes = new Set<string>();
+      const inactiveEdges = new Set<string>();
 
       for (const entryNode of findEntryNodes(workflow)) {
         pendingInputs.set(entryNode.id, { input: [initialInput], edgeValues: {} });
@@ -158,12 +160,12 @@ export class WorkflowExecutor {
       while (queue.length > 0) {
         throwIfCancelled(options.signal);
         const nodeId = queue.shift();
-        if (!nodeId || completedNodes.has(nodeId)) continue;
+        if (!nodeId || completedNodes.has(nodeId) || skippedNodes.has(nodeId)) continue;
         const node = nodesById.get(nodeId);
         if (!node) throw new Error(`Workflow references missing node "${nodeId}".`);
 
         const incomingEdges = incomingEdgesByTarget.get(node.id) ?? [];
-        if (!isNodeReady(incomingEdges, completedNodes)) {
+        if (!isNodeReady(incomingEdges, completedNodes, inactiveEdges)) {
           queue.push(node.id);
           continue;
         }
@@ -181,8 +183,23 @@ export class WorkflowExecutor {
         });
         completedNodes.add(node.id);
 
-        for (const edge of outgoingEdgesBySource.get(node.id) ?? []) {
-          if (node.kind === "gate" && edge.sourcePortId !== nodeResult.chosenBranchId) continue;
+        const outgoingEdges = outgoingEdgesBySource.get(node.id) ?? [];
+        if (node.kind === "gate") {
+          for (const edge of outgoingEdges) {
+            if (edge.sourcePortId !== nodeResult.chosenBranchId) {
+              deactivateEdgeAndDependents({
+                edge,
+                inactiveEdges,
+                skippedNodes,
+                incomingEdgesByTarget,
+                outgoingEdgesBySource,
+                queue,
+              });
+            }
+          }
+        }
+        for (const edge of outgoingEdges) {
+          if (inactiveEdges.has(edge.id)) continue;
           const target = pendingInputs.get(edge.targetNodeId) ?? { input: [], edgeValues: {} };
           if (edge.kind === "gate-input") {
             target.input.push(nodeResult.origin.output);
@@ -522,6 +539,32 @@ function groupEdgesBySource(edges: WorkflowEdge[]): Map<string, WorkflowEdge[]> 
   return grouped;
 }
 
-function isNodeReady(incomingEdges: WorkflowEdge[], completedNodes: Set<string>): boolean {
-  return incomingEdges.every((edge) => completedNodes.has(edge.sourceNodeId));
+function isNodeReady(
+  incomingEdges: WorkflowEdge[],
+  completedNodes: Set<string>,
+  inactiveEdges: Set<string>,
+): boolean {
+  return incomingEdges.every((edge) => inactiveEdges.has(edge.id) || completedNodes.has(edge.sourceNodeId));
+}
+
+function deactivateEdgeAndDependents(input: {
+  edge: WorkflowEdge;
+  inactiveEdges: Set<string>;
+  skippedNodes: Set<string>;
+  incomingEdgesByTarget: Map<string, WorkflowEdge[]>;
+  outgoingEdgesBySource: Map<string, WorkflowEdge[]>;
+  queue: string[];
+}): void {
+  if (input.inactiveEdges.has(input.edge.id)) return;
+  input.inactiveEdges.add(input.edge.id);
+  const targetNodeId = input.edge.targetNodeId;
+  const incoming = input.incomingEdgesByTarget.get(targetNodeId) ?? [];
+  if (incoming.length > 0 && incoming.every((edge) => input.inactiveEdges.has(edge.id))) {
+    input.skippedNodes.add(targetNodeId);
+    for (const outgoing of input.outgoingEdgesBySource.get(targetNodeId) ?? []) {
+      deactivateEdgeAndDependents({ ...input, edge: outgoing });
+    }
+    return;
+  }
+  input.queue.push(targetNodeId);
 }

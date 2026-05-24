@@ -217,7 +217,7 @@ function GatePanelContent(props: NodePanelProps & { node: GateNode; readonly: bo
           <div style={{ display: 'flex', gap: 8 }}>
             <span style={{ width: 10, height: 10, borderRadius: '50%', background: branchAccent(branch) }} />
             <input className="input" value={branch.label} disabled={readonly} onChange={(event) => props.onEditBranch(node.id, branch.id, { label: event.target.value })} />
-            {!readonly && <button className="icon-btn" onClick={() => props.onDeleteBranch(node.id, branch.id)}><Icon name="trash" size={12} /></button>}
+            {!readonly && <button className="icon-btn" disabled={node.branches.length <= 1} title={node.branches.length <= 1 ? 'A gate must keep at least one branch' : 'Delete branch'} onClick={() => props.onDeleteBranch(node.id, branch.id)}><Icon name="trash" size={12} /></button>}
           </div>
           <input className="input" value={branch.description ?? ''} disabled={readonly} placeholder="Describe when this branch should be selected" onChange={(event) => props.onEditBranch(node.id, branch.id, { description: event.target.value || undefined })} />
         </div>

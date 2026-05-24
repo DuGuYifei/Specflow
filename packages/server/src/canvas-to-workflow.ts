@@ -11,9 +11,9 @@ import type {
   AgentFlowDoc,
   AgentFlowStepNode,
   CanvasEdge,
-  CanvasNode,
   CanvasSession,
 } from "./canvas-doc";
+import { contentSourceForEdge, findAgentFlowNode, hasTransferProperties } from "./canvas-edge-semantics";
 
 export const DEFAULT_AGENT_SERVER_ID = "unconfigured";
 
@@ -106,8 +106,8 @@ function buildAgentNode(node: AgentFlowStepNode, doc: AgentFlowDoc): AgentNode {
 }
 
 function buildEdge(edge: CanvasEdge, doc: AgentFlowDoc): TriggerEdge | GateInputEdge | TaggedOutputEdge {
-  const source = findNode(doc, edge.from);
-  const target = findNode(doc, edge.to);
+  const source = findAgentFlowNode(doc, edge.from);
+  const target = findAgentFlowNode(doc, edge.to);
 
   if (target.kind === "gate") {
     return {
@@ -118,12 +118,28 @@ function buildEdge(edge: CanvasEdge, doc: AgentFlowDoc): TriggerEdge | GateInput
     };
   }
 
-  const effectiveSource = source.kind === "gate" ? predecessorOfGate(source.id, doc) : source;
+  const effectiveSource = contentSourceForEdge(edge, doc);
+  if (!effectiveSource) throw new Error(`Gate node "${source.id}" requires one business input edge.`);
   const sourceSessionId = effectiveSource.kind === "step" ? effectiveSource.sessionId : undefined;
   const targetSessionId = target.kind === "step" ? target.sessionId : undefined;
   const sameSession = Boolean(sourceSessionId && sourceSessionId === targetSessionId);
 
-  if (sameSession || edge.transmit !== true) {
+  if (sameSession) {
+    if (hasTransferProperties(edge)) {
+      throw new Error(`Same-session edge "${edge.id}" cannot declare transmission properties.`);
+    }
+    return {
+      id: edge.id,
+      kind: "trigger",
+      sourceNodeId: edge.from,
+      targetNodeId: edge.to,
+      sourcePortId: edge.branch,
+    };
+  }
+  if (edge.transmit !== true) {
+    if (edge.outputTag || edge.handoffPrompt) {
+      throw new Error(`Edge "${edge.id}" cannot define outputTag or handoffPrompt unless transmit is enabled.`);
+    }
     return {
       id: edge.id,
       kind: "trigger",
@@ -151,23 +167,4 @@ function buildEdge(edge: CanvasEdge, doc: AgentFlowDoc): TriggerEdge | GateInput
       ? { promptTemplate: { template: edge.handoffPrompt } }
       : undefined,
   };
-}
-
-function predecessorOfGate(gateId: string, doc: AgentFlowDoc): CanvasNode {
-  const edge = doc.edges.find((candidate) => {
-    if (candidate.to !== gateId || candidate.loopback) return false;
-    return doc.nodes.find((node) => node.id === candidate.from)?.kind !== "input";
-  });
-  if (!edge) throw new Error(`Gate node "${gateId}" requires one business input edge.`);
-  const source = findNode(doc, edge.from);
-  if (source.kind === "input" || source.kind === "end") {
-    throw new Error(`Gate node "${gateId}" requires one business input edge.`);
-  }
-  return source.kind === "gate" ? predecessorOfGate(source.id, doc) : source;
-}
-
-function findNode(doc: AgentFlowDoc, id: string): CanvasNode {
-  const node = doc.nodes.find((candidate) => candidate.id === id);
-  if (!node) throw new Error(`Missing node "${id}".`);
-  return node as CanvasNode;
 }

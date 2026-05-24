@@ -7,6 +7,7 @@ import type {
   CanvasSession,
   CanvasVariable,
 } from "./canvas-doc";
+import { contentSourceForEdge, hasTransferProperties } from "./canvas-edge-semantics";
 
 export const AGENTFLOW_SOURCE_VERSION = 1;
 const SYMBOL_KEY = /^[a-z][a-z0-9-]*$/;
@@ -262,6 +263,7 @@ function assertResolvedDoc(doc: AgentFlowDoc): void {
       throw new Error(`Node "${node.id}" references missing session "${node.sessionId}".`);
     }
     if (node.kind === "gate") {
+      if (node.branches.length === 0) throw new Error(`Gate node "${node.id}" must define at least one branch.`);
       const branchIds = new Set<string>();
       for (const branch of node.branches) {
         assertSymbolKey(branch.id, `node "${node.id}" branch key`);
@@ -277,6 +279,7 @@ function assertResolvedDoc(doc: AgentFlowDoc): void {
   );
   const edgeIds = new Set<string>();
   const businessInputsByGate = new Map<string, number>();
+  const inputEdgesByTargetTag = new Map<string, CanvasEdge[]>();
   for (const edge of doc.edges) {
     if (!nodeIds.has(edge.from) || !nodeIds.has(edge.to)) {
       throw new Error(`Edge "${edge.id}" references a missing node.`);
@@ -286,6 +289,15 @@ function assertResolvedDoc(doc: AgentFlowDoc): void {
     }
     const target = doc.nodes.find((node) => node.id === edge.to);
     const source = doc.nodes.find((node) => node.id === edge.from);
+    if (target?.kind === "input") {
+      throw new Error(`Edge "${edge.id}" cannot target an input node.`);
+    }
+    if (source?.kind === "end") {
+      throw new Error(`Edge "${edge.id}" cannot leave an end node.`);
+    }
+    if (source?.kind === "gate" && !edge.branch) {
+      throw new Error(`Edge "${edge.id}" leaving gate "${source.id}" must select a branch.`);
+    }
     if (edge.outputTag && !/^[A-Za-z_][A-Za-z0-9_.-]*$/.test(edge.outputTag)) {
       throw new Error(`Edge "${edge.id}" outputTag must be an XML-safe tag name.`);
     }
@@ -294,13 +306,59 @@ function assertResolvedDoc(doc: AgentFlowDoc): void {
       if (count > 1) throw new Error(`Gate node "${target.id}" accepts exactly one business input edge.`);
       businessInputsByGate.set(target.id, count);
     }
-    if (target?.kind === "gate" && (edge.transmit || edge.outputTag || edge.handoffPrompt)) {
+    if (target?.kind === "gate" && hasTransferProperties(edge)) {
       throw new Error(`Gate input edge "${edge.id}" cannot declare transmission properties.`);
+    } else if (target?.kind === "gate" && edge.loopback) {
+      throw new Error(`Gate input edge "${edge.id}" cannot be a loopback edge.`);
+    } else if (edge.loopback && hasTransferProperties(edge)) {
+      throw new Error(`Loopback edge "${edge.id}" cannot declare transmission properties while loopbacks are display-only.`);
+    } else if ((source?.kind === "input" || target?.kind === "end") && hasTransferProperties(edge)) {
+      throw new Error(`Control-only edge "${edge.id}" cannot declare transmission properties.`);
+    } else if (edge.transmit !== true && (edge.outputTag || edge.handoffPrompt)) {
+      throw new Error(`Edge "${edge.id}" cannot define outputTag or handoffPrompt unless transmit is enabled.`);
+    } else if (edge.transmit === true && !edge.outputTag) {
+      throw new Error(`Transmitting edge "${edge.id}" must define outputTag.`);
+    } else if (edge.transmit === true && target?.kind === "step") {
+      const contentSource = contentSourceForEdge(edge, doc);
+      if (contentSource?.kind === "step" && contentSource.sessionId === target.sessionId) {
+        throw new Error(`Same-session edge "${edge.id}" cannot declare transmission properties.`);
+      }
+      const targetTag = `${target.id}:${edge.outputTag}`;
+      const matchingEdges = inputEdgesByTargetTag.get(targetTag) ?? [];
+      if (matchingEdges.some((candidate) => !areExclusiveGateBranches(candidate, edge, doc))) {
+        throw new Error(`Node "${target.id}" has duplicate transmitted outputTag "${edge.outputTag}".`);
+      }
+      matchingEdges.push(edge);
+      inputEdgesByTargetTag.set(targetTag, matchingEdges);
     }
     const id = edgeIdFromReferences(edge);
     if (edgeIds.has(id)) throw new Error(`Duplicate edge "${id}".`);
     edgeIds.add(id);
   }
+  assertAcyclicExecutedEdges(doc);
+}
+
+function areExclusiveGateBranches(first: CanvasEdge, second: CanvasEdge, doc: AgentFlowDoc): boolean {
+  if (first.from !== second.from || !first.branch || !second.branch || first.branch === second.branch) return false;
+  return doc.nodes.find((node) => node.id === first.from)?.kind === "gate";
+}
+
+function assertAcyclicExecutedEdges(doc: AgentFlowDoc): void {
+  const adjacency = new Map<string, string[]>();
+  for (const edge of doc.edges.filter((candidate) => !candidate.loopback)) {
+    adjacency.set(edge.from, [...(adjacency.get(edge.from) ?? []), edge.to]);
+  }
+  const visiting = new Set<string>();
+  const visited = new Set<string>();
+  const visit = (nodeId: string): void => {
+    if (visiting.has(nodeId)) throw new Error(`Workflow contains an unmarked cycle through node "${nodeId}".`);
+    if (visited.has(nodeId)) return;
+    visiting.add(nodeId);
+    for (const targetId of adjacency.get(nodeId) ?? []) visit(targetId);
+    visiting.delete(nodeId);
+    visited.add(nodeId);
+  };
+  for (const node of doc.nodes) visit(node.id);
 }
 
 function parseImages(raw: unknown[], nodeId: string): Array<{ path: string; label?: string; mimeType?: string }> {

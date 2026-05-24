@@ -9,7 +9,7 @@ import {
   loadCanvas,
   saveCanvas,
 } from "./canvas-store";
-import { parseAgentFlowSource } from "./agentflow-source";
+import { parseAgentFlowSource, stringifyAgentFlowSource } from "./agentflow-source";
 import type { CanvasDoc } from "./canvas-doc";
 
 describe("agentflow/canvas storage", () => {
@@ -80,6 +80,9 @@ nodes:
     title: Second
     prompt: Second
     session: codex
+  done:
+    kind: end
+    title: Done
   decide:
     kind: gate
     title: Decide
@@ -104,6 +107,130 @@ edges:
     transmit: true
     outputTag: 123-invalid
 `, "invalid-output-tag")).toThrow("XML-safe tag name");
+    expect(() => parseAgentFlowSource(`${base}  - from: first
+    to: second
+    transmit: true
+    outputTag: result
+`, "same-session-transfer")).toThrow("Same-session edge");
+    expect(() => parseAgentFlowSource(`${base}  - from: first
+    to: second
+    outputTag: result
+`, "disabled-transfer-fields")).toThrow("unless transmit is enabled");
+    expect(() => parseAgentFlowSource(`${base}  - from: first
+    to: done
+    transmit: true
+    outputTag: result
+`, "completion-transfer")).toThrow("Control-only edge");
+    expect(() => parseAgentFlowSource(`${base}  - from: decide
+    to: done
+`, "gate-without-branch")).toThrow("must select a branch");
+    expect(() => parseAgentFlowSource(`${base}  - from: done
+    to: first
+`, "end-source")).toThrow("cannot leave an end node");
+    expect(() => parseAgentFlowSource(`${base}  - from: first
+    to: decide
+    loopback: true
+`, "gate-loopback-input")).toThrow("cannot be a loopback edge");
+    expect(() => parseAgentFlowSource(`${base}  - from: first
+    to: second
+  - from: second
+    to: first
+`, "unmarked-cycle")).toThrow("unmarked cycle");
+  });
+
+  it("rejects ambiguous output tags and empty in-memory gates", () => {
+    expect(() => parseAgentFlowSource(`version: 1
+name: Duplicate tag
+sessions:
+  source:
+    agentServerId: codex-acp
+  target:
+    agentServerId: claude-acp
+nodes:
+  first:
+    kind: step
+    title: First
+    prompt: First
+    session: source
+  second:
+    kind: step
+    title: Second
+    prompt: Second
+    session: source
+  result:
+    kind: step
+    title: Result
+    prompt: Result
+    session: target
+edges:
+  - from: first
+    to: result
+    transmit: true
+    outputTag: value
+  - from: second
+    to: result
+    transmit: true
+    outputTag: value
+`, "duplicate-output-tag")).toThrow("duplicate transmitted outputTag");
+
+    const valid = parseAgentFlowSource(`version: 1
+name: Empty gate
+sessions:
+  source:
+    agentServerId: codex-acp
+nodes:
+  gate:
+    kind: gate
+    title: Gate
+    decisionCriteria: Choose
+    branches:
+      pass: {}
+edges: []
+`, "empty-gate");
+    const gate = valid.nodes.find((node) => node.kind === "gate");
+    if (!gate || gate.kind !== "gate") throw new Error("Expected gate");
+    gate.branches = [];
+    expect(() => stringifyAgentFlowSource(valid)).toThrow("must define at least one branch");
+
+    expect(() => parseAgentFlowSource(`version: 1
+name: Alternative tag
+sessions:
+  source:
+    agentServerId: codex-acp
+  target:
+    agentServerId: claude-acp
+nodes:
+  source:
+    kind: step
+    title: Source
+    prompt: Source
+    session: source
+  gate:
+    kind: gate
+    title: Gate
+    decisionCriteria: Choose
+    branches:
+      pass: {}
+      fix: {}
+  result:
+    kind: step
+    title: Result
+    prompt: Result
+    session: target
+edges:
+  - from: source
+    to: gate
+  - from: gate
+    to: result
+    branch: pass
+    transmit: true
+    outputTag: value
+  - from: gate
+    to: result
+    branch: fix
+    transmit: true
+    outputTag: value
+`, "alternative-output-tag")).not.toThrow();
   });
 
   it("initializes agentflows, gitignored canvas layouts, and seed data", async () => {

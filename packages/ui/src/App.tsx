@@ -28,6 +28,7 @@ import { RunConfigPanel } from './components/run-config-panel';
 import { InteractionModal } from './components/interaction-modal';
 import { AgentAuthModal } from './components/agent-auth-modal';
 import { AgentServerManager } from './components/agent-server-manager';
+import { normalizeTransferConfiguration, resolveTransferSource } from './edge-semantics';
 
 function runStatusFromEvent(status: string): RunStatus {
   if (status === 'success') return 'success';
@@ -36,15 +37,6 @@ function runStatusFromEvent(status: string): RunStatus {
   if (status === 'failed') return 'error';
   if (status === 'cancelled') return 'cancelled';
   return 'running';
-}
-
-function resolveTransferSource(edge: Edge, nodes: WorkflowNode[], edges: Edge[]): WorkflowNode | undefined {
-  const source = nodes.find((node) => node.id === edge.from);
-  if (source?.kind !== 'gate') return source;
-  const incoming = edges.find((candidate) =>
-    candidate.to === source.id && nodes.find((node) => node.id === candidate.from)?.kind !== 'input',
-  );
-  return incoming ? resolveTransferSource(incoming, nodes, edges) : undefined;
 }
 
 export function App() {
@@ -204,6 +196,11 @@ export function App() {
         return { ...n, sessionId: sid };
       });
       nodesRef.current = updated;
+      setEdges((current) => {
+        const normalized = normalizeTransferConfiguration(current, updated);
+        edgesRef.current = normalized;
+        return normalized;
+      });
       scheduleSave();
       return updated;
     });
@@ -241,6 +238,8 @@ export function App() {
   }, [scheduleSave]);
 
   const onDeleteBranch = useCallback((gateId: string, branchId: string) => {
+    const gate = nodesRef.current.find((node): node is Extract<WorkflowNode, { kind: 'gate' }> => node.kind === 'gate' && node.id === gateId);
+    if (!gate || gate.branches.length <= 1) return;
     setNodes((ns) => {
       const updated = ns.map((n) => {
         if (n.id !== gateId || n.kind !== 'gate') return n;
@@ -401,6 +400,7 @@ export function App() {
   }, [scheduleSave]);
 
   const onDeleteSession = useCallback((id: string) => {
+    if (sessionsRef.current.length <= 1) return;
     const remaining = sessionsRef.current.filter((s) => s.id !== id);
     const fallback = remaining[0]?.id ?? null;
     const updatedNodes = nodesRef.current.map((n) =>
@@ -408,9 +408,12 @@ export function App() {
     );
     sessionsRef.current = remaining;
     nodesRef.current    = updatedNodes;
+    const updatedEdges = normalizeTransferConfiguration(edgesRef.current, updatedNodes);
+    edgesRef.current = updatedEdges;
     setSessions(remaining);
     setActiveSessionId(fallback ?? '');
     setNodes(updatedNodes);
+    setEdges(updatedEdges);
     scheduleSave();
   }, [scheduleSave]);
 
@@ -427,8 +430,11 @@ export function App() {
     );
     sessionsRef.current = updated;
     nodesRef.current = updatedNodes;
+    const updatedEdges = normalizeTransferConfiguration(edgesRef.current, updatedNodes);
+    edgesRef.current = updatedEdges;
     setSessions(updated);
     setNodes(updatedNodes);
+    setEdges(updatedEdges);
     setActiveSessionId((active) => active === id ? nextId : active);
     scheduleSave();
   }, [scheduleSave]);

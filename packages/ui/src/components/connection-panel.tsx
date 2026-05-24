@@ -20,8 +20,22 @@ function sessionId(node: WorkflowNode | undefined): string | null {
 
 export function ConnectionPanel(props: ConnectionPanelProps) {
   const { edge, fromNode, toNode, transferSourceNode = fromNode, viewMode, onClose, onEditEdge, onDeleteEdge } = props;
+  const inputRelation = fromNode?.kind === 'input';
+  const completionEdge = toNode?.kind === 'end';
   const gateInput = toNode?.kind === 'gate';
   const sameSession = Boolean(sessionId(transferSourceNode) && sessionId(transferSourceNode) === sessionId(toNode));
+  if (inputRelation || completionEdge) {
+    return (
+      <RightPanel label={<><Icon name="link" size={11} />Control connection</>} title={inputRelation ? 'Run input reference' : 'Workflow completion'} onClose={onClose}>
+        <div className="code-hint">
+          {inputRelation
+            ? 'This connection documents an input variable reference. The variable is substituted in prompts before runtime and this edge carries no output.'
+            : 'This connection marks completion of the selected path and carries no output.'}
+        </div>
+        {viewMode === 'edit' && <DeleteButton edge={edge} onDeleteEdge={onDeleteEdge} onClose={onClose} />}
+      </RightPanel>
+    );
+  }
   if (gateInput) {
     return (
       <RightPanel label={<><Icon name="route" size={11} />Gate input</>} title="Decision context" onClose={onClose}>

@@ -120,11 +120,14 @@ describe("WorkflowExecutor", () => {
           gateNode("gate", ["pass", "rework"]),
           agentNode("pass-node", "pass <specflow_input>"),
           agentNode("rework-node", "rework <specflow_input>"),
+          agentNode("final-node", "final"),
         ],
         edges: [
           gateInput("edge-source-gate", "source", "gate"),
           trigger("edge-gate-pass", "gate", "pass-node", "pass"),
           trigger("edge-gate-rework", "gate", "rework-node", "rework"),
+          trigger("edge-pass-final", "pass-node", "final-node"),
+          trigger("edge-rework-final", "rework-node", "final-node"),
         ],
       }),
     );
@@ -134,6 +137,7 @@ describe("WorkflowExecutor", () => {
       "source",
       "gate",
       "rework-node",
+      "final-node",
     ]);
     expect(run.nodeRuns.find((nodeRun) => nodeRun.nodeId === "gate")?.gateDecision).toEqual({
       branchId: "rework",

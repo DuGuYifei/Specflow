@@ -1,126 +1,47 @@
 # TODO
 
-## ACP Agent Runtime Roadmap
+本文只保留当前 goal 的验收结果和仍需执行的工作。已经完成的历史 ACP roadmap 不再作为待办重复维护；当前 node/edge 行为详见 `.specflow/product/node-edge-current-state.md`。
 
-Implementation order is intentional. Each phase should finish with tests and docs before moving to the next phase.
+## Current Goal Acceptance Checklist
 
-### 0. Baseline Already Implemented
+核对日期：2026-05-24。已勾选项目已由实现与测试确认。
 
-- [x] Replace PoC providers with agent-proxy ACP runtime boundary.
-- [x] Use `@agentclientprotocol/sdk` for ACP stdio transport.
-- [x] Support registry and custom ACP agent server configuration.
-- [x] Reserve `headless` agent server type without implementing execution.
-- [x] Run workflow nodes through `AgentProxySessionPool`.
-- [x] Reuse one ACP process/session per `cwd + agentServerId + workflowSessionId`.
-- [x] Record real ACP CLI session ids on `AgentInvocation`.
-- [x] Persist invocation metadata into `.specflow/runs/*.yaml`.
-- [x] Maintain `.specflow/agent-sessions.json` as the cross-run ACP session index.
+### Node And Prompt Model
 
-### 1. Interaction Driver: Permission and Ask-User
+- [x] `step` 的用户编辑内容使用 `prompt`；`promptTemplate` 仅为 runtime 内部模型。
+- [x] 删除 step 的 spec 文档更新开关及对应 runtime 字段。
+- [x] 图片与路径资源作为 step 上下文分别配置，图片按 agent capability 发送 ACP image block 或资源链接 fallback。
+- [x] 手写路径支持项目相对路径和全局绝对路径；选择的文件/目录可导入 workspace assets。
 
-- [x] Add a bridge-level `RunInteractionStore`.
-- [x] Define interaction records for ACP permission requests and ACP elicitation requests.
-- [x] Pass `onPermissionRequest`, `onElicitationRequest`, and `onElicitationComplete` callbacks from bridge into `AgentProxySessionPool.run`.
-- [x] Add server SSE event `interaction-requested`.
-- [x] Add server API `POST /api/runs/:runId/interactions/:interactionId/respond`.
-- [x] Add timeout/cancel handling when a run finishes before the UI answers.
-- [x] Add UI modal/form for permission choices.
-- [x] Add UI modal/form for ACP elicitation fields and URL requests.
-- [x] Test default cancellation, explicit allow/deny, and run-finished cancellation.
+### Edge Transfer Semantics
 
-### 2. Durable Workflow Runtime Logs
+- [x] 同 session 内容边仅为触发关系，不暴露或接受显式传输属性。
+- [x] 不同 session 边可选择不传内容，或以 `outputTag` 显式注入来源输出。
+- [x] `handoffPrompt` 在来源 step 的 session 中执行后再传给目标 step。
+- [x] `input`/`end` 控制边、gate 输入边及显示型 `loopback` 不接受传输属性。
+- [x] 拒绝非法 XML tag、缺少 `outputTag` 的传输、可同时到达目标的重复 tag 和未标记执行循环。
 
-- [x] Add persistent terminal log storage under `.specflow/run-logs/<runId>.jsonl`.
-- [x] Persist terminal chunks with run id, node id, invocation id, stream, sequence, and timestamp.
-- [x] Persist workflow-side lifecycle events: process started, initialized, session created, prompt started/stopped/failed/cancelled.
-- [x] Persist permission and elicitation audit events without storing secrets or sensitive form values by default.
-- [x] Persist restore attempt events: requested mode, selected ACP primitive, success/failure.
-- [x] Do not persist full ACP `session/update` history as Specflow's canonical transcript.
-- [x] Add `GET /api/runs/:id/logs` for historical replay.
-- [x] Make SSE start with persisted historical chunks when reconnecting.
-- [x] Update UI log panel to load historical logs before attaching live SSE.
-- [x] Test log replay after server restart.
+### Gate And Session Semantics
 
-### 3. ACP Session Restore API
+- [x] Gate 没有独立固定 session，判断使用前序内容 step 的上下文。
+- [x] Agent 支持 fork 时 gate 判断 fork 前序 session；不支持时复用前序 session。
+- [x] Gate 仅允许一个业务输入且至少一个 branch；输出边按跳过 gate 后的内容节点关系判定传输。
+- [x] 未选中的 gate 路径会失活，选中路径可穿过后续 join 节点继续执行。
+- [x] 单次 run 内，同一有效 ACP agent 配置复用一个 connection 并承载多个 workflow session。
 
-- [x] Add agent-proxy API to start an ACP CLI for an existing `agentServerId` without creating a new Specflow workflow run.
-- [x] Add support for ACP `session/load` gated by `InitializeResponse.agentCapabilities.loadSession`.
-- [x] Add support for ACP `session/resume` gated by `InitializeResponse.agentCapabilities.sessionCapabilities.resume`.
-- [x] Define restore modes: `inspect` prefers load, `continue` prefers resume.
-- [x] Add server API `POST /api/agent-sessions/:id/restore`.
-- [x] Stream restored ACP updates and terminal output through a restore SSE channel for the active restore view.
-- [x] Treat ACP agent session history as authoritative; use Specflow run logs only as workflow-side fallback context.
-- [x] Write restore attempts and results back into `.specflow/agent-sessions.json`.
-- [x] Test restore against fake ACP agents with load-only, resume-only, both, and neither capability.
+### UI And Review Corrections
 
-### 4. Session Browser UI
+- [x] 编辑或删除 session 后自动清除已变成非法的边传输配置。
+- [x] UI 阻止删除最后一个 workflow session、最后一个 gate branch、第二条 gate 业务输入和普通执行循环。
+- [x] UI 展示 gate fork 的父 session 与 ACP capability 信息。
+- [x] Server 与 converter 对上述约束进行防御性校验，避免手写 YAML 绕过 UI。
 
-- [x] Add API client methods for `/api/agent-sessions`.
-- [x] Add a session browser view filtered by workflow, agent server, and Specflow session.
-- [x] Link run node logs to their `AgentInvocation` and ACP session index entry.
-- [x] Add "Inspect session" action for historical replay.
-- [x] Add "Resume session" action for continuing work.
-- [x] Show capability badges: load, resume, unavailable.
-- [x] Handle missing/deleted run references gracefully.
+## Open Work
 
-### 5. Agent Server Management UI
-
-- [x] Add registry browser using the ACP registry metadata.
-- [x] Add install/update/remove actions for registry agents.
-- [x] Add custom ACP agent form for command, args, env, defaults, and config options.
-- [x] Store user-local overrides in `.specflow/agent-servers.local.json`.
-- [x] Validate configured default modes/models/options against initialized ACP agent capabilities.
-- [x] Add UI for per-session agent server selection without hardcoding Codex/Claude only.
-
-### 6. Headless Agent Runtime
-
-- [x] Define the command-template schema for `headless` agents.
-- [x] Support prompt interpolation in `argsTemplate`.
-- [x] Capture stdout/stderr into the same terminal/log pipeline.
-- [x] Define how headless results map to `AgentRunResult`.
-- [x] Add cancellation and timeout behavior.
-- [x] Add tests for successful execution, non-zero exit, env merge, and cancellation.
-
-### 7. Run Control
-
-- [x] Add run cancellation API.
-- [x] Propagate cancellation to bridge, agent-proxy, ACP `session/cancel`, and child process cleanup.
-- [x] Persist cancelled run status.
-- [x] Surface cancellation in UI run status and logs.
-- [x] Test cancellation during prompt, permission wait, elicitation wait, and restore.
-
-### 8. Security and Policy
-
-- [x] Define workspace root policy for ACP filesystem operations.
-- [x] Add configurable allowlist for additional directories.
-- [x] Decide default behavior for terminal creation and terminal auth.
-- [x] Add audit records for permission decisions.
-- [x] Redact sensitive env values from logs and API responses.
-- [x] Document security expectations in `.specflow`.
-
-### 9. Verification Gates
-
-- [x] Add server API integration tests for run start, SSE terminal logs, and final invocation persistence.
-- [x] Add UI integration test for run start and live log panel updates.
-- [x] Add fake ACP fixtures for permission, elicitation, load, resume, and active restore update streaming.
-- [x] Run `bun run typecheck` before every ACP runtime merge.
-- [x] Run `bun test` before every ACP runtime merge.
-
-### Future Phases (Not Yet Planned)
-
-- 支持二进制文件比如截图，音频
-- `--server` 才启动服务器模式，否则有客户端UI
-- `--headless` CLI模式
-- 修复run记录里的排版，应该没有快照导致的？但不确定。
-- run一次有 [Bun.serve]: request timed out after 10 seconds. Pass `idleTimeout` to configure.
-- edit session，目前只有增加和删除
-- 登录没有实现
-- 启动时选择 code 还是 其他，code 要安装 agent-acp 选择，或者输入自己的agent的配置
-- agent-acp现在是全局安装还是本仓库？改为全局。（待考虑）
-- 整理 .specflow 目录结构，不是所有的都应该在当前仓库，可以是全局或用户根目录下（待考虑）
-- id是分布式uuidv7吗
-- ui log是怎么来的，run-logs有必要存吗？是acp获取的session日志吗？
-- 判断auth的方式不对，执行时遇到需要auth
-- history界面为什么存在？即使存在为何要有session选择情况下还能选择agent？session是固定某个agent拥有的。
-- 测试edge
-- 实现gate并测试
+- [ ] 实现 `loopback` 的有界循环/返工执行语义；当前仅用于画布显示。
+- [ ] 为 gate 未选中路径增加明确的 `skipped` 运行状态并在 UI 展示。
+- [ ] 决定是否需要跨独立 run 复用 ACP connection；当前复用范围仅为单次 run。
+- [ ] 实现 spec 文档生成、更新及 flow 完成后的自动更新。
+- [ ] 解决偶发的 `[Bun.serve]: request timed out after 10 seconds`，并确定合理的 `idleTimeout` 策略。
+- [ ] 定义 workspace `.specflow` 与用户级/全局 agent 安装配置的归属边界。
+- [ ] 改进执行中才触发 auth 请求时的重试与 UI 流程。

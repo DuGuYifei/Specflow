@@ -3,6 +3,7 @@ import type { WorkflowNode, Edge, Session, Selection, RunStateMap, GateNode, Inp
 import { branchAccent, edgeKey, nextSymbolKey, sessionAccent } from '../appearance';
 import type { IconName } from './icon';
 import { Icon } from './icon';
+import { isSameSessionContentEdge, wouldCreateExecutedCycle } from '../edge-semantics';
 
 // ── geometry ──────────────────────────────────────────────────────────────────
 
@@ -38,18 +39,6 @@ function edgePath(from: { x: number; y: number }, to: { x: number; y: number }, 
 function edgeMid(from: { x: number; y: number }, to: { x: number; y: number }, loopback?: boolean): { x: number; y: number } {
   if (loopback) return { x: (from.x + to.x) / 2, y: Math.min(from.y, to.y) - 50 };
   return { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 };
-}
-
-function transferSource(edge: Edge, nodes: WorkflowNode[], edges: Edge[]): WorkflowNode | undefined {
-  const source = nodes.find((node) => node.id === edge.from);
-  if (source?.kind !== 'gate') return source;
-  const inputEdge = edges.find((candidate) =>
-    candidate.to === source.id && nodes.find((node) => node.id === candidate.from)?.kind !== 'input',
-  );
-  const input = nodes.find((node) => inputEdge?.from === node.id);
-  return input?.kind === 'gate'
-    ? transferSource(inputEdge!, nodes, edges)
-    : input;
 }
 
 const NODE_H: Record<string, number> = { step: 120, gate: 110, end: 36, input: 72 };
@@ -458,7 +447,13 @@ export function Canvas({
                 to: toId,
                 branch: dragInfo.branch,
               };
-              if (!edgesRef.current.some((existing) => existing.id === edge.id)) onAddEdge(edge);
+              const secondGateInput = toN.kind === 'gate'
+                && fromN.kind !== 'input'
+                && edgesRef.current.some((existing) =>
+                  existing.to === toId
+                  && nodesRef.current.find((node) => node.id === existing.from)?.kind !== 'input');
+              const executionCycle = wouldCreateExecutedCycle(edge, edgesRef.current);
+              if (!secondGateInput && !executionCycle && !edgesRef.current.some((existing) => existing.id === edge.id)) onAddEdge(edge);
             }
           }
         }
@@ -618,8 +613,7 @@ export function Canvas({
             const fromN = nodeById[e.from];
             const toN   = nodeById[e.to];
             if (!fromN || !toN) return null;
-            const contentSource = transferSource(e, nodes, edges);
-            const sameSession = contentSource?.kind === 'step' && toN.kind === 'step' && contentSource.sessionId === toN.sessionId;
+            const sameSession = isSameSessionContentEdge(e, nodes, edges);
             const from = nodeAnchorOut(fromN, e.branch);
             const to   = nodeAnchorIn(toN);
             const d    = edgePath(from, to, e.loopback);
@@ -679,8 +673,7 @@ export function Canvas({
           const fromN = nodeById[e.from];
           const toN   = nodeById[e.to];
           if (!fromN || !toN) return null;
-          const contentSource = transferSource(e, nodes, edges);
-          const sameSession = contentSource?.kind === 'step' && toN.kind === 'step' && contentSource.sessionId === toN.sessionId;
+          const sameSession = isSameSessionContentEdge(e, nodes, edges);
 
           const from = nodeAnchorOut(fromN, e.branch);
           const to   = nodeAnchorIn(toN);

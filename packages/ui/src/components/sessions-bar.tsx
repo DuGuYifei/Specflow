@@ -301,6 +301,7 @@ function LogsTab({ sessions, activeSession, setActiveSessionId, stepNodes, logLi
                 <button
                   className="ses-del"
                   title="Delete session"
+                  disabled={sessions.length <= 1}
                   onClick={(e) => { e.stopPropagation(); onDeleteSession(s.id); }}
                 >
                   <Icon name="x" size={10} />
@@ -709,7 +710,7 @@ function SettingsTab({ sessions, stepNodes, onAssignSession, addSessionPing, onA
               <button className="ses-x" title={`Edit ${s.name}`} disabled={readonly} onClick={() => startEdit(s)}>
                 <Icon name="edit" size={10} />
               </button>
-              <button className="ses-x" title={`Delete ${s.name}`} disabled={readonly} onClick={() => onDeleteSession(s.id)}>
+              <button className="ses-x" title={`Delete ${s.name}`} disabled={readonly || sessions.length <= 1} onClick={() => onDeleteSession(s.id)}>
                 <Icon name="x" size={10} />
               </button>
             </span>
