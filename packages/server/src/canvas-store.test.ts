@@ -39,6 +39,26 @@ edges:
     expect(doc.edges[0]?.id).toBe("edge:build:->done");
   });
 
+  it("round-trips an interactive pause checkpoint on step nodes", () => {
+    const doc = parseAgentFlowSource(`version: 1
+name: Pause
+sessions:
+  codex:
+    agentServerId: codex-acp
+nodes:
+  review:
+    kind: step
+    title: Review
+    prompt: Review the change
+    session: codex
+    pauseAfterRun: true
+edges: []
+`, "pause-flow");
+
+    expect(doc.nodes[0]).toMatchObject({ kind: "step", pauseAfterRun: true });
+    expect(stringifyAgentFlowSource(doc)).toContain("pauseAfterRun: true");
+  });
+
   it("rejects invalid authored keys and missing references", () => {
     expect(() => parseAgentFlowSource(`version: 1
 name: Invalid

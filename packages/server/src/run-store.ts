@@ -6,7 +6,7 @@ import { splitCanvasDoc } from "./canvas-store";
 import type { AgentInvocation } from "@specflow/workflow";
 import type { AgentSessionRecord } from "./agent-session-store";
 
-export type RunState = "running" | "success" | "error" | "pending" | "cancelled";
+export type RunState = "running" | "paused" | "success" | "error" | "pending" | "cancelled";
 
 export interface RunRecord {
   id: string;
@@ -15,6 +15,7 @@ export interface RunRecord {
   ticket?: string;
   status: "running" | "success" | "error" | "cancelled";
   activeNode?: string;
+  pausedNodeId?: string;
   startedAt: string;
   completedAt?: string;
   duration?: string;

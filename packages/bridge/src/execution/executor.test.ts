@@ -11,6 +11,7 @@ import type {
   WorkflowNode,
 } from "@specflow/workflow";
 import { WorkflowExecutor, type AgentRunner } from "./executor";
+import { RunPauseStore } from "./pause-store";
 import { TerminalEventStore } from "./terminal-store";
 
 const agentId = "agent-server-codex-acp";
@@ -297,6 +298,44 @@ describe("WorkflowExecutor", () => {
 
     expect(run.status).toBe("done");
     expect(seen).toEqual([sessionId, sessionId, sessionId]);
+  });
+
+  test("pauses an agent node for same-session prompts before continuing downstream", async () => {
+    const pauses = new RunPauseStore();
+    const statuses: string[] = [];
+    const prompts: string[] = [];
+    const source = agentNode("source", "source");
+    source.pauseAfterRun = true;
+    const executor = new WorkflowExecutor({
+      pauses,
+      onNodeStatus: (event) => statuses.push(`${event.nodeId}:${event.status}`),
+      agentRunner: createAgentRunner((request) => {
+        prompts.push(request.prompt);
+        if (request.prompt === "source") return "draft";
+        if (request.prompt === "revise it") return "revised";
+        return "target done";
+      }),
+    });
+
+    const runPromise = executor.run(
+      createWorkflow({
+        nodes: [source, agentNode("target", "target <specflow_input>")],
+        edges: [tagged("edge", "source", "target", "input")],
+      }),
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const paused = pauses.list()[0]!;
+    expect(paused).toMatchObject({ nodeId: "source", specflowSessionId: sessionId });
+    expect(statuses).toEqual(["source:running", "source:paused"]);
+
+    await expect(pauses.sendPrompt(paused.runId, paused.nodeId, "revise it")).resolves.toEqual({ output: "revised" });
+    pauses.continue(paused.runId, paused.nodeId);
+
+    const run = await runPromise;
+    expect(run.status).toBe("done");
+    expect(statuses).toEqual(["source:running", "source:paused", "source:done", "target:running", "target:done"]);
+    expect(prompts).toEqual(["source", "revise it", "target <input>revised</input>"]);
   });
 
   test("records external ACP session metadata on agent invocations", async () => {

@@ -93,12 +93,14 @@ interface StepCardProps {
   runState: string | undefined;
   onMouseDown: (e: React.MouseEvent, id: string) => void;
   onSelect: (id: string) => void;
+  onContinue?: () => void;
 }
 
-function StepCard({ n, session, selected, runState, onMouseDown, onSelect }: StepCardProps) {
+function StepCard({ n, session, selected, runState, onMouseDown, onSelect, onContinue }: StepCardProps) {
   const cls = ['node'];
   if (selected)               cls.push('selected');
   if (runState === 'running') cls.push('running');
+  if (runState === 'paused')  cls.push('paused');
   if (runState === 'success') cls.push('success');
   if (runState === 'error')   cls.push('error');
   if (n.locked)               cls.push('locked');
@@ -116,6 +118,7 @@ function StepCard({ n, session, selected, runState, onMouseDown, onSelect }: Ste
         {n.locked && <span className="lock-badge"><Icon name="lock" size={10} /></span>}
         <span className="node-state-icon">
           {runState === 'running' && <><Icon name="loader" size={11} style={{ animation: 'spin 1.4s linear infinite' }} />running</>}
+          {runState === 'paused'  && <><span style={{ color: 'var(--warn)' }}>paused</span><button className="btn sm primary node-continue" onMouseDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onContinue?.(); }}>Continue</button></>}
           {runState === 'success' && <><Icon name="check"  size={11} style={{ color: 'oklch(0.55 0.13 145)' }} />done</>}
           {runState === 'error'   && <><Icon name="alert"  size={11} style={{ color: 'var(--err)' }} />failed</>}
           {runState === 'pending' && <span style={{ color: 'var(--ink-3)' }}>queued</span>}
@@ -280,6 +283,7 @@ interface CanvasProps {
   onAddEdge: (edge: Edge) => void;
   onDeleteNode: (id: string) => void;
   onAddBranch: (gateId: string) => void;
+  onContinuePausedNode?: (nodeId: string) => void;
   viewMode: 'edit' | 'run';
   zoom: number;
   setZoom: (z: number) => void;
@@ -302,7 +306,7 @@ export function Canvas({
   nodes, edges, sessions,
   selection, onSelectNode, onSelectEdge, onClearSelection,
   runState, showRun, onNodeMove,
-  onAddNode, onAddEdge, onDeleteNode, onAddBranch,
+  onAddNode, onAddEdge, onDeleteNode, onAddBranch, onContinuePausedNode,
   viewMode,
   zoom, setZoom, pan, setPan,
 }: CanvasProps) {
@@ -759,6 +763,7 @@ export function Canvas({
               selected={selected}
               runState={runState[n.id]}
               onMouseDown={onNodeMouseDown} onSelect={onSelectNode}
+              onContinue={runState[n.id] === 'paused' ? () => onContinuePausedNode?.(n.id) : undefined}
             />
           );
         })}

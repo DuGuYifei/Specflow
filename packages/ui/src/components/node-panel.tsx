@@ -113,6 +113,20 @@ function StepOverview(props: NodePanelProps & {
         </div>
       )}
       <textarea ref={promptRef} className="textarea" rows={6} value={node.prompt} disabled={readonly} onChange={(event) => props.onEditNode(node.id, { prompt: event.target.value })} />
+      <div className="section-title">Human checkpoint</div>
+      <label className="toggle-row">
+        <input
+          type="checkbox"
+          checked={node.pauseAfterRun === true}
+          disabled={readonly}
+          onChange={(event) => props.onEditNode(node.id, { pauseAfterRun: event.target.checked || undefined })}
+        />
+        Pause after this node finishes for manual agent interaction
+      </label>
+      <div className="code-hint">
+        ACP does not yet expose an ask-human tool. This pauses the workflow so you can prompt the agent directly.
+        Native elicitation support will be added after the Agent Client Protocol Elicitation RFD is merged.
+      </div>
       <div className="section-title">Session</div>
       <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
         {sessions.map((session) => (

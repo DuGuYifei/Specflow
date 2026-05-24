@@ -166,6 +166,17 @@ export interface AgentRestoreResult {
   resumeResponse?: ResumeSessionResponse;
 }
 
+export interface AgentConversationPromptResult {
+  output: string;
+  stopReason?: PromptResponse["stopReason"];
+}
+
+export interface AgentConversation {
+  restore(): Promise<AgentRestoreResult>;
+  prompt(prompt: string, signal?: AbortSignal): Promise<AgentConversationPromptResult>;
+  close(): Promise<void>;
+}
+
 export interface ResolvedAgentServer {
   id: AgentServerId;
   source: AgentServerSource;

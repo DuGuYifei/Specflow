@@ -17,7 +17,7 @@ const wf1Canvas: CanvasDoc = {
     { kind: "step", id: "n1",  num: "01",   x: 60,   y: 240, w: 230, title: "Ticket",  prompt: "Capture ticket.", sessionId: "s1", locked: true },
     { kind: "step", id: "n2a", num: "02·a", x: 340,  y: 80,  w: 220, title: "Parse",   prompt: "Parse components.", sessionId: "s1" },
     { kind: "step", id: "n2b", num: "02·b", x: 600,  y: 80,  w: 220, title: "HTML",    prompt: "Generate HTML.", sessionId: "s2" },
-    { kind: "step", id: "n2c", num: "02·c", x: 860,  y: 80,  w: 220, title: "Review",  prompt: "Review component.", sessionId: "s3" },
+    { kind: "step", id: "n2c", num: "02·c", x: 860,  y: 80,  w: 220, title: "Review",  prompt: "Review component.", sessionId: "s3", pauseAfterRun: true },
     { kind: "gate", id: "g1",  num: "G1",   x: 1130, y: 100, w: 200, title: "G1 verdict", decisionCriteria: "Decide outcome.",
       branches: [{ id: "pass", label: "pass" }, { id: "rework", label: "rework" }, { id: "fail", label: "fail" }] },
     { kind: "step", id: "n3a", num: "03·a", x: 340,  y: 360, w: 230, title: "Interview", prompt: "Interview.", sessionId: "s4" },
@@ -101,6 +101,7 @@ describe("canvasToWorkflow", () => {
     if (review?.kind === "agent") {
       expect(review.agentId).toBe("agent-server-codex-acp");
       expect(review.sessionId).toBe("s3");
+      expect(review.pauseAfterRun).toBe(true);
     }
   });
 

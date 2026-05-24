@@ -31,6 +31,12 @@ describe("agent session restore API", () => {
     const eventText = await readUntil(eventResponse!, ["session-update", "\"status\":\"success\""]);
     expect(eventText).toContain("loaded:acp-session-1");
     expect(eventText).toContain("\"selectedPrimitive\":\"load\"");
+    const rejectedPrompt = await handle(new Request(`http://specflow.test/api/agent-session-restores/${body.restoreId}/prompt`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ prompt: "must not run" }),
+    }));
+    expect(rejectedPrompt?.status).toBe(409);
 
     const [updated] = await listAgentSessions(root);
     expect(updated?.restoreAttempts).toMatchObject([
@@ -55,7 +61,8 @@ describe("agent session restore API", () => {
     const [session] = await listAgentSessions(root);
     expect(session).toBeDefined();
 
-    const handle = createApiHandler(createSpecflowBridge(), root);
+    const bridge = createSpecflowBridge();
+    const handle = createApiHandler(bridge, root);
     const response = await handle(new Request(`http://specflow.test/api/agent-sessions/${session!.id}/restore`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -69,6 +76,43 @@ describe("agent session restore API", () => {
     expect(eventResponse?.status).toBe(200);
     const eventText = await readUntil(eventResponse!, ["\"status\":\"success\""]);
     expect(eventText).toContain("\"selectedPrimitive\":\"resume\"");
+    const promptPending = handle(new Request(`http://specflow.test/api/agent-session-restores/${body.restoreId}/prompt`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ prompt: "follow up" }),
+    }));
+    let interaction = bridge.interactions.list({ runId: "run1", status: "pending" })[0];
+    for (let index = 0; index < 30 && !interaction; index += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      interaction = bridge.interactions.list({ runId: "run1", status: "pending" })[0];
+    }
+    expect(interaction?.kind).toBe("permission");
+    const responseToPermission = await handle(new Request(`http://specflow.test/api/runs/run1/interactions/${interaction!.id}/respond`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ outcome: "selected", optionId: "allow" }),
+    }));
+    expect(responseToPermission?.status).toBe(200);
+    const prompt = await promptPending;
+    expect(prompt?.status).toBe(200);
+    const promptBody = await prompt?.json() as { output: string };
+    expect(promptBody.output).toContain("prompt:follow up");
+    expect(promptBody.output).toContain("permission:allow");
+    const blockedPrompt = handle(new Request(`http://specflow.test/api/agent-session-restores/${body.restoreId}/prompt`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ prompt: "wait for close" }),
+    }));
+    for (let index = 0; index < 30 && bridge.interactions.list({ runId: "run1", status: "pending" }).length === 0; index += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    expect(bridge.interactions.list({ runId: "run1", status: "pending" })).toHaveLength(1);
+    const close = await handle(new Request(`http://specflow.test/api/agent-session-restores/${body.restoreId}/close`, {
+      method: "POST",
+    }));
+    expect(close?.status).toBe(200);
+    expect(bridge.interactions.list({ runId: "run1", status: "pending" })).toHaveLength(0);
+    expect((await blockedPrompt)?.status).toBe(409);
   });
 
   test("cancels an active restore attempt", async () => {
@@ -102,6 +146,7 @@ describe("agent session restore API", () => {
 async function setupProject(restoreCapabilities: string, extraEnv: Record<string, string> = {}): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "specflow-restore-"));
   await mkdir(join(root, ".specflow"), { recursive: true });
+  await writeFile(join(root, "input.txt"), "restore prompt input", "utf8");
   const fakeAgentPath = fileURLToPath(new URL("../../agent-proxy/src/runtimes/acp/test-fixtures/fake-agent.ts", import.meta.url));
   await writeFile(join(root, ".specflow", "agent-servers.json"), JSON.stringify({
     agent_servers: {

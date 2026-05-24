@@ -18,6 +18,7 @@ export interface BaseWorkflowNode<TKind extends WorkflowNodeKind = WorkflowNodeK
 export interface AgentNode extends BaseWorkflowNode<"agent"> {
   agentId: string;
   sessionId: string;
+  pauseAfterRun?: boolean;
   images: WorkflowResourceRef[];
   relatedResources: WorkflowResourceRef[];
 }

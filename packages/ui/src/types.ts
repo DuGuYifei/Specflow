@@ -8,7 +8,7 @@ export interface Variable {
 
 export type Density = 'comfortable' | 'compact';
 export type RunStatus = 'running' | 'success' | 'error' | 'cancelled' | 'idle' | 'pending';
-export type RunState = 'running' | 'success' | 'error' | 'cancelled' | 'pending';
+export type RunState = 'running' | 'paused' | 'success' | 'error' | 'cancelled' | 'pending';
 export type RunStateMap = Record<string, RunState>;
 
 export interface Session {
@@ -42,6 +42,7 @@ export interface Run {
   ticket: string;
   status: RunStatus;
   activeNode?: string;
+  pausedNodeId?: string;
   progress?: string;
   time: string;
   duration: string;
@@ -77,6 +78,7 @@ export interface StepNode {
   title: string;
   prompt: string;
   sessionId: string | null;
+  pauseAfterRun?: boolean;
   locked?: boolean;
   images?: Array<{ path: string; label?: string; mimeType?: string }>;
   paths?: string[];

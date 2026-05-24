@@ -21,6 +21,7 @@ export interface CanvasStepNode {
   title: string;
   prompt: string;
   sessionId: string | null;
+  pauseAfterRun?: boolean;
   locked?: boolean;
   images?: Array<{ path: string; label?: string; mimeType?: string }>;
   paths?: string[];

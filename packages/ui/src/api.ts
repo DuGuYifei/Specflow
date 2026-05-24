@@ -34,6 +34,7 @@ export interface ApiRunRecord {
   ticket?: string;
   status: "running" | "success" | "error" | "cancelled";
   activeNode?: string;
+  pausedNodeId?: string;
   startedAt: string;
   completedAt?: string;
   duration?: string;
@@ -210,7 +211,7 @@ export interface RestoreStartResponse {
   requestedMode: RestoreMode;
 }
 
-export type RestoreSseEventType = 'restore-status' | 'session-update' | 'terminal';
+export type RestoreSseEventType = 'restore-status' | 'session-update' | 'terminal' | 'interaction-requested';
 
 export type RestoreStreamEvent =
   | {
@@ -239,9 +240,23 @@ export type RestoreStreamEvent =
       stream: LogLine['stream'];
       chunk: string;
       at: string;
+    }
+  | {
+      type: 'interaction-requested';
+      restoreId: string;
+      interaction: RunInteraction;
+      at: string;
     };
 
 export type RunInteractionStatus = 'pending' | 'resolved' | 'cancelled';
+
+export interface PausedNodeSession {
+  runId: string;
+  nodeId: string;
+  specflowSessionId: string;
+  agentServerId: string;
+  pausedAt: string;
+}
 
 export interface RunInteraction {
   id: string;
@@ -442,6 +457,47 @@ export async function restoreAgentSession(id: string, mode: RestoreMode): Promis
   return res.json();
 }
 
+export async function promptRestoredSession(restoreId: string, prompt: string): Promise<{ output: string }> {
+  const res = await fetch(`/api/agent-session-restores/${restoreId}/prompt`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ prompt }),
+  });
+  if (!res.ok) throw new Error(await apiError(res, 'Failed to prompt restored session'));
+  return res.json();
+}
+
+export async function closeRestoredSession(restoreId: string): Promise<void> {
+  const res = await fetch(`/api/agent-session-restores/${restoreId}/close`, { method: 'POST' });
+  if (!res.ok) throw new Error(await apiError(res, 'Failed to close restored session'));
+}
+
+export async function cancelRestoredSession(restoreId: string): Promise<void> {
+  const res = await fetch(`/api/agent-session-restores/${restoreId}/cancel`, { method: 'POST' });
+  if (!res.ok) throw new Error(await apiError(res, 'Failed to cancel restored session'));
+}
+
+export async function fetchPausedNodes(runId: string): Promise<PausedNodeSession[]> {
+  const res = await fetch(`/api/runs/${runId}/paused-nodes`);
+  if (!res.ok) throw new Error(await apiError(res, 'Failed to fetch paused nodes'));
+  return res.json();
+}
+
+export async function promptPausedNode(runId: string, nodeId: string, prompt: string): Promise<{ output: string }> {
+  const res = await fetch(`/api/runs/${runId}/paused-nodes/${nodeId}/prompt`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ prompt }),
+  });
+  if (!res.ok) throw new Error(await apiError(res, 'Failed to prompt paused node'));
+  return res.json();
+}
+
+export async function continuePausedNode(runId: string, nodeId: string): Promise<void> {
+  const res = await fetch(`/api/runs/${runId}/paused-nodes/${nodeId}/continue`, { method: 'POST' });
+  if (!res.ok) throw new Error(await apiError(res, 'Failed to continue paused node'));
+}
+
 export async function deleteRun(id: string): Promise<void> {
   await fetch(`/api/runs/${id}`, { method: 'DELETE' });
 }
@@ -515,6 +571,7 @@ export function subscribeToRestore(
   source.addEventListener('restore-status', handle('restore-status'));
   source.addEventListener('session-update', handle('session-update'));
   source.addEventListener('terminal', handle('terminal'));
+  source.addEventListener('interaction-requested', handle('interaction-requested'));
 
   return () => source.close();
 }
@@ -552,6 +609,7 @@ export function apiRunToUiRun(rec: ApiRunRecord): Run {
     ticket: rec.ticket ?? '',
     status: rec.status,
     activeNode: rec.activeNode,
+    pausedNodeId: rec.pausedNodeId,
     time: formatTime(rec.startedAt),
     duration: rec.duration ?? '—',
     agent: rec.agent,

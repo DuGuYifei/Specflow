@@ -6,6 +6,8 @@ import type {
   AgentRestorePrimitive,
   AgentRestoreRequest,
   AgentRestoreResult,
+  AgentConversation,
+  AgentConversationPromptResult,
   AgentRunRequest,
   AgentRunResult,
   AgentAuthenticationMethod,
@@ -596,6 +598,84 @@ export async function restoreAcpAgentSession(
   } finally {
     request.signal?.removeEventListener("abort", abort);
     await client.close().catch(() => {});
+  }
+}
+
+export class AcpRestoredConversation implements AgentConversation {
+  readonly #request: AgentRestoreRequest;
+  readonly #client: AcpAgentClient;
+  #initializeResponse: acp.InitializeResponse | undefined;
+  #output = "";
+  #restored = false;
+  #closed = false;
+
+  constructor(resolved: ResolvedAgentServer, request: AgentRestoreRequest) {
+    this.#request = request;
+    this.#client = new AcpAgentClient({
+      resolved,
+      cwd: request.cwd,
+      additionalDirectories: request.additionalDirectories,
+      onTerminalEvent: request.onTerminalEvent,
+      request,
+      appendOutput: (text) => { this.#output += text; },
+    });
+  }
+
+  async restore(): Promise<AgentRestoreResult> {
+    if (this.#restored) throw new Error("ACP conversation is already restored.");
+    this.#initializeResponse = await this.#client.initialize();
+    assertProtocolVersion(this.#initializeResponse);
+    const selectedPrimitive = selectAcpRestorePrimitive(this.#request.mode, this.#initializeResponse);
+    if (selectedPrimitive === "load") {
+      const loadResponse = await raceWithAbort(this.#client.connection.loadSession({
+        sessionId: this.#request.sessionId,
+        cwd: this.#request.cwd,
+        additionalDirectories: this.#request.additionalDirectories,
+        mcpServers: this.#request.mcpServers ?? [],
+      }), this.#request.signal, "ACP restore cancelled.");
+      this.#restored = true;
+      return {
+        agentServerId: this.#request.agentServerId,
+        sessionId: this.#request.sessionId,
+        selectedPrimitive,
+        initializeResponse: this.#initializeResponse,
+        loadResponse,
+      };
+    }
+    const resumeResponse = await raceWithAbort(this.#client.connection.resumeSession({
+      sessionId: this.#request.sessionId,
+      cwd: this.#request.cwd,
+      additionalDirectories: this.#request.additionalDirectories,
+      mcpServers: this.#request.mcpServers ?? [],
+    }), this.#request.signal, "ACP restore cancelled.");
+    this.#restored = true;
+    return {
+      agentServerId: this.#request.agentServerId,
+      sessionId: this.#request.sessionId,
+      selectedPrimitive,
+      initializeResponse: this.#initializeResponse,
+      resumeResponse,
+    };
+  }
+
+  async prompt(prompt: string, signal?: AbortSignal): Promise<AgentConversationPromptResult> {
+    if (!this.#restored || this.#closed) throw new Error("ACP conversation is not active.");
+    if (prompt.trim() === "") throw new Error("Prompt must not be empty.");
+    this.#output = "";
+    const response = await raceWithAbort(this.#client.connection.prompt({
+      sessionId: this.#request.sessionId,
+      prompt: [{ type: "text", text: prompt }],
+    }), signal, "ACP conversation prompt cancelled.");
+    return { output: this.#output, stopReason: response.stopReason };
+  }
+
+  async close(): Promise<void> {
+    if (this.#closed) return;
+    this.#closed = true;
+    if (this.#restored) {
+      await this.#client.connection.closeSession({ sessionId: this.#request.sessionId }).catch(() => {});
+    }
+    await this.#client.close().catch(() => {});
   }
 }
 

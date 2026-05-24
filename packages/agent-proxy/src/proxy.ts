@@ -1,6 +1,7 @@
 import { AgentServerStore } from "./store/agent-server-store";
 import type {
   AgentAuthenticationStatus,
+  AgentConversation,
   AgentRestoreRequest,
   AgentRestoreResult,
   AgentRunRequest,
@@ -11,6 +12,7 @@ import {
   authenticateAcpAgent,
   inspectAcpAgentAuthentication,
   restoreAcpAgentSession,
+  AcpRestoredConversation,
   runAcpAgent,
 } from "./runtimes/acp/connection";
 import { runHeadlessAgent } from "./runtimes/headless/command";
@@ -21,6 +23,8 @@ export type AgentCommandRequest = AgentRunRequest;
 export type AgentCommandResult = AgentRunResult;
 export type { AgentRestoreRequest, AgentRestoreResult, AgentRunRequest, AgentRunResult };
 export type {
+  AgentConversation,
+  AgentConversationPromptResult,
   AgentPermissionRequest,
   AgentPermissionResult,
   AgentRestoreMode,
@@ -51,6 +55,15 @@ export async function restoreAgentSession(request: AgentRestoreRequest): Promise
     throw new Error(`Headless agent runtime is not implemented: ${request.agentServerId}`);
   }
   return restoreAcpAgentSession(resolved, withPolicyDirectories(resolved, request));
+}
+
+export async function openAgentConversation(request: AgentRestoreRequest): Promise<AgentConversation> {
+  const store = new AgentServerStore({ root: request.cwd });
+  const resolved = await store.resolve(request.agentServerId);
+  if (resolved.source === "headless") {
+    throw new Error(`Headless agent runtime does not support ACP conversations: ${request.agentServerId}`);
+  }
+  return new AcpRestoredConversation(resolved, withPolicyDirectories(resolved, request));
 }
 
 export async function inspectAgentAuthentication(

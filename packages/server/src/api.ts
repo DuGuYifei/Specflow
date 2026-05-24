@@ -1,6 +1,6 @@
 import { WorkflowExecutor } from "@specflow/bridge";
 import type { SpecflowBridge } from "@specflow/bridge";
-import type { AgentAuthenticationStatus, AgentRestoreMode, AgentRestorePrimitive, AgentServerEntry, AgentServerSettings, NodeStatusEvent, RunInteraction, RunStatusEvent } from "@specflow/bridge";
+import type { AgentAuthenticationStatus, AgentConversation, AgentRestoreMode, AgentRestorePrimitive, AgentServerEntry, AgentServerSettings, NodeStatusEvent, RunInteraction, RunInteractionContext, RunStatusEvent } from "@specflow/bridge";
 import { supportedRegistryAgentProfile } from "@specflow/bridge";
 import { uuidv7 } from "@specflow/shared";
 import { canvasToWorkflow } from "./canvas-to-workflow";
@@ -86,11 +86,30 @@ type RestoreStreamEvent =
       stream: string;
       chunk: string;
       at: string;
+    }
+  | {
+      type: "interaction-requested";
+      restoreId: string;
+      interaction: RunInteraction;
+      at: string;
     };
 
 interface RestoreStreamState {
   events: RestoreStreamEvent[];
   done: boolean;
+}
+
+interface ActiveConversation {
+  conversation: AgentConversation;
+  promptPending: boolean;
+  promptController?: AbortController;
+  interactionInvocationId: string;
+  stopInteractionEvents: () => void;
+}
+
+function closesRestoreStream(event: RestoreStreamEvent): boolean {
+  return event.type === "restore-status"
+    && (event.status === "failure" || (event.status === "success" && event.requestedMode === "inspect"));
 }
 
 function parseAgentServerSettings(input: unknown): AgentServerSettings | undefined {
@@ -265,7 +284,19 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
   const bus = new EventBus();
   const restoreStreams = new Map<string, RestoreStreamState>();
   const restoreControllers = new Map<string, AbortController>();
+  const activeConversations = new Map<string, ActiveConversation>();
   const runControllers = new Map<string, AbortController>();
+
+  async function closeActiveConversation(active: ActiveConversation, reason = "Restored conversation closed."): Promise<void> {
+    active.promptController?.abort();
+    active.stopInteractionEvents();
+    for (const interaction of bridge.interactions.list({ status: "pending" })) {
+      if (interaction.agentInvocationId === active.interactionInvocationId) {
+        bridge.interactions.cancel(interaction.id, reason);
+      }
+    }
+    await active.conversation.close();
+  }
 
   const DEFAULT_SESSION: CanvasSession = {
     id: "main",
@@ -276,7 +307,7 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
   function publishRestoreEvent(event: RestoreStreamEvent): void {
     const state = restoreStreams.get(event.restoreId) ?? { events: [], done: false };
     state.events.push(event);
-    if (event.type === "restore-status" && event.status !== "requested") {
+    if (closesRestoreStream(event)) {
       state.done = true;
     }
     restoreStreams.set(event.restoreId, state);
@@ -310,7 +341,7 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
         cleanup = bus.on(`${restoreId}:restore`, (event) => {
           const restoreEvent = event as RestoreStreamEvent;
           enqueue(restoreEvent);
-          if (restoreEvent.type === "restore-status" && restoreEvent.status !== "requested") {
+          if (closesRestoreStream(restoreEvent)) {
             setTimeout(() => {
               try { controller.close(); } catch { /* already closed */ }
             }, 200);
@@ -414,6 +445,7 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
 
     let authStatuses: AgentAuthenticationStatus[];
     try {
+      await assertInteractivePauseSupported(agentflow);
       authStatuses = await inspectWorkflowAuthentication(agentflow);
     } catch (error) {
       return Response.json({ error: errorMessage(error) }, { status: 409 });
@@ -510,6 +542,7 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
       const uiStatus: RunState =
         e.status === "done" ? "success" :
         e.status === "failed" ? "error" :
+        e.status === "paused" ? "paused" :
         e.status === "running" ? "running" : "pending";
 
       if (e.status === "running") {
@@ -518,6 +551,8 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
 
       record.nodeStates[e.nodeId] = uiStatus;
       if (uiStatus === "running") record.activeNode = e.nodeId;
+      if (uiStatus === "paused") record.pausedNodeId = e.nodeId;
+      if (uiStatus === "success" && record.pausedNodeId === e.nodeId) record.pausedNodeId = undefined;
 
       if (e.status === "done" && (e as NodeStatusEvent & { output?: string }).output) {
         record.nodeOutputs[e.nodeId] = (e as NodeStatusEvent & { output?: string }).output!;
@@ -551,6 +586,7 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
       flushTerminalEvents();
       if (record.status !== "running") {
         bridge.interactions.cancelPendingForRun(runId, `run ${record.status}`);
+        bridge.pauses.cancelForRun(runId, `run ${record.status}`);
       }
       void saveRun(record, root);
       appendLog({ type: "run_status", ...e });
@@ -587,6 +623,7 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
         });
       },
       interactions: bridge.interactions,
+      pauses: bridge.pauses,
     });
 
     void executor.run(workflow, prepared.initialInput, { runId, signal: runController.signal })
@@ -613,6 +650,18 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
     return Promise.all(agentServerIds
       .filter((id) => servers.get(id)?.settings.type !== "headless")
       .map((id) => bridge.inspectAgentAuthentication(root, id)));
+  }
+
+  async function assertInteractivePauseSupported(agentflow: AgentFlowDoc): Promise<void> {
+    const servers = new Map((await bridge.listAgentServers(root)).map((entry) => [entry.id, entry]));
+    const sessionsById = new Map(agentflow.sessions.map((session) => [session.id, session]));
+    for (const node of agentflow.nodes) {
+      if (node.kind !== "step" || !node.pauseAfterRun) continue;
+      const serverId = sessionsById.get(node.sessionId ?? "")?.agentServerId;
+      if (serverId && servers.get(serverId)?.settings.type === "headless") {
+        throw new Error(`Node "${node.id}" cannot pause for interaction because headless agent "${serverId}" has no ACP session.`);
+      }
+    }
   }
 
   async function handleRestore(agentSessionId: string, mode: AgentRestoreMode): Promise<Response> {
@@ -655,7 +704,35 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
       at: startedAt,
     });
 
-    void bridge.restoreAgentSession({
+    let conversation: AgentConversation | undefined;
+    const interactionInvocationId = `restore:${restoreId}`;
+    const latestInvocation = session.invocations.find((entry) => entry.invocationId === session.latestInvocationId)
+      ?? session.invocations.at(-1);
+    const interactionContext: RunInteractionContext = {
+      runId: session.latestRunId,
+      nodeRunId: latestInvocation?.nodeRunId,
+      nodeId: latestInvocation?.nodeId,
+      edgeId: latestInvocation?.edgeId,
+      agentInvocationId: interactionInvocationId,
+      agentId: session.agentId,
+      agentServerId: session.agentServerId,
+      specflowSessionId: session.specflowSessionId,
+      acpSessionId: session.acpSessionId,
+    };
+    const stopInteractionEvents = mode === "continue"
+      ? bridge.interactions.subscribe(session.latestRunId, (interaction) => {
+          if (interaction.agentInvocationId !== interactionInvocationId) return;
+          void appendRunLogEvent(root, { type: "interaction", ...interactionAuditRecord(interaction) })
+            .catch((error) => console.error("Failed to append restored conversation interaction log", error));
+          publishRestoreEvent({
+            type: "interaction-requested",
+            restoreId,
+            interaction,
+            at: new Date().toISOString(),
+          });
+        })
+      : () => {};
+    void bridge.openAgentConversation({
       agentServerId: session.agentServerId,
       sessionId: session.acpSessionId,
       mode,
@@ -681,6 +758,18 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
           at: new Date().toISOString(),
         });
       },
+      onPermissionRequest: mode === "continue"
+        ? (request) => bridge.interactions.requestPermission(interactionContext, request)
+        : undefined,
+      onElicitationRequest: mode === "continue"
+        ? (request) => bridge.interactions.requestElicitation(interactionContext, request)
+        : undefined,
+      onElicitationComplete: mode === "continue"
+        ? (notification) => bridge.interactions.recordElicitationComplete(interactionContext, notification)
+        : undefined,
+    }).then(async (opened) => {
+      conversation = opened;
+      return opened.restore();
     }).then(async (result) => {
       const completedAt = new Date().toISOString();
       await recordAgentSessionRestoreAttempt(root, session.id, {
@@ -700,6 +789,16 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
         status: "success",
         at: completedAt,
       });
+      if (mode === "continue") {
+        activeConversations.set(restoreId, {
+          conversation: conversation!,
+          promptPending: false,
+          interactionInvocationId,
+          stopInteractionEvents,
+        });
+      } else {
+        await conversation?.close();
+      }
       publishRestoreEvent({
         type: "restore-status",
         restoreId,
@@ -711,6 +810,8 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
         at: completedAt,
       });
     }).catch(async (error) => {
+      stopInteractionEvents();
+      await conversation?.close().catch(() => {});
       const completedAt = new Date().toISOString();
       const message = error instanceof Error ? error.message : String(error);
       await recordAgentSessionRestoreAttempt(root, session.id, {
@@ -1025,6 +1126,40 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
       return Response.json(await listRunLogEvents(root, runLogsMatch[1]));
     }
 
+    // GET /api/runs/:id/paused-nodes
+    const runPausesMatch = pathname.match(/^\/api\/runs\/([^/]+)\/paused-nodes$/);
+    if (runPausesMatch && request.method === "GET") {
+      return Response.json(bridge.pauses.list(runPausesMatch[1]));
+    }
+
+    // POST /api/runs/:id/paused-nodes/:nodeId/prompt|continue
+    const pausedActionMatch = pathname.match(/^\/api\/runs\/([^/]+)\/paused-nodes\/([^/]+)\/(prompt|continue)$/);
+    if (pausedActionMatch && request.method === "POST") {
+      const runId = decodeURIComponent(pausedActionMatch[1]);
+      const nodeId = decodeURIComponent(pausedActionMatch[2]);
+      let record: RunRecord;
+      try {
+        record = await loadRun(runId, root);
+      } catch {
+        return Response.json({ error: "Run not found" }, { status: 404 });
+      }
+      if (record.status !== "running" || !bridge.pauses.get(runId, nodeId)) {
+        return Response.json({ error: "Node is not currently authorized for paused interaction" }, { status: 409 });
+      }
+      try {
+        if (pausedActionMatch[3] === "continue") {
+          return Response.json({ ok: true, paused: bridge.pauses.continue(runId, nodeId) });
+        }
+        const body = await request.json() as { prompt?: unknown };
+        if (typeof body.prompt !== "string" || body.prompt.trim() === "") {
+          return Response.json({ error: "Prompt must not be empty" }, { status: 400 });
+        }
+        return Response.json(await bridge.pauses.sendPrompt(runId, nodeId, body.prompt));
+      } catch (error) {
+        return Response.json({ error: errorMessage(error) }, { status: 409 });
+      }
+    }
+
     // GET /api/agent-sessions  (optional ?workflowId=&agentServerId=)
     if (request.method === "GET" && pathname === "/api/agent-sessions") {
       const workflowId = url.searchParams.get("workflowId") ?? undefined;
@@ -1070,12 +1205,59 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
       const restoreId = restoreCancelMatch[1];
       const controller = restoreControllers.get(restoreId);
       if (!controller) {
+        const active = activeConversations.get(restoreId);
+        if (active) {
+          activeConversations.delete(restoreId);
+          await closeActiveConversation(active);
+          return Response.json({ ok: true, status: "closed" });
+        }
         const state = restoreStreams.get(restoreId);
         if (!state) return Response.json({ error: "Restore not found" }, { status: 404 });
         return Response.json({ ok: true, status: state.done ? "done" : "inactive" });
       }
       controller.abort();
+      const active = activeConversations.get(restoreId);
+      activeConversations.delete(restoreId);
+      if (active) void closeActiveConversation(active, "Restore cancelled.");
       return Response.json({ ok: true, status: "cancelling" });
+    }
+
+    // POST /api/agent-session-restores/:id/prompt
+    const restorePromptMatch = pathname.match(/^\/api\/agent-session-restores\/([^/]+)\/prompt$/);
+    if (restorePromptMatch && request.method === "POST") {
+      const restoreId = restorePromptMatch[1];
+      const active = activeConversations.get(restoreId);
+      if (!active) return Response.json({ error: "Interactive restored session is not active" }, { status: 409 });
+      if (active.promptPending) return Response.json({ error: "A prompt is already running" }, { status: 409 });
+      let body: { prompt?: unknown };
+      try {
+        body = await request.json() as { prompt?: unknown };
+      } catch {
+        return Response.json({ error: "Invalid JSON" }, { status: 400 });
+      }
+      if (typeof body.prompt !== "string" || body.prompt.trim() === "") {
+        return Response.json({ error: "Prompt must not be empty" }, { status: 400 });
+      }
+      active.promptPending = true;
+      const promptController = new AbortController();
+      active.promptController = promptController;
+      try {
+        return Response.json(await active.conversation.prompt(body.prompt, promptController.signal));
+      } catch (error) {
+        return Response.json({ error: errorMessage(error) }, { status: 409 });
+      } finally {
+        active.promptController = undefined;
+        active.promptPending = false;
+      }
+    }
+
+    // POST /api/agent-session-restores/:id/close
+    const restoreCloseMatch = pathname.match(/^\/api\/agent-session-restores\/([^/]+)\/close$/);
+    if (restoreCloseMatch && request.method === "POST") {
+      const active = activeConversations.get(restoreCloseMatch[1]);
+      activeConversations.delete(restoreCloseMatch[1]);
+      if (active) await closeActiveConversation(active);
+      return Response.json({ ok: true });
     }
 
     // POST /api/runs/:id/interactions/:interactionId/respond

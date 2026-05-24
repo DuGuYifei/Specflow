@@ -5,6 +5,8 @@ import {
   filterSupportedRegistryIndex,
   inspectAgentAuthentication,
   restoreAgentSession,
+  openAgentConversation,
+  type AgentConversation,
   type AgentRestoreRequest,
   type AgentRestoreResult,
   type AgentAuthenticationStatus,
@@ -13,7 +15,7 @@ import {
   type AgentTerminalEvent,
   type RegistryIndex,
 } from "@specflow/agent-proxy";
-import { RunInteractionStore, TerminalEventStore, WorkflowExecutor } from "./execution";
+import { RunInteractionStore, RunPauseStore, TerminalEventStore, WorkflowExecutor } from "./execution";
 import { createBridgeRuntime, type BridgeRuntime } from "./runtime";
 import { SessionRegistry } from "./sessions";
 
@@ -22,6 +24,7 @@ export type {
   AgentRestorePrimitive,
   AgentRestoreRequest,
   AgentRestoreResult,
+  AgentConversation,
   AgentAuthenticationStatus,
   AgentServerEntry,
   AgentServerSettings,
@@ -41,8 +44,10 @@ export interface SpecflowBridge {
   sessions: SessionRegistry;
   terminalEvents: TerminalEventStore;
   interactions: RunInteractionStore;
+  pauses: RunPauseStore;
   executor: WorkflowExecutor;
   restoreAgentSession(request: AgentRestoreRequest): Promise<AgentRestoreResult>;
+  openAgentConversation(request: AgentRestoreRequest): Promise<AgentConversation>;
   inspectAgentAuthentication(root: string, agentServerId: string): Promise<AgentAuthenticationStatus>;
   authenticateAgentServer(
     root: string,
@@ -58,15 +63,18 @@ export interface SpecflowBridge {
 export function createSpecflowBridge(): SpecflowBridge {
   const terminalEvents = new TerminalEventStore();
   const interactions = new RunInteractionStore();
-  const executor = new WorkflowExecutor({ terminalEvents, interactions });
+  const pauses = new RunPauseStore();
+  const executor = new WorkflowExecutor({ terminalEvents, interactions, pauses });
 
   return {
     runtime: createBridgeRuntime(),
     sessions: new SessionRegistry(),
     terminalEvents,
     interactions,
+    pauses,
     executor,
     restoreAgentSession,
+    openAgentConversation,
     inspectAgentAuthentication,
     authenticateAgentServer,
     ensureAgentServerInstalled,

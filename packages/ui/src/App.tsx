@@ -7,6 +7,7 @@ import {
   createCanvas, deleteRun as apiDeleteRun, rerunRun as apiRerunRun,
   cancelRun as apiCancelRun,
   fetchAgentSessions, fetchAgentServers, restoreAgentSession, subscribeToRestore,
+  promptRestoredSession, closeRestoredSession, cancelRestoredSession, fetchPausedNodes, promptPausedNode, continuePausedNode,
   apiRunToUiRun, apiRunLogsToLogLines, summaryToWorkflow, respondToRunInteraction,
   AgentAuthenticationRequiredError,
   type SseEventType,
@@ -17,6 +18,7 @@ import {
   type RestoreMode,
   type RestoreSseEventType,
   type RestoreStreamEvent,
+  type PausedNodeSession,
 } from './api';
 import { TopBar } from './components/top-bar';
 import { Sidebar } from './components/sidebar';
@@ -28,6 +30,7 @@ import { RunConfigPanel } from './components/run-config-panel';
 import { InteractionModal } from './components/interaction-modal';
 import { AgentAuthModal } from './components/agent-auth-modal';
 import { AgentServerManager } from './components/agent-server-manager';
+import { AgentConversationWindow, type ConversationLine } from './components/agent-conversation-window';
 import { normalizeTransferConfiguration, resolveTransferSource } from './edge-semantics';
 
 function runStatusFromEvent(status: string): RunStatus {
@@ -60,6 +63,18 @@ export function App() {
   const [agentSessions, setAgentSessions] = useState<AgentSessionRecord[]>([]);
   const [agentServers, setAgentServers] = useState<AgentServerEntry[]>([]);
   const [restoreStatusBySession, setRestoreStatusBySession] = useState<Record<string, string>>({});
+  const [conversation, setConversation] = useState<{
+    session: AgentSessionRecord;
+    mode: RestoreMode;
+    restoreId?: string;
+    status: string;
+    lines: ConversationLine[];
+    canPrompt: boolean;
+    busy: boolean;
+  } | null>(null);
+  const [pausedNode, setPausedNode] = useState<PausedNodeSession | null>(null);
+  const [pausedLines, setPausedLines] = useState<ConversationLine[]>([]);
+  const [pausedPromptBusy, setPausedPromptBusy] = useState(false);
 
   const [selection, setSelection]             = useState<Selection | null>(null);
   const [zoom, setZoom]                       = useState(1);
@@ -112,9 +127,27 @@ export function App() {
   const edgesRef     = useRef(edges);
   const sessionsRef  = useRef(sessions);
   const resumeAfterAuthRef = useRef<undefined | (() => void | Promise<void>)>(undefined);
+  const restoreUnsubscribeRef = useRef<undefined | (() => void)>(undefined);
+  const restoreRequestTokenRef = useRef(0);
+  const conversationRef = useRef(conversation);
   useEffect(() => { nodesRef.current     = nodes;     }, [nodes]);
   useEffect(() => { edgesRef.current     = edges;     }, [edges]);
   useEffect(() => { sessionsRef.current  = sessions;  }, [sessions]);
+  useEffect(() => { conversationRef.current = conversation; }, [conversation]);
+
+  const terminateConversation = useCallback((active: typeof conversation) => {
+    restoreUnsubscribeRef.current?.();
+    restoreUnsubscribeRef.current = undefined;
+    if (!active?.restoreId) return;
+    const terminate = active.mode === 'continue' && active.status === 'success'
+      ? closeRestoredSession(active.restoreId)
+      : cancelRestoredSession(active.restoreId);
+    void terminate.catch(console.error);
+  }, []);
+
+  useEffect(() => () => {
+    terminateConversation(conversationRef.current);
+  }, [terminateConversation]);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -149,8 +182,13 @@ export function App() {
     setHistoricNodeStates({});
     setLiveNodeStates({});
     setRestoreStatusBySession({});
+    restoreRequestTokenRef.current += 1;
+    terminateConversation(conversationRef.current);
+    setConversation(null);
+    setPausedNode(null);
+    setPausedLines([]);
     setPendingInteractions([]);
-  }, [activeWorkflow]);
+  }, [activeWorkflow, terminateConversation]);
 
   // ── debounced save ────────────────────────────────────────────────────────
 
@@ -517,6 +555,14 @@ export function App() {
     fetchRunLogs(id).then((events) => {
       setLogLines(apiRunLogsToLogLines(events));
     }).catch(console.error);
+    fetchPausedNodes(id).then((paused) => {
+      setPausedNode(paused[0] ?? null);
+      setPausedLines([]);
+      if (paused[0]) {
+        setActiveSessionId(paused[0].specflowSessionId);
+        setBarExpanded(true);
+      }
+    }).catch(console.error);
   }, []);
 
   const onExitRunView = useCallback(() => {
@@ -525,6 +571,8 @@ export function App() {
     setLiveNodeStates({});
     setSelection(null);
     setPendingInteractions([]);
+    setPausedNode(null);
+    setPausedLines([]);
   }, []);
 
   const onOpenNewRun = useCallback(() => {
@@ -575,6 +623,8 @@ export function App() {
       setHistoricNodeStates({});
       setLogLines([]);
       setPendingInteractions([]);
+      setPausedNode(null);
+      setPausedLines([]);
 
       let placeholder: Run;
       try {
@@ -599,6 +649,17 @@ export function App() {
         if (type === 'node-status') {
           const ev = data as { nodeId: string; status: string };
           setLiveNodeStates((prev) => ({ ...prev, [ev.nodeId]: ev.status as import('./types').RunState }));
+          if (ev.status === 'paused') {
+            const node = nodesRef.current.find((candidate) => candidate.id === ev.nodeId);
+            if (node?.kind === 'step' && node.sessionId) {
+              setPausedNode({ runId, nodeId: node.id, specflowSessionId: node.sessionId, agentServerId: sessionsRef.current.find((session) => session.id === node.sessionId)?.agentServerId ?? '', pausedAt: new Date().toISOString() });
+              setPausedLines([]);
+              setActiveSessionId(node.sessionId);
+              setBarExpanded(true);
+            }
+          } else if (ev.status === 'success') {
+            setPausedNode((paused) => paused?.nodeId === ev.nodeId ? null : paused);
+          }
         } else if (type === 'terminal') {
           const ev = data as { chunk: string; nodeId?: string; stream?: LogLine['stream'] };
           setLogLines((prev) => [...prev.slice(-500), { chunk: ev.chunk, nodeId: ev.nodeId, stream: ev.stream }]);
@@ -611,6 +672,8 @@ export function App() {
             r.id === runId ? { ...r, status: uiStatus } : r,
           ));
           if (uiStatus !== 'running') {
+            setPausedNode(null);
+            setPausedLines([]);
             unsub();
             fetchRuns(activeWorkflow).then((records) => {
               setRuns(records.map(apiRunToUiRun));
@@ -624,6 +687,12 @@ export function App() {
           }
         }
       });
+      fetchPausedNodes(runId).then((paused) => {
+        if (paused[0]) {
+          setPausedNode(paused[0]);
+          setActiveSessionId(paused[0].specflowSessionId);
+        }
+      }).catch(console.error);
     } catch (err) {
       if (err instanceof AgentAuthenticationRequiredError) {
         requestAuth(err.statuses, () => startRun(initialInput, variableValues));
@@ -654,12 +723,25 @@ export function App() {
       setHistoricNodeStates({});
       setLogLines([]);
       setPendingInteractions([]);
+      setPausedNode(null);
+      setPausedLines([]);
       setBarExpanded(true);
 
       const unsub = subscribeToRun(newRunId, (type: SseEventType, data: unknown) => {
         if (type === 'node-status') {
           const ev = data as { nodeId: string; status: string };
           setLiveNodeStates((prev) => ({ ...prev, [ev.nodeId]: ev.status as import('./types').RunState }));
+          if (ev.status === 'paused') {
+            const node = nodesRef.current.find((candidate) => candidate.id === ev.nodeId);
+            if (node?.kind === 'step' && node.sessionId) {
+              setPausedNode({ runId: newRunId, nodeId: node.id, specflowSessionId: node.sessionId, agentServerId: sessionsRef.current.find((session) => session.id === node.sessionId)?.agentServerId ?? '', pausedAt: new Date().toISOString() });
+              setPausedLines([]);
+              setActiveSessionId(node.sessionId);
+              setBarExpanded(true);
+            }
+          } else if (ev.status === 'success') {
+            setPausedNode((paused) => paused?.nodeId === ev.nodeId ? null : paused);
+          }
         } else if (type === 'terminal') {
           const ev = data as { chunk: string; nodeId?: string; stream?: LogLine['stream'] };
           setLogLines((prev) => [...prev.slice(-500), { chunk: ev.chunk, nodeId: ev.nodeId, stream: ev.stream }]);
@@ -672,6 +754,8 @@ export function App() {
             r.id === newRunId ? { ...r, status: uiStatus } : r,
           ));
           if (uiStatus !== 'running') {
+            setPausedNode(null);
+            setPausedLines([]);
             unsub();
             fetchRuns(activeWorkflow).then((records) => {
               setRuns(records.map(apiRunToUiRun));
@@ -685,6 +769,12 @@ export function App() {
           }
         }
       });
+      fetchPausedNodes(newRunId).then((paused) => {
+        if (paused[0]) {
+          setPausedNode(paused[0]);
+          setActiveSessionId(paused[0].specflowSessionId);
+        }
+      }).catch(console.error);
     } catch (err) {
       if (err instanceof AgentAuthenticationRequiredError) {
         requestAuth(err.statuses, () => handleRerun(runId));
@@ -733,52 +823,126 @@ export function App() {
   }, [onSelectRun]);
 
   const onRestoreHistoricalSession = useCallback(async (session: AgentSessionRecord, mode: RestoreMode) => {
+    restoreRequestTokenRef.current += 1;
+    const requestToken = restoreRequestTokenRef.current;
+    terminateConversation(conversationRef.current);
     setRestoreStatusBySession((prev) => ({ ...prev, [session.id]: 'starting' }));
-    if (session.specflowSessionId) setActiveSessionId(session.specflowSessionId);
-    setBarExpanded(true);
-    setLogLines((prev) => [
-      ...prev.slice(-500),
-      {
-        stream: 'system',
-        chunk: `[restore] ${mode} ${session.agentServerId} ${session.acpSessionId}\n`,
-      },
-    ]);
+    setConversation({
+      session,
+      mode,
+      status: 'starting',
+      lines: [{ role: 'system', text: `${mode === 'inspect' ? 'Loading' : 'Resuming'} ACP session...` }],
+      canPrompt: false,
+      busy: false,
+    });
 
     try {
       const started = await restoreAgentSession(session.id, mode);
-      let unsubscribe: (() => void) | undefined;
-      unsubscribe = subscribeToRestore(started.restoreId, (type: RestoreSseEventType, event: RestoreStreamEvent) => {
+      if (requestToken !== restoreRequestTokenRef.current) {
+        void cancelRestoredSession(started.restoreId).catch(console.error);
+        return;
+      }
+      setConversation((current) => current?.session.id === session.id ? { ...current, restoreId: started.restoreId } : current);
+      restoreUnsubscribeRef.current = subscribeToRestore(started.restoreId, (type: RestoreSseEventType, event: RestoreStreamEvent) => {
         if (type === 'terminal' && event.type === 'terminal') {
-          setLogLines((prev) => [...prev.slice(-500), { stream: event.stream, chunk: event.chunk }]);
+          setConversation((current) => current?.session.id === session.id
+            ? { ...current, lines: [...current.lines, { role: 'terminal', text: event.chunk }] }
+            : current);
           return;
         }
 
         if (type === 'session-update' && event.type === 'session-update') {
           const text = textFromSessionUpdate(event.update);
-          if (text) setLogLines((prev) => [...prev.slice(-500), { stream: 'stdout', chunk: text }]);
+          if (text) setConversation((current) => current?.session.id === session.id
+            ? { ...current, lines: [...current.lines, { role: 'agent', text }] }
+            : current);
+          return;
+        }
+
+        if (type === 'interaction-requested' && event.type === 'interaction-requested') {
+          onRunInteractionEvent(event.interaction);
           return;
         }
 
         if (type === 'restore-status' && event.type === 'restore-status') {
-          const label = event.status === 'success'
-            ? `[restore:${event.selectedPrimitive}] done\n`
-            : event.status === 'failure'
-              ? `[restore] failed: ${event.error ?? 'unknown error'}\n`
-              : `[restore] requested\n`;
           setRestoreStatusBySession((prev) => ({ ...prev, [session.id]: event.status }));
-          setLogLines((prev) => [...prev.slice(-500), { stream: event.status === 'failure' ? 'stderr' : 'system', chunk: label }]);
-          if (event.status !== 'requested') {
+          const text = event.status === 'success'
+            ? `Restored through ACP session/${event.selectedPrimitive}.`
+            : event.status === 'failure'
+              ? `Restore failed: ${event.error ?? 'unknown error'}`
+              : 'Restore requested.';
+          setConversation((current) => current?.session.id === session.id
+            ? {
+                ...current,
+                status: event.status,
+                canPrompt: mode === 'continue' && event.status === 'success',
+                lines: [...current.lines, { role: 'system', text }],
+              }
+            : current);
+          if (event.status === 'failure' || (event.status === 'success' && mode === 'inspect')) {
             refreshAgentSessions();
-            unsubscribe?.();
+            restoreUnsubscribeRef.current?.();
+            restoreUnsubscribeRef.current = undefined;
           }
         }
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       setRestoreStatusBySession((prev) => ({ ...prev, [session.id]: 'failure' }));
-      setLogLines((prev) => [...prev.slice(-500), { stream: 'stderr', chunk: `[restore] failed: ${message}\n` }]);
+      setConversation((current) => current?.session.id === session.id
+        ? { ...current, status: 'failure', lines: [...current.lines, { role: 'system', text: `Restore failed: ${message}` }] }
+        : current);
     }
-  }, [refreshAgentSessions]);
+  }, [onRunInteractionEvent, refreshAgentSessions, terminateConversation]);
+
+  const onPromptConversation = useCallback(async (prompt: string) => {
+    const active = conversation;
+    if (!active?.restoreId || !active.canPrompt || active.busy) return;
+    setConversation((current) => current ? { ...current, busy: true, lines: [...current.lines, { role: 'user', text: prompt }] } : current);
+    try {
+      await promptRestoredSession(active.restoreId, prompt);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setConversation((current) => current ? { ...current, lines: [...current.lines, { role: 'system', text: message }] } : current);
+    } finally {
+      setConversation((current) => current ? { ...current, busy: false } : current);
+    }
+  }, [conversation]);
+
+  const onCloseConversation = useCallback(() => {
+    restoreRequestTokenRef.current += 1;
+    terminateConversation(conversation);
+    if (conversation?.restoreId) {
+      setPendingInteractions((current) => current.filter((interaction) =>
+        interaction.agentInvocationId !== `restore:${conversation.restoreId}`));
+    }
+    setConversation(null);
+  }, [conversation, terminateConversation]);
+
+  const onPromptPausedNode = useCallback(async (prompt: string) => {
+    if (!pausedNode || pausedPromptBusy) return;
+    setPausedPromptBusy(true);
+    setPausedLines((current) => [...current, { role: 'user', text: prompt }]);
+    try {
+      const result = await promptPausedNode(pausedNode.runId, pausedNode.nodeId, prompt);
+      setPausedLines((current) => [...current, { role: 'agent', text: result.output }]);
+    } catch (error) {
+      setPausedLines((current) => [...current, { role: 'system', text: error instanceof Error ? error.message : String(error) }]);
+    } finally {
+      setPausedPromptBusy(false);
+    }
+  }, [pausedNode, pausedPromptBusy]);
+
+  const onContinuePausedNode = useCallback(async () => {
+    if (!pausedNode || pausedPromptBusy) return;
+    try {
+      await continuePausedNode(pausedNode.runId, pausedNode.nodeId);
+      setPausedNode(null);
+      setPausedLines([]);
+    } catch (error) {
+      setPausedLines((current) => [...current, { role: 'system', text: error instanceof Error ? error.message : String(error) }]);
+    }
+  }, [pausedNode, pausedPromptBusy]);
 
   // ── workflow management ───────────────────────────────────────────────────
 
@@ -858,6 +1022,9 @@ export function App() {
           onAddEdge={onAddEdge}
           onDeleteNode={onDeleteNode}
           onAddBranch={onAddBranch}
+          onContinuePausedNode={(nodeId) => {
+            if (pausedNode?.nodeId === nodeId) void onContinuePausedNode();
+          }}
           viewMode={view}
           zoom={zoom} setZoom={setZoom}
           pan={pan} setPan={setPan}
@@ -985,9 +1152,26 @@ export function App() {
           onOpenInvocationLog={onOpenInvocationLog}
           onRestoreSession={onRestoreHistoricalSession}
           restoreStatusBySession={restoreStatusBySession}
+          pausedNode={pausedNode}
+          pausedLines={pausedLines}
+          pausedPromptBusy={pausedPromptBusy}
+          onPromptPausedNode={onPromptPausedNode}
+          onContinuePausedNode={onContinuePausedNode}
           readonly={view === 'run'}
         />
       </div>
+      {conversation && (
+        <AgentConversationWindow
+          session={conversation.session}
+          mode={conversation.mode}
+          status={conversation.status}
+          lines={conversation.lines}
+          canPrompt={conversation.canPrompt}
+          busy={conversation.busy}
+          onPrompt={onPromptConversation}
+          onClose={onCloseConversation}
+        />
+      )}
     </div>
   );
 }

@@ -50,6 +50,30 @@ describe("run event API", () => {
     const eventText = await readUntil(eventResponse!, "run-id-check");
     expect(eventText).toContain("run-id-check");
   });
+
+  test("rejects a manual pause checkpoint backed by a headless agent", async () => {
+    const root = await mkdtemp(join(tmpdir(), "specflow-run-pause-headless-"));
+    await upsertLocalAgentServer(root, "echo-headless", {
+      type: "headless",
+      command: process.execPath,
+      argsTemplate: ["-e", "console.log('unused')"],
+    });
+    const canvas = sampleCanvas();
+    const step = canvas.nodes[0];
+    if (step?.kind !== "step") throw new Error("Expected step");
+    step.pauseAfterRun = true;
+    await saveCanvas("wf-events", canvas, root);
+
+    const handle = createApiHandler(createSpecflowBridge(), root);
+    const start = await handle(new Request("http://specflow.test/api/canvases/wf-events/run", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({}),
+    }));
+
+    expect(start?.status).toBe(409);
+    expect(await start?.text()).toContain("headless agent");
+  });
 });
 
 async function eventuallyLoadRun(root: string, runId: string, status: string) {

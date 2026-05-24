@@ -29,6 +29,7 @@ import { buildPromptBlocksForNode } from "./prompt-blocks";
 import { parseGateDecision } from "./gate-evaluator";
 import { TerminalEventStore } from "./terminal-store";
 import { RunInteractionStore, type RunInteractionContext } from "./interaction-store";
+import { RunPauseStore } from "./pause-store";
 
 export interface NodeStatusEvent {
   runId: string;
@@ -59,6 +60,7 @@ export interface WorkflowExecutorOptions {
   cwd?: string;
   terminalEvents?: TerminalEventStore;
   interactions?: RunInteractionStore;
+  pauses?: RunPauseStore;
   agentRunner?: AgentRunner;
   onNodeStatus?: (event: NodeStatusEvent) => void;
   onRunStatus?: (event: RunStatusEvent) => void;
@@ -105,6 +107,7 @@ export class WorkflowExecutor {
   readonly #cwd: string;
   readonly #terminalEvents: TerminalEventStore;
   readonly #interactions: RunInteractionStore;
+  readonly #pauses: RunPauseStore | undefined;
   readonly #agentRunnerOverride: AgentRunner | undefined;
   readonly #onNodeStatus: ((event: NodeStatusEvent) => void) | undefined;
   readonly #onRunStatus: ((event: RunStatusEvent) => void) | undefined;
@@ -115,6 +118,7 @@ export class WorkflowExecutor {
     this.#cwd = options.cwd ?? process.cwd();
     this.#terminalEvents = options.terminalEvents ?? new TerminalEventStore();
     this.#interactions = options.interactions ?? new RunInteractionStore();
+    this.#pauses = options.pauses;
     this.#agentRunnerOverride = options.agentRunner;
     this.#onNodeStatus = options.onNodeStatus;
     this.#onRunStatus = options.onRunStatus;
@@ -181,6 +185,62 @@ export class WorkflowExecutor {
           origin: pending.origin,
           signal: options.signal,
         });
+        if (node.kind === "agent" && node.pauseAfterRun) {
+          if (!this.#pauses) {
+            throw new Error(`Node "${node.id}" requires interactive pause support.`);
+          }
+          const nodeRun = run.nodeRuns.find((candidate) => candidate.nodeId === node.id);
+          if (!nodeRun) {
+            throw new Error(`Node "${node.id}" has no execution record to pause.`);
+          }
+          const pausedAt = new Date().toISOString();
+          const continuation = this.#pauses.waitForContinuation({
+            runId: run.id,
+            nodeId: node.id,
+            specflowSessionId: node.sessionId,
+            agentServerId: resolveAgentServerId(workflow.agents.find((agent) => agent.id === node.agentId)!),
+            pausedAt,
+          }, async (prompt) => {
+            const invocation = this.#createInvocation({
+              run,
+              agentId: node.agentId,
+              sessionId: node.sessionId,
+              nodeRun,
+              prompt,
+            });
+            return this.#invokeAgent({
+              workflow,
+              agentRunner,
+              run,
+              invocation,
+              agentId: node.agentId,
+              prompt,
+              signal: options.signal,
+            });
+          }, options.signal);
+          this.#onNodeStatus?.({
+            runId: run.id,
+            nodeId: node.id,
+            status: "paused",
+            at: pausedAt,
+            output: nodeResult.output,
+          });
+          const intervenedOutput = await continuation;
+          if (intervenedOutput !== undefined) {
+            nodeResult.output = intervenedOutput;
+            nodeResult.origin.output = intervenedOutput;
+          }
+          nodeRun.status = "done";
+          nodeRun.output = nodeResult.output;
+          nodeRun.completedAt = new Date().toISOString();
+          this.#onNodeStatus?.({
+            runId: run.id,
+            nodeId: node.id,
+            status: "done",
+            at: nodeRun.completedAt,
+            output: nodeResult.output,
+          });
+        }
         completedNodes.add(node.id);
 
         const outgoingEdges = outgoingEdgesBySource.get(node.id) ?? [];
@@ -261,10 +321,12 @@ export class WorkflowExecutor {
     try {
       if (input.node.kind === "agent") {
         const output = await this.#executeAgentNode({ ...input, node: input.node, nodeRun });
-        nodeRun.status = "done";
+        nodeRun.status = input.node.pauseAfterRun ? "paused" : "done";
         nodeRun.output = output;
-        nodeRun.completedAt = new Date().toISOString();
-        this.#onNodeStatus?.({ runId: input.run.id, nodeId: input.node.id, status: "done", at: nodeRun.completedAt, output });
+        if (!input.node.pauseAfterRun) {
+          nodeRun.completedAt = new Date().toISOString();
+          this.#onNodeStatus?.({ runId: input.run.id, nodeId: input.node.id, status: "done", at: nodeRun.completedAt, output });
+        }
         return {
           output,
           origin: { agentId: input.node.agentId, sessionId: input.node.sessionId, output },

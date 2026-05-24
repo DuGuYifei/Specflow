@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import type { Session, WorkflowNode, LogLine, Variable } from '../types';
-import type { AgentServerEntry, AgentSessionRecord, RestoreMode } from '../api';
+import type { AgentServerEntry, AgentSessionRecord, PausedNodeSession, RestoreMode } from '../api';
 import { Icon } from './icon';
 import { isSymbolKey, sessionAccent } from '../appearance';
+import type { ConversationLine } from './agent-conversation-window';
 
 const UNSCOPED_SESSION_FILTER = '__unscoped__';
 
@@ -30,6 +31,11 @@ interface SessionsBarProps {
   onOpenInvocationLog?: (runId: string, nodeId?: string, specflowSessionId?: string) => void;
   onRestoreSession?: (session: AgentSessionRecord, mode: RestoreMode) => void;
   restoreStatusBySession?: Record<string, string>;
+  pausedNode?: PausedNodeSession | null;
+  pausedLines?: ConversationLine[];
+  pausedPromptBusy?: boolean;
+  onPromptPausedNode?: (prompt: string) => void;
+  onContinuePausedNode?: () => void;
   readonly?: boolean;
 }
 
@@ -45,6 +51,8 @@ export function SessionsBar({
   agentSessions = [], agentServers = [], runs = [],
   onOpenInvocationLog, onRestoreSession,
   restoreStatusBySession = {},
+  pausedNode, pausedLines = [], pausedPromptBusy = false,
+  onPromptPausedNode, onContinuePausedNode,
   readonly,
 }: SessionsBarProps) {
   const [tab, setTab] = useState<'logs' | 'agent-sessions' | 'settings' | 'vars'>('logs');
@@ -144,6 +152,11 @@ export function SessionsBar({
           stepNodes={stepNodes}
           logLines={logLines}
           onDeleteSession={onDeleteSession}
+          pausedNode={pausedNode}
+          pausedLines={pausedLines}
+          pausedPromptBusy={pausedPromptBusy}
+          onPromptPausedNode={onPromptPausedNode}
+          onContinuePausedNode={onContinuePausedNode}
         />
       )}
       {tab === 'agent-sessions' && (
@@ -188,9 +201,17 @@ interface LogsTabProps {
   stepNodes: WorkflowNode[];
   logLines?: LogLine[];
   onDeleteSession: (id: string) => void;
+  pausedNode?: PausedNodeSession | null;
+  pausedLines: ConversationLine[];
+  pausedPromptBusy: boolean;
+  onPromptPausedNode?: (prompt: string) => void;
+  onContinuePausedNode?: () => void;
 }
 
-function LogsTab({ sessions, activeSession, setActiveSessionId, stepNodes, logLines, onDeleteSession }: LogsTabProps) {
+function LogsTab({
+  sessions, activeSession, setActiveSessionId, stepNodes, logLines, onDeleteSession,
+  pausedNode, pausedLines, pausedPromptBusy, onPromptPausedNode, onContinuePausedNode,
+}: LogsTabProps) {
   const [sideW, setSideW] = useState(() => {
     try {
       const saved = parseInt(localStorage.getItem('sf-side-w') ?? '', 10);
@@ -274,6 +295,15 @@ function LogsTab({ sessions, activeSession, setActiveSessionId, stepNodes, logLi
             </>
           )}
         </div>
+        {pausedNode?.specflowSessionId === activeSession?.id && (
+          <PausedNodeComposer
+            node={stepNodes.find((candidate) => candidate.id === pausedNode.nodeId)}
+            lines={pausedLines}
+            busy={pausedPromptBusy}
+            onPrompt={onPromptPausedNode}
+            onContinue={onContinuePausedNode}
+          />
+        )}
       </div>
       <div
         className={`term-resizer${dragging ? ' dragging' : ''}`}
@@ -310,6 +340,56 @@ function LogsTab({ sessions, activeSession, setActiveSessionId, stepNodes, logLi
             );
           })}
         </div>
+      </div>
+    </div>
+  );
+}
+
+function PausedNodeComposer(props: {
+  node?: WorkflowNode;
+  lines: ConversationLine[];
+  busy: boolean;
+  onPrompt?: (prompt: string) => void;
+  onContinue?: () => void;
+}) {
+  const [prompt, setPrompt] = useState('');
+  const submit = () => {
+    if (!prompt.trim() || props.busy) return;
+    props.onPrompt?.(prompt.trim());
+    setPrompt('');
+  };
+  return (
+    <div className="paused-composer">
+      <div className="paused-composer-head">
+        <span><Icon name="pause" size={11} /> Paused after {props.node?.title ?? 'node'}</span>
+        <button className="btn sm primary" disabled={props.busy} onClick={props.onContinue}>
+          <Icon name="play" size={10} />Continue workflow
+        </button>
+      </div>
+      {props.lines.length > 0 && (
+        <div className="paused-transcript">
+          {props.lines.map((line, index) => (
+            <div key={index} className={`paused-message ${line.role}`}>
+              <strong>{line.role}</strong> {line.text}
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="paused-compose-input">
+        <textarea
+          className="textarea"
+          rows={2}
+          value={prompt}
+          disabled={props.busy}
+          placeholder="Send a prompt to the paused agent session..."
+          onInput={(event) => setPrompt(event.currentTarget.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) submit();
+          }}
+        />
+        <button className="btn sm" disabled={props.busy || !prompt.trim()} onClick={submit}>
+          {props.busy ? 'Sending...' : 'Send'}
+        </button>
       </div>
     </div>
   );

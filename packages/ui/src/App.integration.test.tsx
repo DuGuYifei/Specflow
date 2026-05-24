@@ -39,6 +39,9 @@ let runAuthRequired = false;
 let holdRunStart = false;
 let releaseRunStart: (() => void) | undefined;
 let agentSessionHistory: unknown[] = [];
+let restoredPrompts: string[] = [];
+let pausedContinues = 0;
+let interactionResponses = 0;
 
 describe("App run integration", () => {
   let root: Root | undefined;
@@ -63,6 +66,9 @@ describe("App run integration", () => {
     holdRunStart = false;
     releaseRunStart = undefined;
     agentSessionHistory = [];
+    restoredPrompts = [];
+    pausedContinues = 0;
+    interactionResponses = 0;
     container = document.createElement("div");
     document.body.appendChild(container);
   });
@@ -163,6 +169,96 @@ describe("App run integration", () => {
     releaseRunStart?.();
     await waitFor(() => MockEventSource.instances.some((source) => source.url === "/api/runs/run1/events"));
   });
+
+  test("shows Inspect output in its own conversation window rather than the run Logs tab", async () => {
+    agentSessionHistory = [sampleAgentSession("echo-headless", "main", "historical")];
+    root = createRoot(container);
+    root.render(<App />);
+
+    await waitForText("Start run");
+    clickBottomBarHandle();
+    await waitForText("Agent Sessions");
+    clickButtonContaining("Agent Sessions");
+    await waitForText("historical");
+    clickButton("Inspect");
+    await waitFor(() => MockEventSource.instances.some((source) => source.url === "/api/agent-session-restores/restore-1/events"));
+
+    const source = MockEventSource.instances.find((candidate) => candidate.url === "/api/agent-session-restores/restore-1/events")!;
+    source.emit("session-update", {
+      type: "session-update",
+      update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "restored-transcript" } },
+    });
+    await waitForText("restored-transcript");
+    clickButton("Logs");
+
+    const logs = document.querySelector(".term-stream")?.textContent ?? "";
+    const conversation = document.querySelector(".conversation-transcript")?.textContent ?? "";
+    expect(logs).not.toContain("restored-transcript");
+    expect(conversation).toContain("restored-transcript");
+  });
+
+  test("uses the Resume conversation window to send a follow-up ACP prompt", async () => {
+    agentSessionHistory = [sampleAgentSession("echo-headless", "main", "historical")];
+    root = createRoot(container);
+    root.render(<App />);
+
+    await waitForText("Start run");
+    clickBottomBarHandle();
+    await waitForText("Agent Sessions");
+    clickButtonContaining("Agent Sessions");
+    await waitForText("historical");
+    clickButton("Resume");
+    await waitFor(() => MockEventSource.instances.some((source) => source.url === "/api/agent-session-restores/restore-1/events"));
+    const source = MockEventSource.instances.find((candidate) => candidate.url === "/api/agent-session-restores/restore-1/events")!;
+    source.emit("restore-status", { type: "restore-status", status: "success", selectedPrimitive: "resume" });
+    await waitForText("Restored through ACP session/resume.");
+
+    const input = document.querySelector(".conversation-compose textarea");
+    if (!(input instanceof window.HTMLTextAreaElement)) throw new Error("Resume prompt textarea not found");
+    setTextAreaValue(input, "continue reviewing");
+    await waitFor(() => {
+      const send = document.querySelector(".conversation-compose button");
+      return send instanceof window.HTMLButtonElement && !send.disabled;
+    });
+    clickButton("Send");
+    await waitFor(() => restoredPrompts.includes("continue reviewing"));
+    source.emit("interaction-requested", {
+      type: "interaction-requested",
+      interaction: {
+        id: "interaction-1",
+        runId: "run1",
+        kind: "permission",
+        status: "pending",
+        createdAt: "2026-05-24T10:00:00.000Z",
+        agentInvocationId: "restore:restore-1",
+        agentId: "agent-server-echo-headless",
+        agentServerId: "echo-headless",
+        toolCall: { title: "Edit file" },
+        options: [{ optionId: "allow", name: "Allow" }],
+      },
+    });
+    await waitForText("Edit file");
+    clickButton("Allow");
+    await waitFor(() => interactionResponses === 1);
+  });
+
+  test("shows a paused node composer for its session and continues from the node card", async () => {
+    root = createRoot(container);
+    root.render(<App />);
+
+    await waitForText("Start run");
+    clickButton("Start run");
+    await waitForText("No run inputs for this workflow.");
+    clickButton("Start run", "last");
+    await waitFor(() => MockEventSource.instances.some((source) => source.url === "/api/runs/run1/events"));
+    const source = MockEventSource.instances.find((candidate) => candidate.url === "/api/runs/run1/events")!;
+    source.emit("node-status", { nodeId: "node-1", status: "paused" });
+
+    await waitForText("Paused after Echo");
+    clickButton("Continue");
+    await waitFor(() => pausedContinues === 1);
+    await waitFor(() => !(document.body.textContent?.includes("Paused after Echo") ?? false));
+  });
 });
 
 function mockFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
@@ -207,6 +303,25 @@ function mockFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Respon
   }
   if (method === "GET" && url === "/api/runs/run1/logs") {
     return json([]);
+  }
+  if (method === "GET" && url === "/api/runs/run1/paused-nodes") {
+    return json([]);
+  }
+  if (method === "POST" && /^\/api\/agent-sessions\/[^/]+\/restore$/.test(url)) {
+    return json({ restoreId: "restore-1", status: "running" });
+  }
+  if (method === "POST" && url === "/api/agent-session-restores/restore-1/prompt") {
+    const body = JSON.parse(String(init?.body ?? "{}")) as { prompt?: string };
+    if (body.prompt) restoredPrompts.push(body.prompt);
+    return json({ output: "continued" });
+  }
+  if (method === "POST" && url === "/api/runs/run1/paused-nodes/node-1/continue") {
+    pausedContinues += 1;
+    return json({ ok: true });
+  }
+  if (method === "POST" && url === "/api/runs/run1/interactions/interaction-1/respond") {
+    interactionResponses += 1;
+    return json({ ok: true });
   }
   return json({ ok: true });
 }
@@ -312,6 +427,14 @@ function clickBottomBarHandle(): void {
 }
 
 function setInputValue(input: HTMLInputElement, value: string): void {
+  const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(input), "value")?.set;
+  setter?.call(input, value);
+  const InputEventCtor = window.InputEvent ?? window.Event;
+  input.dispatchEvent(new InputEventCtor("input", { bubbles: true }));
+  input.dispatchEvent(new window.Event("change", { bubbles: true }));
+}
+
+function setTextAreaValue(input: HTMLTextAreaElement, value: string): void {
   const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(input), "value")?.set;
   setter?.call(input, value);
   const InputEventCtor = window.InputEvent ?? window.Event;

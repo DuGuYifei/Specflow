@@ -90,6 +90,7 @@ function buildAgentNode(node: AgentFlowStepNode, doc: AgentFlowDoc): AgentNode {
       ? agentIdForServer(agentServerIdForSession(session))
       : agentIdForServer(DEFAULT_AGENT_SERVER_ID),
     sessionId: node.sessionId ?? "",
+    pauseAfterRun: node.pauseAfterRun,
     images: (node.images ?? []).map((image) => ({
       id: uuidv7(),
       kind: "image",
