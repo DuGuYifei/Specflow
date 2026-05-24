@@ -30,14 +30,12 @@ nodes:
       Choose rework only when the preceding output is exactly ROUTE=rework.
     branches:
       pass:
-        label: pass
         description: The published fact selected the passing path.
       rework:
-        label: rework
         description: The published fact selected the rework path.
   pass-path:
     kind: step
-    num: "02A"
+    num: 02A
     title: Pass branch marker
     prompt: |-
       Do not use tools or edit files.
@@ -45,7 +43,7 @@ nodes:
     session: judge
   rework-path:
     kind: step
-    num: "02B"
+    num: 02B
     title: Rework branch marker
     prompt: |-
       Do not use tools or edit files.
