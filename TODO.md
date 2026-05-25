@@ -57,4 +57,10 @@
 - [ ] Skill系统接入
 - [ ] MCP系统接入
 - [ ] 无头模式
+- [x] Gate 循环的上限
 
+## Bug
+
+- [ ] fork不实时显示session
+- [ ] variable页签不显示正在运行的已经填过的变量。
+- [ ] 运行中节点被选中，下方session应该自动切换到该节点所属session看日志。

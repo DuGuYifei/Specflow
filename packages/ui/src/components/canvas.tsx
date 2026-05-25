@@ -3,7 +3,7 @@ import type { WorkflowNode, Edge, Session, Selection, RunStateMap, GateNode, Inp
 import { branchAccent, edgeKey, nextSymbolKey, sessionAccent } from '../appearance';
 import type { IconName } from './icon';
 import { Icon } from './icon';
-import { isSameSessionContentEdge, wouldCreateExecutedCycle } from '../edge-semantics';
+import { closesGateControlledCycle, isSameSessionContentEdge, wouldCreateExecutedCycle } from '../edge-semantics';
 
 // ── geometry ──────────────────────────────────────────────────────────────────
 
@@ -457,7 +457,13 @@ export function Canvas({
                   existing.to === toId
                   && nodesRef.current.find((node) => node.id === existing.from)?.kind !== 'input');
               const executionCycle = wouldCreateExecutedCycle(edge, edgesRef.current);
-              if (!secondGateInput && !executionCycle && !edgesRef.current.some((existing) => existing.id === edge.id)) onAddEdge(edge);
+              const controlledLoopback = executionCycle && (
+                (fromN.kind === 'gate' && Boolean(dragInfo.branch))
+                || closesGateControlledCycle(edge, edgesRef.current, nodesRef.current)
+              );
+              if (!secondGateInput && (!executionCycle || controlledLoopback) && !edgesRef.current.some((existing) => existing.id === edge.id)) {
+                onAddEdge(controlledLoopback ? { ...edge, loopback: true } : edge);
+              }
             }
           }
         }

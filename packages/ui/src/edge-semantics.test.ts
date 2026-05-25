@@ -1,5 +1,5 @@
 import type { Edge, WorkflowNode } from './types';
-import { normalizeTransferConfiguration, resolveTransferSource, wouldCreateExecutedCycle } from './edge-semantics';
+import { closesGateControlledCycle, normalizeTransferConfiguration, resolveTransferSource, wouldCreateExecutedCycle } from './edge-semantics';
 
 declare function describe(name: string, fn: () => void): void;
 declare function test(name: string, fn: () => void): void;
@@ -35,10 +35,24 @@ describe('edge semantics', () => {
     expect(resolveTransferSource(outgoing, nodes, [incoming, outgoing])?.id).toBe('source');
   });
 
-  test('prevents executed cycles while allowing display-only loopbacks', () => {
+  test('prevents ordinary cycles while allowing explicitly controlled loopbacks', () => {
     const edges: Edge[] = [{ id: 'forward', from: 'source', to: 'target' }];
     expect(wouldCreateExecutedCycle({ from: 'target', to: 'source' }, edges)).toBe(true);
     expect(wouldCreateExecutedCycle({ from: 'target', to: 'source', loopback: true }, edges)).toBe(false);
+  });
+
+  test('recognizes a review return edge that closes a gate-controlled cycle', () => {
+    const nodes: WorkflowNode[] = [
+      step('review', 'reviewer'),
+      { kind: 'gate', id: 'gate', num: 'G1', x: 0, y: 0, w: 200, title: 'Gate', decisionCriteria: '', branches: [{ id: 'fix', label: 'fix' }] },
+      step('fix', 'writer'),
+    ];
+    const edges: Edge[] = [
+      { id: 'review-gate', from: 'review', to: 'gate' },
+      { id: 'gate-fix', from: 'gate', to: 'fix', branch: 'fix' },
+    ];
+    expect(closesGateControlledCycle({ from: 'fix', to: 'review' }, edges, nodes)).toBe(true);
+    expect(closesGateControlledCycle({ from: 'fix', to: 'review' }, [{ id: 'direct', from: 'review', to: 'fix' }], nodes)).toBe(false);
   });
 });
 

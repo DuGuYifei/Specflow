@@ -33,6 +33,7 @@ export interface GateBranch {
   label: string;
   color?: string;
   description?: string;
+  maxTraversals?: number;
 }
 
 export interface GateNode extends FunctionalNode<"gate"> {

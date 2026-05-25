@@ -151,6 +151,75 @@ describe("WorkflowExecutor", () => {
     expect(run.agentInvocations.find((invocation) => invocation.nodeId === "gate")?.parentSessionId).toBeUndefined();
   });
 
+  test("keeps ordinary limited gates single-pass when branches later join", async () => {
+    const gate = gateNode("gate", ["pass", "rework"]);
+    gate.branches = gate.branches.map((branch) => ({ ...branch, maxTraversals: 2 }));
+    const executor = new WorkflowExecutor({
+      agentRunner: createAgentRunner((request) => request.forkFromWorkflowSessionId
+        ? JSON.stringify({ branchId: "pass" })
+        : "done"),
+    });
+    const run = await executor.run(createWorkflow({
+      nodes: [
+        agentNode("source", "source"),
+        gate,
+        agentNode("pass", "pass"),
+        agentNode("rework", "rework"),
+        agentNode("joined", "joined"),
+      ],
+      edges: [
+        gateInput("source-gate", "source", "gate"),
+        { ...trigger("gate-pass", "gate", "pass", "pass"), maxTraversals: 2 },
+        { ...trigger("gate-rework", "gate", "rework", "rework"), maxTraversals: 2 },
+        trigger("pass-joined", "pass", "joined"),
+        trigger("rework-joined", "rework", "joined"),
+      ],
+    }));
+
+    expect(run.status).toBe("done");
+    expect(run.nodeRuns.map((nodeRun) => nodeRun.nodeId)).toEqual(["source", "gate", "pass", "joined"]);
+  });
+
+  test("runs a bounded gate loopback through revision and review again", async () => {
+    const prompts: string[] = [];
+    let gateRuns = 0;
+    const gate = gateNode("gate", ["pass", "revise"]);
+    gate.branches = gate.branches.map((branch) => ({ ...branch, maxTraversals: 1 }));
+    const executor = new WorkflowExecutor({
+      agentRunner: createAgentRunner((request) => {
+        prompts.push(request.prompt);
+        if (request.forkFromWorkflowSessionId) {
+          gateRuns += 1;
+          return JSON.stringify({ branchId: gateRuns === 1 ? "revise" : "pass", reason: "review" });
+        }
+        return request.prompt.startsWith("done") ? "complete" : "draft";
+      }),
+    });
+
+    const run = await executor.run(createWorkflow({
+      nodes: [
+        agentNode("writer", "write"),
+        agentNode("reviewer", "review"),
+        gate,
+        agentNode("fix", "fix"),
+        agentNode("done", "done"),
+      ],
+      edges: [
+        trigger("write-review", "writer", "reviewer"),
+        gateInput("review-gate", "reviewer", "gate"),
+        { ...trigger("gate-revise", "gate", "fix", "revise"), maxTraversals: 1 },
+        { ...trigger("fix-review", "fix", "reviewer"), loopback: true },
+        trigger("gate-pass", "gate", "done", "pass"),
+      ],
+    }));
+
+    expect(run.status).toBe("done");
+    expect(run.nodeRuns.map((nodeRun) => nodeRun.nodeId)).toEqual([
+      "writer", "reviewer", "gate", "fix", "reviewer", "gate", "done",
+    ]);
+    expect(prompts.filter((prompt) => prompt.includes("Available branches:"))[1]).not.toContain('"id":"revise"');
+  });
+
   test("injects tagged output into the target prompt", async () => {
     const prompts: string[] = [];
     const executor = new WorkflowExecutor({

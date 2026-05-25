@@ -36,7 +36,7 @@ const frontendExampleCanvas: CanvasDoc = {
     { id: "e3",  from: "n2b", to: "n2c", transmit: true, outputTag: "draft_html", handoffPrompt: "Send HTML draft." },
     { id: "e4",  from: "n2c", to: "g1" },
     { id: "e5",  from: "g1",  to: "n3a", branch: "pass", transmit: true, outputTag: "review_findings", handoffPrompt: "Summarize findings." },
-    { id: "e6",  from: "g1",  to: "n2b", branch: "rework", loopback: true },
+    { id: "e6",  from: "g1",  to: "n2b", branch: "rework", loopback: true, maxTraversals: 2 },
     { id: "e7",  from: "g1",  to: "n2a", branch: "fail",   loopback: true },
     { id: "e8",  from: "n3a", to: "n3b" },
     { id: "e9",  from: "n3b", to: "n3c" },
@@ -72,9 +72,12 @@ describe("canvasToWorkflow", () => {
     expect(wf.nodes.every((n) => n.kind !== "end" as string)).toBe(true);
   });
 
-  it("drops 4 loopback edges + 1 edge to end = 11 runtime edges", () => {
+  it("keeps controlled loopback edges and drops only edges to end", () => {
     const wf = canvasToWorkflow(frontendExampleCanvas);
-    expect(wf.edges).toHaveLength(11);
+    expect(wf.edges).toHaveLength(15);
+    expect(wf.edges.find((edge) => edge.id === "e6")).toMatchObject({ loopback: true, maxTraversals: 2 });
+    const g1 = wf.nodes.find((node) => node.id === "g1");
+    expect(g1?.kind === "gate" && g1.branches.find((branch) => branch.id === "rework")?.maxTraversals).toBe(2);
   });
 
   it("same-session edges become trigger edges with no explicit transfer", () => {

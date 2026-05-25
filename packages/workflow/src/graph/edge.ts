@@ -7,6 +7,8 @@ interface BaseEdge {
   sourcePortId?: string;
   targetPortId?: string;
   kind: WorkflowEdgeKind;
+  loopback?: boolean;
+  maxTraversals?: number;
 }
 
 export type WorkflowEdgeKind = "trigger" | "gate-input" | "tagged-output";

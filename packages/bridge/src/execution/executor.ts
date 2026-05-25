@@ -92,6 +92,11 @@ interface PendingNodeInput {
   origin?: TransferOrigin;
 }
 
+interface QueuedNode {
+  nodeId: string;
+  traversal: number;
+}
+
 class WorkflowCancelledError extends Error {
   constructor() {
     super("Workflow run cancelled.");
@@ -152,34 +157,44 @@ export class WorkflowExecutor {
       const incomingEdgesByTarget = groupEdgesByTarget(workflow.edges);
       const outgoingEdgesBySource = groupEdgesBySource(workflow.edges);
       const pendingInputs = new Map<string, PendingNodeInput>();
-      const queue = findEntryNodes(workflow).map((node) => node.id);
+      const queue: QueuedNode[] = findEntryNodes(workflow).map((node) => ({ nodeId: node.id, traversal: 0 }));
+      const rerunnableGateIds = findRerunnableGateIds(workflow);
+      const recurringBranchEdgeIds = findRecurringBranchEdgeIds(workflow);
       const completedNodes = new Set<string>();
+      const completedExecutions = new Set<string>();
       const skippedNodes = new Set<string>();
       const inactiveEdges = new Set<string>();
+      const branchTraversals = new Map<string, number>();
 
       for (const entryNode of findEntryNodes(workflow)) {
-        pendingInputs.set(entryNode.id, { input: [initialInput], edgeValues: {} });
+        pendingInputs.set(executionKey(entryNode.id, 0), { input: [initialInput], edgeValues: {} });
       }
 
       while (queue.length > 0) {
         throwIfCancelled(options.signal);
-        const nodeId = queue.shift();
-        if (!nodeId || completedNodes.has(nodeId) || skippedNodes.has(nodeId)) continue;
-        const node = nodesById.get(nodeId);
-        if (!node) throw new Error(`Workflow references missing node "${nodeId}".`);
+        const queued = queue.shift();
+        if (!queued) continue;
+        const key = executionKey(queued.nodeId, queued.traversal);
+        if (completedExecutions.has(key) || (queued.traversal === 0 && skippedNodes.has(queued.nodeId))) continue;
+        const node = nodesById.get(queued.nodeId);
+        if (!node) throw new Error(`Workflow references missing node "${queued.nodeId}".`);
 
         const incomingEdges = incomingEdgesByTarget.get(node.id) ?? [];
-        if (!isNodeReady(incomingEdges, completedNodes, inactiveEdges)) {
-          queue.push(node.id);
+        if (queued.traversal === 0 && !isNodeReady(incomingEdges, completedNodes, inactiveEdges)) {
+          queue.push(queued);
           continue;
         }
 
-        const pending = pendingInputs.get(node.id) ?? { input: [], edgeValues: {} };
+        const outgoingEdges = outgoingEdgesBySource.get(node.id) ?? [];
+        const executableNode = node.kind === "gate"
+          ? gateWithAvailableBranches(node, branchTraversals)
+          : node;
+        const pending = pendingInputs.get(key) ?? { input: [], edgeValues: {} };
         const nodeResult = await this.#executeNode({
           agentRunner,
           workflow,
           run,
-          node,
+          node: executableNode,
           input: pending.input.filter(Boolean).join("\n\n"),
           edgeValues: pending.edgeValues,
           origin: pending.origin,
@@ -241,12 +256,19 @@ export class WorkflowExecutor {
             output: nodeResult.output,
           });
         }
-        completedNodes.add(node.id);
+        completedExecutions.add(key);
+        if (queued.traversal === 0) completedNodes.add(node.id);
 
-        const outgoingEdges = outgoingEdgesBySource.get(node.id) ?? [];
+        let selectedEdges = outgoingEdges;
         if (node.kind === "gate") {
-          for (const edge of outgoingEdges) {
-            if (edge.sourcePortId !== nodeResult.chosenBranchId) {
+          const branchKey = `${node.id}:${nodeResult.chosenBranchId}`;
+          branchTraversals.set(branchKey, (branchTraversals.get(branchKey) ?? 0) + 1);
+          selectedEdges = outgoingEdges.filter((edge) => edge.sourcePortId === nodeResult.chosenBranchId);
+          const supportsRerun = rerunnableGateIds.has(node.id);
+          const continuesLoop = selectedEdges.some((edge) => recurringBranchEdgeIds.has(edge.id));
+          if ((!supportsRerun || !continuesLoop) && queued.traversal === 0) {
+            for (const edge of outgoingEdges) {
+              if (edge.sourcePortId === nodeResult.chosenBranchId) continue;
               deactivateEdgeAndDependents({
                 edge,
                 inactiveEdges,
@@ -258,9 +280,11 @@ export class WorkflowExecutor {
             }
           }
         }
-        for (const edge of outgoingEdges) {
+        for (const edge of selectedEdges) {
           if (inactiveEdges.has(edge.id)) continue;
-          const target = pendingInputs.get(edge.targetNodeId) ?? { input: [], edgeValues: {} };
+          const targetTraversal = edge.loopback ? queued.traversal + 1 : queued.traversal;
+          const targetKey = executionKey(edge.targetNodeId, targetTraversal);
+          const target = pendingInputs.get(targetKey) ?? { input: [], edgeValues: {} };
           if (edge.kind === "gate-input") {
             target.input.push(nodeResult.origin.output);
             target.origin = nodeResult.origin;
@@ -275,8 +299,8 @@ export class WorkflowExecutor {
             });
             Object.assign(target.edgeValues, createTaggedEdgeVariable(edge, taggedContent));
           }
-          pendingInputs.set(edge.targetNodeId, target);
-          queue.push(edge.targetNodeId);
+          pendingInputs.set(targetKey, target);
+          queue.push({ nodeId: edge.targetNodeId, traversal: targetTraversal });
         }
       }
 
@@ -585,7 +609,7 @@ function resolveAgentServerId(agent: AgentDefinition): string {
 }
 
 function findEntryNodes(workflow: Workflow): WorkflowNode[] {
-  const targetNodeIds = new Set(workflow.edges.map((edge) => edge.targetNodeId));
+  const targetNodeIds = new Set(workflow.edges.filter((edge) => !edge.loopback).map((edge) => edge.targetNodeId));
   return workflow.nodes.filter((node) => !targetNodeIds.has(node.id));
 }
 
@@ -601,12 +625,65 @@ function groupEdgesBySource(edges: WorkflowEdge[]): Map<string, WorkflowEdge[]> 
   return grouped;
 }
 
+function findRerunnableGateIds(workflow: Workflow): Set<string> {
+  const nodesById = new Map(workflow.nodes.map((node) => [node.id, node]));
+  const outgoing = groupEdgesBySource(workflow.edges.filter((edge) => !edge.loopback));
+  const result = new Set<string>();
+  for (const loopback of workflow.edges.filter((edge) => edge.loopback)) {
+    const pending: Array<{ nodeId: string; gates: Set<string> }> = [{
+      nodeId: loopback.targetNodeId,
+      gates: new Set(),
+    }];
+    const visited = new Set<string>();
+    while (pending.length > 0) {
+      const current = pending.pop()!;
+      const key = `${current.nodeId}:${[...current.gates].sort().join(",")}`;
+      if (visited.has(key)) continue;
+      visited.add(key);
+      const gates = new Set(current.gates);
+      if (nodesById.get(current.nodeId)?.kind === "gate") gates.add(current.nodeId);
+      if (current.nodeId === loopback.sourceNodeId) {
+        for (const gateId of gates) result.add(gateId);
+        continue;
+      }
+      for (const edge of outgoing.get(current.nodeId) ?? []) {
+        pending.push({ nodeId: edge.targetNodeId, gates });
+      }
+    }
+    if (nodesById.get(loopback.sourceNodeId)?.kind === "gate") {
+      result.add(loopback.sourceNodeId);
+    }
+  }
+  return result;
+}
+
+function findRecurringBranchEdgeIds(workflow: Workflow): Set<string> {
+  const outgoing = groupEdgesBySource(workflow.edges);
+  const result = new Set<string>();
+  for (const edge of workflow.edges.filter((candidate) => candidate.sourcePortId)) {
+    const pending = [edge.targetNodeId];
+    const visited = new Set<string>();
+    while (pending.length > 0) {
+      const nodeId = pending.pop()!;
+      if (visited.has(nodeId)) continue;
+      visited.add(nodeId);
+      const downstream = outgoing.get(nodeId) ?? [];
+      if (downstream.some((candidate) => candidate.loopback)) {
+        result.add(edge.id);
+        break;
+      }
+      pending.push(...downstream.filter((candidate) => !candidate.loopback).map((candidate) => candidate.targetNodeId));
+    }
+  }
+  return result;
+}
+
 function isNodeReady(
   incomingEdges: WorkflowEdge[],
   completedNodes: Set<string>,
   inactiveEdges: Set<string>,
 ): boolean {
-  return incomingEdges.every((edge) => inactiveEdges.has(edge.id) || completedNodes.has(edge.sourceNodeId));
+  return incomingEdges.every((edge) => edge.loopback || inactiveEdges.has(edge.id) || completedNodes.has(edge.sourceNodeId));
 }
 
 function deactivateEdgeAndDependents(input: {
@@ -615,7 +692,7 @@ function deactivateEdgeAndDependents(input: {
   skippedNodes: Set<string>;
   incomingEdgesByTarget: Map<string, WorkflowEdge[]>;
   outgoingEdgesBySource: Map<string, WorkflowEdge[]>;
-  queue: string[];
+  queue: QueuedNode[];
 }): void {
   if (input.inactiveEdges.has(input.edge.id)) return;
   input.inactiveEdges.add(input.edge.id);
@@ -628,5 +705,18 @@ function deactivateEdgeAndDependents(input: {
     }
     return;
   }
-  input.queue.push(targetNodeId);
+  input.queue.push({ nodeId: targetNodeId, traversal: 0 });
+}
+
+function executionKey(nodeId: string, traversal: number): string {
+  return `${nodeId}:${traversal}`;
+}
+
+function gateWithAvailableBranches(node: Extract<WorkflowNode, { kind: "gate" }>, traversals: Map<string, number>): Extract<WorkflowNode, { kind: "gate" }> {
+  const branches = node.branches.filter((branch) =>
+    (traversals.get(`${node.id}:${branch.id}`) ?? 0) < (branch.maxTraversals ?? 1));
+  if (branches.length === 0) {
+    throw new Error(`Gate node "${node.id}" has exhausted all branch traversal limits.`);
+  }
+  return { ...node, branches };
 }

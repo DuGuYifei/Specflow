@@ -62,3 +62,28 @@ export function wouldCreateExecutedCycle(candidate: Pick<Edge, 'from' | 'to' | '
   }
   return false;
 }
+
+export function closesGateControlledCycle(candidate: Pick<Edge, 'from' | 'to'>, edges: Edge[], nodes: WorkflowNode[]): boolean {
+  const gateIds = new Set(nodes.filter((node) => node.kind === 'gate').map((node) => node.id));
+  const downstreamBySource = new Map<string, Edge[]>();
+  for (const edge of edges) {
+    if (edge.loopback) continue;
+    downstreamBySource.set(edge.from, [...(downstreamBySource.get(edge.from) ?? []), edge]);
+  }
+  const pending: Array<{ nodeId: string; crossedGate: boolean }> = [{ nodeId: candidate.to, crossedGate: false }];
+  const visited = new Set<string>();
+  while (pending.length > 0) {
+    const current = pending.pop()!;
+    const key = `${current.nodeId}:${current.crossedGate}`;
+    if (visited.has(key)) continue;
+    visited.add(key);
+    if (current.nodeId === candidate.from && current.crossedGate) return true;
+    for (const edge of downstreamBySource.get(current.nodeId) ?? []) {
+      pending.push({
+        nodeId: edge.to,
+        crossedGate: current.crossedGate || (gateIds.has(edge.from) && Boolean(edge.branch)),
+      });
+    }
+  }
+  return false;
+}

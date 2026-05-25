@@ -75,6 +75,7 @@ export interface CanvasEdge {
   handoffPrompt?: string;
   branch?: string;
   loopback?: boolean;
+  maxTraversals?: number;
 }
 
 export interface CanvasVariable {

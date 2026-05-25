@@ -205,6 +205,19 @@ export function generateCanvasLayout(agentflow: AgentFlowDoc): CanvasLayoutDoc {
 
   const layouts: CanvasNodeLayout[] = [];
   const sortedRanks = [...columns.keys()].sort((a, b) => a - b);
+  const xByRank = new Map<number, number>();
+  let previousRank: number | undefined;
+  for (const r of sortedRanks) {
+    if (previousRank === undefined) {
+      xByRank.set(r, 60);
+    } else {
+      const previousColumn = columns.get(previousRank)!;
+      const previousWidth = Math.max(...previousColumn.map((node) => defaultWidth(node.kind)));
+      const labelWidth = maximumEdgeLabelWidth(agentflow, rank, previousRank, r);
+      xByRank.set(r, (xByRank.get(previousRank) ?? 60) + previousWidth + Math.max(80, labelWidth + 48));
+    }
+    previousRank = r;
+  }
   for (const r of sortedRanks) {
     const column = columns.get(r)!;
     column.sort(compareNodesForLayout);
@@ -212,7 +225,7 @@ export function generateCanvasLayout(agentflow: AgentFlowDoc): CanvasLayoutDoc {
       const node = column[index]!;
       layouts.push({
         nodeId: node.id,
-        x: 60 + r * 280,
+        x: xByRank.get(r) ?? 60,
         y: 80 + index * 180,
         w: defaultWidth(node.kind),
       });
@@ -264,4 +277,28 @@ function compareNodesForLayout(a: AgentFlowNode, b: AgentFlowNode): number {
   return (a.num || "").localeCompare(b.num || "", undefined, { numeric: true }) ||
     a.title.localeCompare(b.title) ||
     a.id.localeCompare(b.id);
+}
+
+function maximumEdgeLabelWidth(
+  agentflow: AgentFlowDoc,
+  rank: Map<string, number>,
+  sourceRank: number,
+  targetRank: number,
+): number {
+  let maximum = 0;
+  for (const edge of agentflow.edges) {
+    if (edge.loopback || rank.get(edge.from) !== sourceRank || rank.get(edge.to) !== targetRank) continue;
+    maximum = Math.max(maximum, estimateEdgeLabelWidth(edge, agentflow));
+  }
+  return maximum;
+}
+
+function estimateEdgeLabelWidth(edge: AgentFlowDoc["edges"][number], agentflow: AgentFlowDoc): number {
+  const source = agentflow.nodes.find((node) => node.id === edge.from);
+  const target = agentflow.nodes.find((node) => node.id === edge.to);
+  const visibleLabels = [
+    target?.kind === "gate" ? "gate input" : edge.outputTag ? `<specflow_${edge.outputTag}>` : "no transfer",
+    source?.kind === "gate" ? source.branches.find((branch) => branch.id === edge.branch)?.label ?? edge.branch ?? "" : "",
+  ];
+  return Math.max(...visibleLabels.map((label) => label.length * 7 + 24));
 }

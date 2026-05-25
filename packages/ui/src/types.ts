@@ -132,6 +132,7 @@ export interface Edge {
   handoffPrompt?: string;
   branch?: string;
   loopback?: boolean;
+  maxTraversals?: number;
 }
 
 export interface Selection {

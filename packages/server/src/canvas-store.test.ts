@@ -151,11 +151,30 @@ edges:
     to: decide
     loopback: true
 `, "gate-loopback-input")).toThrow("cannot be a loopback edge");
+    expect(() => parseAgentFlowSource(`${base}  - from: decide
+    to: first
+    branch: pass
+    maxTraversals: 0
+`, "invalid-branch-limit")).toThrow("positive integer");
+    expect(() => parseAgentFlowSource(`${base}  - from: first
+    to: second
+    maxTraversals: 2
+`, "nongate-branch-limit")).toThrow("only when leaving a gate");
     expect(() => parseAgentFlowSource(`${base}  - from: first
     to: second
   - from: second
     to: first
 `, "unmarked-cycle")).toThrow("unmarked cycle");
+    expect(() => parseAgentFlowSource(`${base}  - from: first
+    to: decide
+  - from: decide
+    to: second
+    branch: pass
+    maxTraversals: 2
+  - from: second
+    to: first
+    loopback: true
+`, "controlled-review-cycle")).not.toThrow();
   });
 
   it("rejects ambiguous output tags and empty in-memory gates", () => {
@@ -363,6 +382,37 @@ edges:
       edges: agentflow.edges,
     });
     expect(layout.nodes.map((node) => node.nodeId).sort()).toEqual(["done", "in", "step"].sort());
+  });
+
+  it("reserves horizontal space for visible edge labels", () => {
+    const flow = parseAgentFlowSource(`version: 1
+name: Labels
+sessions:
+  source:
+    agentServerId: codex-acp
+  target:
+    agentServerId: codex-acp
+nodes:
+  source:
+    kind: step
+    title: Source
+    prompt: Source
+    session: source
+  target:
+    kind: step
+    title: Target
+    prompt: Target
+    session: target
+edges:
+  - from: source
+    to: target
+    transmit: true
+    outputTag: extremely_long_product_visual_review_findings
+`, "label-layout");
+    const layout = generateCanvasLayout(flow);
+    const source = layout.nodes.find((node) => node.nodeId === "source")!;
+    const target = layout.nodes.find((node) => node.nodeId === "target")!;
+    expect(target.x - (source.x + source.w)).toBeGreaterThan(280);
   });
 });
 

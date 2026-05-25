@@ -198,6 +198,9 @@ function parseEdges(raw: unknown, nodes: AgentFlowNode[], nodeIds: Set<string>):
       ...(optionalString(edge.handoffPrompt) ? { handoffPrompt: optionalString(edge.handoffPrompt)! } : {}),
       ...(branch ? { branch } : {}),
       ...(edge.loopback === true ? { loopback: true } : {}),
+      ...(parseMaxTraversals(edge.maxTraversals, `edges[${index}].maxTraversals`) != null
+        ? { maxTraversals: parseMaxTraversals(edge.maxTraversals, `edges[${index}].maxTraversals`)! }
+        : {}),
     };
     if (edgeIds.has(parsed.id)) {
       throw new Error(`Duplicate edge "${parsed.id}".`);
@@ -300,6 +303,9 @@ function assertResolvedDoc(doc: AgentFlowDoc): void {
     if (source?.kind === "gate" && !edge.branch) {
       throw new Error(`Edge "${edge.id}" leaving gate "${source.id}" must select a branch.`);
     }
+    if (edge.maxTraversals !== undefined && source?.kind !== "gate") {
+      throw new Error(`Edge "${edge.id}" can define maxTraversals only when leaving a gate.`);
+    }
     if (edge.outputTag && !/^[A-Za-z_][A-Za-z0-9_.-]*$/.test(edge.outputTag)) {
       throw new Error(`Edge "${edge.id}" outputTag must be an XML-safe tag name.`);
     }
@@ -312,8 +318,6 @@ function assertResolvedDoc(doc: AgentFlowDoc): void {
       throw new Error(`Gate input edge "${edge.id}" cannot declare transmission properties.`);
     } else if (target?.kind === "gate" && edge.loopback) {
       throw new Error(`Gate input edge "${edge.id}" cannot be a loopback edge.`);
-    } else if (edge.loopback && hasTransferProperties(edge)) {
-      throw new Error(`Loopback edge "${edge.id}" cannot declare transmission properties while loopbacks are display-only.`);
     } else if ((source?.kind === "input" || target?.kind === "end") && hasTransferProperties(edge)) {
       throw new Error(`Control-only edge "${edge.id}" cannot declare transmission properties.`);
     } else if (edge.transmit !== true && (edge.outputTag || edge.handoffPrompt)) {
@@ -337,6 +341,7 @@ function assertResolvedDoc(doc: AgentFlowDoc): void {
     if (edgeIds.has(id)) throw new Error(`Duplicate edge "${id}".`);
     edgeIds.add(id);
   }
+  assertControlledLoopbacks(doc);
   assertAcyclicExecutedEdges(doc);
 }
 
@@ -361,6 +366,41 @@ function assertAcyclicExecutedEdges(doc: AgentFlowDoc): void {
     visited.add(nodeId);
   };
   for (const node of doc.nodes) visit(node.id);
+}
+
+function assertControlledLoopbacks(doc: AgentFlowDoc): void {
+  const bySource = new Map<string, CanvasEdge[]>();
+  for (const edge of doc.edges.filter((candidate) => !candidate.loopback)) {
+    bySource.set(edge.from, [...(bySource.get(edge.from) ?? []), edge]);
+  }
+  const gateIds = new Set(doc.nodes.filter((node) => node.kind === "gate").map((node) => node.id));
+  for (const loopback of doc.edges.filter((edge) => edge.loopback)) {
+    const pending: Array<{ nodeId: string; crossedGateBranch: boolean }> = [{
+      nodeId: loopback.to,
+      crossedGateBranch: false,
+    }];
+    const visited = new Set<string>();
+    let controlled = gateIds.has(loopback.from) && Boolean(loopback.branch);
+    while (!controlled && pending.length > 0) {
+      const current = pending.pop()!;
+      const key = `${current.nodeId}:${current.crossedGateBranch}`;
+      if (visited.has(key)) continue;
+      visited.add(key);
+      if (current.nodeId === loopback.from && current.crossedGateBranch) {
+        controlled = true;
+        break;
+      }
+      for (const edge of bySource.get(current.nodeId) ?? []) {
+        pending.push({
+          nodeId: edge.to,
+          crossedGateBranch: current.crossedGateBranch || (gateIds.has(edge.from) && Boolean(edge.branch)),
+        });
+      }
+    }
+    if (!controlled) {
+      throw new Error(`Loopback edge "${loopback.id}" must close a path controlled by a gate branch.`);
+    }
+  }
 }
 
 function parseImages(raw: unknown[], nodeId: string): Array<{ path: string; label?: string; mimeType?: string }> {
@@ -389,6 +429,14 @@ function parseVariables(raw: unknown): CanvasVariable[] | undefined {
       description: optionalString(variable.description),
     }) as CanvasVariable;
   });
+}
+
+function parseMaxTraversals(value: unknown, label: string): number | undefined {
+  if (value === undefined) return undefined;
+  if (!Number.isInteger(value) || (value as number) < 1) {
+    throw new Error(`${label} must be a positive integer.`);
+  }
+  return value as number;
 }
 
 function compact<T extends Record<string, unknown>>(input: T): T {
