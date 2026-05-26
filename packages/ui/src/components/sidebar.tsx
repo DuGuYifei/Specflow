@@ -11,11 +11,12 @@ interface SidebarProps {
   onSelectRun: (id: string) => void;
   onNewRun: () => void;
   onRerunRun: (id: string) => void;
+  onResumeRun?: (id: string) => void;
   onDeleteRun: (id: string) => void;
   onCreateWorkflow: () => void;
 }
 
-export function Sidebar({ workflows, runs, activeWorkflow, activeRun, onSelectWorkflow, onSelectRun, onNewRun, onRerunRun, onDeleteRun, onCreateWorkflow }: SidebarProps) {
+export function Sidebar({ workflows, runs, activeWorkflow, activeRun, onSelectWorkflow, onSelectRun, onNewRun, onRerunRun, onResumeRun, onDeleteRun, onCreateWorkflow }: SidebarProps) {
   const [query, setQuery] = useState('');
   const searchRef = useRef<HTMLInputElement>(null);
   const wf = workflows.find((w) => w.id === activeWorkflow) || workflows[0];
@@ -101,6 +102,11 @@ export function Sidebar({ workflows, runs, activeWorkflow, activeRun, onSelectWo
                 <span className={`status-dot ${r.status}`} />
                 <span className="label">{r.label}</span>
                 <div className="actions" onClick={(e) => e.stopPropagation()}>
+                  {onResumeRun && (r.status === 'cancelled' || r.status === 'error') && (
+                    <button className="btn sm icon" title="Resume the last ACP session for this run" onClick={() => onResumeRun(r.id)}>
+                      <Icon name="play-circle" size={11} />
+                    </button>
+                  )}
                   <button className="btn sm icon" title="Run this snapshot again" onClick={() => onRerunRun(r.id)}>
                     <Icon name="rotate" size={11} />
                   </button>

@@ -7,6 +7,7 @@ import {
   createCanvas, deleteRun as apiDeleteRun, rerunRun as apiRerunRun,
   cancelRun as apiCancelRun,
   fetchAgentSessions, fetchAgentServers, restoreAgentSession, subscribeToRestore,
+  fetchAgentSession, fetchResumableSession,
   promptRestoredSession, closeRestoredSession, cancelRestoredSession, fetchPausedNodes, promptPausedNode, continuePausedNode,
   apiRunToUiRun, apiRunLogsToTimelineEvents, summaryToWorkflow, respondToRunInteraction,
   AgentAuthenticationRequiredError,
@@ -128,6 +129,8 @@ export function App() {
   const sessionsRef  = useRef(sessions);
   const resumeAfterAuthRef = useRef<undefined | (() => void | Promise<void>)>(undefined);
   const restoreUnsubscribeRef = useRef<undefined | (() => void)>(undefined);
+  const runUnsubscribeRef = useRef<undefined | (() => void)>(undefined);
+  const subscribedRunIdRef = useRef<string | undefined>(undefined);
   const restoreRequestTokenRef = useRef(0);
   const conversationRef = useRef(conversation);
   useEffect(() => { nodesRef.current     = nodes;     }, [nodes]);
@@ -147,6 +150,9 @@ export function App() {
 
   useEffect(() => () => {
     terminateConversation(conversationRef.current);
+    runUnsubscribeRef.current?.();
+    runUnsubscribeRef.current = undefined;
+    subscribedRunIdRef.current = undefined;
   }, [terminateConversation]);
 
   useEffect(() => {
@@ -544,9 +550,115 @@ export function App() {
     await resume?.();
   }, []);
 
+  const onRunInteractionEvent = useCallback((interaction: RunInteraction) => {
+    setPendingInteractions((prev) => {
+      if (interaction.status !== 'pending') {
+        return prev.filter((item) => item.id !== interaction.id);
+      }
+      const index = prev.findIndex((item) => item.id === interaction.id);
+      if (index < 0) return [...prev, interaction];
+      const next = [...prev];
+      next[index] = interaction;
+      return next;
+    });
+  }, []);
+
+  const attachToRun = useCallback((runId: string) => {
+    if (subscribedRunIdRef.current === runId && runUnsubscribeRef.current) return;
+    runUnsubscribeRef.current?.();
+    subscribedRunIdRef.current = runId;
+    let cancelled = false;
+    let unsub = () => {};
+    const cleanup = () => {
+      cancelled = true;
+      unsub();
+      if (subscribedRunIdRef.current === runId) {
+        subscribedRunIdRef.current = undefined;
+        runUnsubscribeRef.current = undefined;
+      }
+    };
+    runUnsubscribeRef.current = cleanup;
+
+    unsub = subscribeToRun(runId, (type: SseEventType, data: unknown) => {
+      if (cancelled) return;
+      if (type === 'node-status') {
+        const ev = data as {
+          nodeId: string;
+          status: string;
+          gateDecision?: { branchId: string; reason?: string };
+          gateBranches?: Array<{ branchId: string; label: string; traversalsUsed: number; maxTraversals: number; available: boolean }>;
+          replay?: boolean;
+        };
+        setLiveNodeStates((prev) => ({ ...prev, [ev.nodeId]: ev.status as import('./types').RunState }));
+        if (ev.gateDecision) {
+          const decision = ev.gateDecision;
+          setLogEvents((prev) => {
+            const last = prev[prev.length - 1];
+            if (last && last.type === 'gate-decision' && last.nodeId === ev.nodeId && last.branchId === decision.branchId) {
+              return prev;
+            }
+            return [...prev.slice(-500), {
+              type: 'gate-decision',
+              nodeId: ev.nodeId,
+              branchId: decision.branchId,
+              reason: decision.reason,
+              branches: ev.gateBranches,
+            }];
+          });
+        }
+        if (ev.status === 'paused' && !ev.replay) {
+          const node = nodesRef.current.find((candidate) => candidate.id === ev.nodeId);
+          if (node?.kind === 'step' && node.sessionId) {
+            setPausedNode({ runId, nodeId: node.id, specflowSessionId: node.sessionId, agentServerId: sessionsRef.current.find((session) => session.id === node.sessionId)?.agentServerId ?? '', pausedAt: new Date().toISOString() });
+            setPausedLines([]);
+            setActiveSessionId(node.sessionId);
+            setBarExpanded(true);
+          }
+        } else if (ev.status === 'success') {
+          setPausedNode((paused) => paused?.nodeId === ev.nodeId ? null : paused);
+        }
+      } else if (type === 'terminal') {
+        const ev = data as Extract<TimelineEvent, { type: 'terminal' }> & { specflowSessionId?: string };
+        setLogEvents((prev) => [...prev.slice(-500), { ...ev, type: 'terminal' }]);
+      } else if (type === 'session-update') {
+        const ev = data as { update: unknown; nodeId?: string; agentInvocationId?: string; sessionId?: string; specflowSessionId?: string };
+        setLogEvents((prev) => [...prev.slice(-500), { ...ev, type: 'session-update' }]);
+      } else if (type === 'interaction-requested') {
+        onRunInteractionEvent(data as RunInteraction);
+      } else if (type === 'run-status') {
+        const ev = data as { status: string; error?: string; replay?: boolean };
+        const uiStatus = runStatusFromEvent(ev.status);
+        setRuns((prev) => prev.map((r) =>
+          r.id === runId ? { ...r, status: uiStatus } : r,
+        ));
+        if (uiStatus !== 'running') {
+          if (!ev.replay) {
+            setPausedNode(null);
+            setPausedLines([]);
+          }
+          cleanup();
+          if (!ev.replay) {
+            fetchRuns(activeWorkflow).then((records) => {
+              setRuns(records.map(apiRunToUiRun));
+              const fresh = records.find((r) => r.id === runId);
+              if (fresh) {
+                setHistoricNodeStates(fresh.nodeStates);
+                setLiveNodeStates({});
+              }
+            }).catch(console.error);
+            refreshAgentSessions();
+          }
+        }
+      }
+    });
+    return cleanup;
+  }, [activeWorkflow, onRunInteractionEvent, refreshAgentSessions]);
+
   const onSelectRun = useCallback((id: string) => {
     setActiveRunId(id);
     setLiveNodeStates({});
+    setLogEvents([]);
+    setPendingInteractions([]);
     fetchRun(id).then((rec) => {
       const uiRun = apiRunToUiRun(rec);
       setHistoricNodeStates(uiRun.nodeStates ?? {});
@@ -554,9 +666,6 @@ export function App() {
       setRuns((prev) => prev.map((r) =>
         r.id === id ? { ...r, canvasSnapshot: uiRun.canvasSnapshot, nodeStates: uiRun.nodeStates, nodeOutputs: uiRun.nodeOutputs } : r,
       ));
-    }).catch(console.error);
-    fetchRunLogs(id).then((events) => {
-      setLogEvents(apiRunLogsToTimelineEvents(events));
     }).catch(console.error);
     fetchPausedNodes(id).then((paused) => {
       setPausedNode(paused[0] ?? null);
@@ -566,9 +675,15 @@ export function App() {
         setBarExpanded(true);
       }
     }).catch(console.error);
-  }, []);
+    // Subscribe: server replays historical log events + pending interactions on connect,
+    // then closes the stream immediately if the run is already terminated.
+    attachToRun(id);
+  }, [attachToRun]);
 
   const onExitRunView = useCallback(() => {
+    runUnsubscribeRef.current?.();
+    runUnsubscribeRef.current = undefined;
+    subscribedRunIdRef.current = undefined;
     setActiveRunId('');
     setHistoricNodeStates({});
     setLiveNodeStates({});
@@ -591,19 +706,6 @@ export function App() {
     setSelection(null);
     setPendingInteractions([]);
     setRunConfigOpen(true);
-  }, []);
-
-  const onRunInteractionEvent = useCallback((interaction: RunInteraction) => {
-    setPendingInteractions((prev) => {
-      if (interaction.status !== 'pending') {
-        return prev.filter((item) => item.id !== interaction.id);
-      }
-      const index = prev.findIndex((item) => item.id === interaction.id);
-      if (index < 0) return [...prev, interaction];
-      const next = [...prev];
-      next[index] = interaction;
-      return next;
-    });
   }, []);
 
   const onRespondToInteraction = useCallback(async (interaction: RunInteraction, response: unknown) => {
@@ -648,66 +750,7 @@ export function App() {
       setActiveRunId(runId);
       setBarExpanded(true);
 
-      const unsub = subscribeToRun(runId, (type: SseEventType, data: unknown) => {
-        if (type === 'node-status') {
-          const ev = data as {
-            nodeId: string;
-            status: string;
-            gateDecision?: { branchId: string; reason?: string };
-            gateBranches?: Array<{ branchId: string; label: string; traversalsUsed: number; maxTraversals: number; available: boolean }>;
-          };
-          setLiveNodeStates((prev) => ({ ...prev, [ev.nodeId]: ev.status as import('./types').RunState }));
-          if (ev.gateDecision) {
-            const decision = ev.gateDecision;
-            setLogEvents((prev) => [...prev.slice(-500), {
-              type: 'gate-decision',
-              nodeId: ev.nodeId,
-              branchId: decision.branchId,
-              reason: decision.reason,
-              branches: ev.gateBranches,
-            }]);
-          }
-          if (ev.status === 'paused') {
-            const node = nodesRef.current.find((candidate) => candidate.id === ev.nodeId);
-            if (node?.kind === 'step' && node.sessionId) {
-              setPausedNode({ runId, nodeId: node.id, specflowSessionId: node.sessionId, agentServerId: sessionsRef.current.find((session) => session.id === node.sessionId)?.agentServerId ?? '', pausedAt: new Date().toISOString() });
-              setPausedLines([]);
-              setActiveSessionId(node.sessionId);
-              setBarExpanded(true);
-            }
-          } else if (ev.status === 'success') {
-            setPausedNode((paused) => paused?.nodeId === ev.nodeId ? null : paused);
-          }
-        } else if (type === 'terminal') {
-          const ev = data as Extract<TimelineEvent, { type: 'terminal' }>;
-          setLogEvents((prev) => [...prev.slice(-500), { ...ev, type: 'terminal' }]);
-        } else if (type === 'session-update') {
-          const ev = data as { update: unknown; nodeId?: string; agentInvocationId?: string; sessionId?: string };
-          setLogEvents((prev) => [...prev.slice(-500), { ...ev, type: 'session-update' }]);
-        } else if (type === 'interaction-requested') {
-          onRunInteractionEvent(data as RunInteraction);
-        } else if (type === 'run-status') {
-          const ev = data as { status: string; error?: string };
-          const uiStatus = runStatusFromEvent(ev.status);
-          setRuns((prev) => prev.map((r) =>
-            r.id === runId ? { ...r, status: uiStatus } : r,
-          ));
-          if (uiStatus !== 'running') {
-            setPausedNode(null);
-            setPausedLines([]);
-            unsub();
-            fetchRuns(activeWorkflow).then((records) => {
-              setRuns(records.map(apiRunToUiRun));
-              const fresh = records.find((r) => r.id === runId);
-              if (fresh) {
-                setHistoricNodeStates(fresh.nodeStates);
-                setLiveNodeStates({});
-              }
-            }).catch(console.error);
-            refreshAgentSessions();
-          }
-        }
-      });
+      attachToRun(runId);
       fetchPausedNodes(runId).then((paused) => {
         if (paused[0]) {
           setPausedNode(paused[0]);
@@ -723,7 +766,7 @@ export function App() {
     } finally {
       setRunStartBusy(false);
     }
-  }, [activeWorkflow, onRunInteractionEvent, refreshAgentSessions, requestAuth]);
+  }, [activeWorkflow, attachToRun, requestAuth]);
 
   const onStartConfiguredRun = useCallback(async () => {
     setRunConfigBusy(true);
@@ -748,66 +791,7 @@ export function App() {
       setPausedLines([]);
       setBarExpanded(true);
 
-      const unsub = subscribeToRun(newRunId, (type: SseEventType, data: unknown) => {
-        if (type === 'node-status') {
-          const ev = data as {
-            nodeId: string;
-            status: string;
-            gateDecision?: { branchId: string; reason?: string };
-            gateBranches?: Array<{ branchId: string; label: string; traversalsUsed: number; maxTraversals: number; available: boolean }>;
-          };
-          setLiveNodeStates((prev) => ({ ...prev, [ev.nodeId]: ev.status as import('./types').RunState }));
-          if (ev.gateDecision) {
-            const decision = ev.gateDecision;
-            setLogEvents((prev) => [...prev.slice(-500), {
-              type: 'gate-decision',
-              nodeId: ev.nodeId,
-              branchId: decision.branchId,
-              reason: decision.reason,
-              branches: ev.gateBranches,
-            }]);
-          }
-          if (ev.status === 'paused') {
-            const node = nodesRef.current.find((candidate) => candidate.id === ev.nodeId);
-            if (node?.kind === 'step' && node.sessionId) {
-              setPausedNode({ runId: newRunId, nodeId: node.id, specflowSessionId: node.sessionId, agentServerId: sessionsRef.current.find((session) => session.id === node.sessionId)?.agentServerId ?? '', pausedAt: new Date().toISOString() });
-              setPausedLines([]);
-              setActiveSessionId(node.sessionId);
-              setBarExpanded(true);
-            }
-          } else if (ev.status === 'success') {
-            setPausedNode((paused) => paused?.nodeId === ev.nodeId ? null : paused);
-          }
-        } else if (type === 'terminal') {
-          const ev = data as Extract<TimelineEvent, { type: 'terminal' }>;
-          setLogEvents((prev) => [...prev.slice(-500), { ...ev, type: 'terminal' }]);
-        } else if (type === 'session-update') {
-          const ev = data as { update: unknown; nodeId?: string; agentInvocationId?: string; sessionId?: string };
-          setLogEvents((prev) => [...prev.slice(-500), { ...ev, type: 'session-update' }]);
-        } else if (type === 'interaction-requested') {
-          onRunInteractionEvent(data as RunInteraction);
-        } else if (type === 'run-status') {
-          const ev = data as { status: string; error?: string };
-          const uiStatus = runStatusFromEvent(ev.status);
-          setRuns((prev) => prev.map((r) =>
-            r.id === newRunId ? { ...r, status: uiStatus } : r,
-          ));
-          if (uiStatus !== 'running') {
-            setPausedNode(null);
-            setPausedLines([]);
-            unsub();
-            fetchRuns(activeWorkflow).then((records) => {
-              setRuns(records.map(apiRunToUiRun));
-              const fresh = records.find((r) => r.id === newRunId);
-              if (fresh) {
-                setHistoricNodeStates(fresh.nodeStates);
-                setLiveNodeStates({});
-              }
-            }).catch(console.error);
-            refreshAgentSessions();
-          }
-        }
-      });
+      attachToRun(newRunId);
       fetchPausedNodes(newRunId).then((paused) => {
         if (paused[0]) {
           setPausedNode(paused[0]);
@@ -823,7 +807,7 @@ export function App() {
     } finally {
       setRunStartBusy(false);
     }
-  }, [activeWorkflow, onRunInteractionEvent, refreshAgentSessions, requestAuth]);
+  }, [attachToRun, requestAuth]);
 
   const onDeleteRun = useCallback(async (id: string) => {
     if (!window.confirm('Delete this run?')) return;
@@ -861,7 +845,11 @@ export function App() {
     onSelectRun(runId);
   }, [onSelectRun]);
 
-  const onRestoreHistoricalSession = useCallback(async (session: AgentSessionRecord, mode: RestoreMode) => {
+  const onRestoreHistoricalSession = useCallback(async (
+    session: AgentSessionRecord,
+    mode: RestoreMode,
+    options?: { autoPrompt?: string },
+  ) => {
     restoreRequestTokenRef.current += 1;
     const requestToken = restoreRequestTokenRef.current;
     terminateConversation(conversationRef.current);
@@ -951,6 +939,23 @@ export function App() {
             restoreUnsubscribeRef.current?.();
             restoreUnsubscribeRef.current = undefined;
           }
+          if (event.status === 'success' && mode === 'continue' && options?.autoPrompt) {
+            const prompt = options.autoPrompt;
+            const restoreId = started.restoreId;
+            setConversation((current) => current?.session.id === session.id
+              ? { ...current, busy: true, events: [...current.events, { type: 'display-message', role: 'user', text: prompt }] }
+              : current);
+            void promptRestoredSession(restoreId, prompt)
+              .catch((promptError) => {
+                const message = promptError instanceof Error ? promptError.message : String(promptError);
+                setConversation((current) => current?.session.id === session.id
+                  ? { ...current, events: [...current.events, { type: 'display-message', role: 'system', text: `Auto-continuation failed: ${message}` }] }
+                  : current);
+              })
+              .finally(() => {
+                setConversation((current) => current?.session.id === session.id ? { ...current, busy: false } : current);
+              });
+          }
         }
       });
     } catch (err) {
@@ -961,6 +966,22 @@ export function App() {
         : current);
     }
   }, [onRunInteractionEvent, refreshAgentSessions, terminateConversation]);
+
+  const onResumeRun = useCallback(async (runId: string) => {
+    try {
+      const suggestion = await fetchResumableSession(runId);
+      if (!suggestion) {
+        window.alert('No resumable ACP session was recorded for this run. The run may have crashed before any agent step started.');
+        return;
+      }
+      const session = await fetchAgentSession(suggestion.agentSessionId);
+      setBarExpanded(true);
+      await onRestoreHistoricalSession(session, 'continue', { autoPrompt: suggestion.continuationPrompt });
+    } catch (err) {
+      console.error('Failed to resume run', err);
+      window.alert(`Resume failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }, [onRestoreHistoricalSession]);
 
   const onPromptConversation = useCallback(async (prompt: string) => {
     const active = conversation;
@@ -1069,6 +1090,7 @@ export function App() {
         onSelectRun={onSelectRun}
         onNewRun={onOpenNewRun}
         onRerunRun={handleRerun}
+        onResumeRun={onResumeRun}
         onDeleteRun={onDeleteRun}
         onCreateWorkflow={onCreateWorkflow}
       />

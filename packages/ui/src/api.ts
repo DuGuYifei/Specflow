@@ -266,6 +266,7 @@ export interface RunInteraction {
   createdAt: string;
   resolvedAt?: string;
   nodeId?: string;
+  nodeRunId?: string;
   edgeId?: string;
   agentInvocationId: string;
   agentId: string;
@@ -274,6 +275,8 @@ export interface RunInteraction {
   acpSessionId?: string;
   toolCall?: unknown;
   options?: Array<{ optionId: string; name?: string; kind?: string }>;
+  timeoutAt?: string;
+  timeoutAction?: 'accept' | 'deny';
   request?: unknown;
   resolution?: unknown;
 }
@@ -497,6 +500,23 @@ export async function cancelRestoredSession(restoreId: string): Promise<void> {
 export async function fetchPausedNodes(runId: string): Promise<PausedNodeSession[]> {
   const res = await fetch(`/api/runs/${runId}/paused-nodes`);
   if (!res.ok) throw new Error(await apiError(res, 'Failed to fetch paused nodes'));
+  return res.json();
+}
+
+export interface ResumableSessionSuggestion {
+  agentSessionId: string;
+  acpSessionId: string;
+  agentServerId: string;
+  nodeId?: string;
+  continuationPrompt: string;
+  canLoad: boolean;
+  canResume: boolean;
+}
+
+export async function fetchResumableSession(runId: string): Promise<ResumableSessionSuggestion | undefined> {
+  const res = await fetch(`/api/runs/${runId}/resumable-session`);
+  if (res.status === 404) return undefined;
+  if (!res.ok) throw new Error(await apiError(res, 'Failed to look up resumable session'));
   return res.json();
 }
 
