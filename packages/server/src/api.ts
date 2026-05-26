@@ -873,7 +873,18 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
         await saveRun(record, root);
         await upsertAgentSessionsFromRun(record, root);
       })
-      .catch(() => { /* handled via onRunStatus */ })
+      .catch(async () => {
+        // On cancel/error the .then path never runs, so agentSessions would
+        // stay empty even though incremental upserts populated agentInvocations
+        // with valid acpSessionIds. Rebuild explicitly so resume lookups don't
+        // have to fix this up after the fact.
+        try {
+          await logWrite;
+          await upsertAgentSessionsFromRun(record, root);
+        } catch (error) {
+          console.error("Failed to rebuild agent sessions after run failure", error);
+        }
+      })
       .finally(() => {
         runControllers.delete(runId);
       });
