@@ -37,6 +37,50 @@ describe("run cancellation API", () => {
     expect(record.status).toBe("cancelled");
     expect(record.errorMsg).toContain("cancelled");
   });
+
+  test("links a resumed run once and does not seed it with the source failure state", async () => {
+    const root = await mkdtemp(join(tmpdir(), "specflow-run-resume-"));
+    await upsertLocalAgentServer(root, "slow-headless", {
+      type: "headless",
+      command: process.execPath,
+      argsTemplate: ["-e", "setTimeout(() => {}, 30000)"],
+    });
+    await saveCanvas("wf-cancel", sampleCanvas(), root);
+
+    const handle = createApiHandler(createSpecflowBridge(), root);
+    const start = await handle(new Request("http://specflow.test/api/canvases/wf-cancel/run", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({}),
+    }));
+    const { runId: sourceRunId } = await start!.json() as { runId: string };
+    await handle(new Request(`http://specflow.test/api/runs/${sourceRunId}/cancel`, { method: "POST" }));
+    const cancelled = await eventuallyLoadRun(root, sourceRunId, "cancelled");
+    expect(cancelled.nodeStates["node-1"]).toBe("error");
+
+    const resume = await handle(new Request(`http://specflow.test/api/runs/${sourceRunId}/resume-workflow`, {
+      method: "POST",
+    }));
+    expect(resume?.status).toBe(200);
+    const { runId: continuedRunId } = await resume!.json() as { runId: string };
+
+    const source = await loadRun(sourceRunId, root);
+    const continued = await loadRun(continuedRunId, root);
+    expect(source.resumedByRunId).toBe(continuedRunId);
+    expect(continued.resumedFromRunId).toBe(sourceRunId);
+    expect(continued.nodeStates["node-1"]).not.toBe("error");
+
+    const secondResume = await handle(new Request(`http://specflow.test/api/runs/${sourceRunId}/resume-workflow`, {
+      method: "POST",
+    }));
+    expect(secondResume?.status).toBe(409);
+    expect(await secondResume!.json()).toMatchObject({ resumedByRunId: continuedRunId });
+
+    await handle(new Request(`http://specflow.test/api/runs/${continuedRunId}/cancel`, { method: "POST" }));
+    await eventuallyLoadRun(root, continuedRunId, "cancelled");
+    await handle(new Request(`http://specflow.test/api/runs/${continuedRunId}`, { method: "DELETE" }));
+    expect((await loadRun(sourceRunId, root)).resumedByRunId).toBeUndefined();
+  });
 });
 
 async function eventuallyLoadRun(root: string, runId: string, status: string) {

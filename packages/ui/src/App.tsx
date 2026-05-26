@@ -854,7 +854,13 @@ export function App() {
     if (!window.confirm(t('app.deleteRunConfirm'))) return;
     try {
       await apiDeleteRun(id);
-      setRuns((prev) => prev.filter((r) => r.id !== id));
+      setRuns((prev) => prev
+        .filter((run) => run.id !== id)
+        .map((run) => ({
+          ...run,
+          ...(run.resumedFromRunId === id ? { resumedFromRunId: undefined } : {}),
+          ...(run.resumedByRunId === id ? { resumedByRunId: undefined } : {}),
+        })));
       if (activeRunId === id) {
         setActiveRunId('');
         setHistoricNodeStates({});
@@ -1013,7 +1019,10 @@ export function App() {
       const { runId: newRunId } = await resumeWorkflowRun(sourceRunId);
       const initial = await fetchRun(newRunId);
       const placeholder = apiRunToUiRun(initial);
-      setRuns((prev) => [placeholder, ...prev]);
+      setRuns((prev) => [
+        placeholder,
+        ...prev.map((run) => run.id === sourceRunId ? { ...run, resumedByRunId: newRunId } : run),
+      ]);
       setActiveRunId(newRunId);
       setLiveNodeStates(initial.nodeStates ?? {});
       setHistoricNodeStates({});

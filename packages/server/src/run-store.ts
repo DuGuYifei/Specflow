@@ -31,6 +31,8 @@ export interface RunRecord {
   variableValues: Record<string, string>;
   /** Set when this run was created by resuming another run; identifies the source. */
   resumedFromRunId?: string;
+  /** Set on a source run once a continuation run has been created from it. */
+  resumedByRunId?: string;
 }
 
 function runsDir(root: string) {

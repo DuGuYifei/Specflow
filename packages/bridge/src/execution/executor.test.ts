@@ -639,6 +639,35 @@ describe("WorkflowExecutor", () => {
     expect(run.nodeRuns[0]?.status).toBe("failed");
   });
 
+  test("continues a previously cancelled node instead of repeating its original prompt", async () => {
+    const prompts: string[] = [];
+    const executor = new WorkflowExecutor({
+      agentRunner: createAgentRunner((request) => {
+        prompts.push(request.prompt);
+        return "continued output";
+      }),
+    });
+
+    const run = await executor.run(
+      createWorkflow({
+        nodes: [agentNode("source", "original prompt <specflow_input>")],
+        edges: [],
+      }),
+      "initial input",
+      {
+        resumeFrom: {
+          nodeStates: { source: "cancelled" },
+          nodeOutputs: {},
+          acpSessionByWorkflowSession: {},
+        },
+      },
+    );
+
+    expect(run.status).toBe("done");
+    expect(prompts[0]).toContain("[Workflow resume]");
+    expect(prompts[0]).not.toContain("original prompt");
+  });
+
   test("cancels a run waiting for a permission decision", async () => {
     const controller = new AbortController();
     const executor = new WorkflowExecutor({

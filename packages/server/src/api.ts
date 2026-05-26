@@ -456,6 +456,7 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
   const restoreControllers = new Map<string, AbortController>();
   const activeConversations = new Map<string, ActiveConversation>();
   const runControllers = new Map<string, AbortController>();
+  const resumeRequests = new Set<string>();
 
   // Reconcile any runs left "running" from a previous process — server restart
   // or kill -9 — so the UI shows the real state instead of a stuck spinner.
@@ -641,7 +642,7 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
     initialInput: string,
     variableValues: Record<string, string>,
     snapshot?: { agentflow: AgentFlowDoc; layout: CanvasLayoutDoc },
-    resumeFrom?: { state: WorkflowResumeState; sourceRunId: string },
+    resumeFrom?: { state: WorkflowResumeState; source: RunRecord },
   ): Promise<Response> {
     let agentflow: AgentFlowDoc;
     let layout: CanvasLayoutDoc;
@@ -696,18 +697,12 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
       initialNodeStates[n.id] = "pending";
     }
 
-    // Resumed runs inherit the prior node-state map so the canvas reflects
-    // progress immediately. Pending nodes still re-execute; completed nodes are
-    // short-circuited inside the executor via resumeFrom.
+    // A continued run inherits completed work only. Interrupted or failed work
+    // belongs to the source run and starts pending until this run re-enters it.
     const seededNodeStates: Record<string, RunState> = { ...initialNodeStates };
     if (resumeFrom) {
       for (const [nodeId, state] of Object.entries(resumeFrom.state.nodeStates)) {
         if (state === "done" || state === "success") seededNodeStates[nodeId] = "success";
-        else if (state === "failed" || state === "error") seededNodeStates[nodeId] = "error";
-        else if (state === "cancelled") seededNodeStates[nodeId] = "cancelled";
-        else if (state === "paused") seededNodeStates[nodeId] = "paused";
-        else if (state === "running") seededNodeStates[nodeId] = "running";
-        // "pending" and unknown: leave as initial "pending"
       }
     }
     const record: RunRecord = {
@@ -725,10 +720,14 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
       canvasSnapshot: layout,
       initialInput,
       variableValues,
-      ...(resumeFrom ? { resumedFromRunId: resumeFrom.sourceRunId } : {}),
+      ...(resumeFrom ? { resumedFromRunId: resumeFrom.source.id } : {}),
     };
 
     await saveRun(record, root);
+    if (resumeFrom) {
+      resumeFrom.source.resumedByRunId = runId;
+      await saveRun(resumeFrom.source, root);
+    }
     await appendRunLogEvent(root, {
       type: "run_status",
       runId,
@@ -1423,6 +1422,34 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
         }
       }
       if (request.method === "DELETE") {
+        let deleted: RunRecord | undefined;
+        try {
+          deleted = await loadRun(id, root);
+        } catch {
+          // Deleting an already absent run remains idempotent.
+        }
+        if (deleted?.resumedFromRunId) {
+          try {
+            const source = await loadRun(deleted.resumedFromRunId, root);
+            if (source.resumedByRunId === deleted.id) {
+              delete source.resumedByRunId;
+              await saveRun(source, root);
+            }
+          } catch {
+            // A missing source run does not prevent deletion.
+          }
+        }
+        if (deleted?.resumedByRunId) {
+          try {
+            const continuation = await loadRun(deleted.resumedByRunId, root);
+            if (continuation.resumedFromRunId === deleted.id) {
+              delete continuation.resumedFromRunId;
+              await saveRun(continuation, root);
+            }
+          } catch {
+            // A missing continuation run does not prevent deletion.
+          }
+        }
         await deleteRun(id, root);
         await deleteRunLog(root, id);
         return Response.json({ ok: true });
@@ -1743,19 +1770,36 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
       if (source.status === "running") {
         return Response.json({ error: "Cannot resume a run that is still running" }, { status: 409 });
       }
+      if (source.status !== "cancelled" && source.status !== "error") {
+        return Response.json({ error: "Only cancelled or failed runs can be resumed" }, { status: 409 });
+      }
+      if (source.resumedByRunId) {
+        return Response.json({
+          error: "This run has already been resumed",
+          resumedByRunId: source.resumedByRunId,
+        }, { status: 409 });
+      }
+      if (resumeRequests.has(source.id)) {
+        return Response.json({ error: "A resume for this run is already being started" }, { status: 409 });
+      }
       const layout = source.canvasSnapshot;
       const agentflow = source.agentflowSnapshot;
       if (!agentflow || !layout) {
         return Response.json({ error: "Run snapshot is missing; cannot resume" }, { status: 409 });
       }
-      const state = await buildResumeStateFromRun(root, source);
-      return handleRun(
-        source.workflowId,
-        source.initialInput,
-        source.variableValues,
-        { agentflow, layout },
-        { state, sourceRunId: source.id },
-      );
+      resumeRequests.add(source.id);
+      try {
+        const state = await buildResumeStateFromRun(root, source);
+        return await handleRun(
+          source.workflowId,
+          source.initialInput,
+          source.variableValues,
+          { agentflow, layout },
+          { state, source },
+        );
+      } finally {
+        resumeRequests.delete(source.id);
+      }
     }
 
     // POST /api/runs/:id/rerun — re-execute the snapshot of an existing run

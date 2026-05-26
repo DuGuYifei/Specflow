@@ -241,7 +241,7 @@ export class WorkflowExecutor {
 
       // Resume bootstrap: classify each node by its prior status.
       //   - "done"/"success"   → use persisted output, fire downstream edges without re-invoking agent
-      //   - "running"/"paused"/"failed"/"error"/"cancelled" with output → re-invoke with continuation prompt
+      //   - "running"/"paused"/"failed"/"error"/"cancelled" → re-invoke with continuation prompt
       //   - anything else      → execute normally
       const resumeFrom = options.resumeFrom;
       const completedFromResume = new Set<string>();
@@ -256,10 +256,10 @@ export class WorkflowExecutor {
             } else {
               interruptedFromResume.add(nodeId);
             }
-          } else if (state === "running" || state === "paused" || state === "failed" || state === "error") {
+          } else if (state === "running" || state === "paused" || state === "failed" || state === "error" || state === "cancelled") {
             interruptedFromResume.add(nodeId);
           }
-          // "cancelled" / "pending" / unknown → fall through to normal execution
+          // "pending" / unknown → fall through to normal execution
         }
         // Re-seed already-used branch traversal counts so gate loop bounds carry across resumes.
         for (const [key, count] of Object.entries(resumeFrom.branchTraversals ?? {})) {

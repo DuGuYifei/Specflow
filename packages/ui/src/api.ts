@@ -47,6 +47,8 @@ export interface ApiRunRecord {
   canvasSnapshot?: CanvasLayoutDoc | CanvasDoc;
   initialInput?: string;
   variableValues?: Record<string, string>;
+  resumedFromRunId?: string;
+  resumedByRunId?: string;
 }
 
 export interface AgentSessionInvocationRef {
@@ -689,6 +691,8 @@ export function apiRunToUiRun(rec: ApiRunRecord): Run {
     nodeStates: rec.nodeStates,
     initialInput: rec.initialInput,
     variableValues: rec.variableValues,
+    resumedFromRunId: rec.resumedFromRunId,
+    resumedByRunId: rec.resumedByRunId,
   };
 }
 

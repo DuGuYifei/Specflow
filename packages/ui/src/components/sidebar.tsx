@@ -22,6 +22,7 @@ export function Sidebar({ workflows, runs, activeWorkflow, activeRun, onSelectWo
   const [query, setQuery] = useState('');
   const searchRef = useRef<HTMLInputElement>(null);
   const wf = workflows.find((w) => w.id === activeWorkflow) || workflows[0];
+  const runLabelById = new Map(runs.map((run) => [run.id, run.label]));
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -104,7 +105,7 @@ export function Sidebar({ workflows, runs, activeWorkflow, activeRun, onSelectWo
                 <span className={`status-dot ${r.status}`} />
                 <span className="label">{r.label}</span>
                 <div className="actions" onClick={(e) => e.stopPropagation()}>
-                  {onResumeRun && (r.status === 'cancelled' || r.status === 'error') && (
+                  {onResumeRun && !r.resumedByRunId && (r.status === 'cancelled' || r.status === 'error') && (
                     <button className="btn sm icon" title={t('sidebar.resumeSessionTitle')} onClick={() => onResumeRun(r.id)}>
                       <Icon name="play-circle" size={11} />
                     </button>
@@ -118,6 +119,16 @@ export function Sidebar({ workflows, runs, activeWorkflow, activeRun, onSelectWo
                 </div>
               </div>
               <div className="ticket">{r.ticket}</div>
+              {r.resumedFromRunId && (
+                <button className="run-link" onClick={(event) => { event.stopPropagation(); onSelectRun(r.resumedFromRunId!); }}>
+                  Resumed from {runLabelById.get(r.resumedFromRunId) ?? r.resumedFromRunId}
+                </button>
+              )}
+              {r.resumedByRunId && (
+                <button className="run-link" onClick={(event) => { event.stopPropagation(); onSelectRun(r.resumedByRunId!); }}>
+                  Continued as {runLabelById.get(r.resumedByRunId) ?? r.resumedByRunId}
+                </button>
+              )}
               <div className="meta-row">
                 <span>{r.time}</span>
                 <span>·</span>

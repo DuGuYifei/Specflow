@@ -55,6 +55,8 @@ export interface Run {
   nodeStates?: RunStateMap;
   initialInput?: string;
   variableValues?: Record<string, string>;
+  resumedFromRunId?: string;
+  resumedByRunId?: string;
 }
 
 export interface LogLine {
