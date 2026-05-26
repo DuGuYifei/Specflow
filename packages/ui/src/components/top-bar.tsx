@@ -36,8 +36,8 @@ export function TopBar({
   return (
     <div className="topbar">
       <div className="brand">
-        <span className="brand-mark" />
-        <span>specflow</span>
+        <img className="brand-mark" src="/aflow.png" alt="Aflow" />
+        <span>Aflow</span>
       </div>
       <div className="crumbs">
         <span>Acme</span><span className="sep">/</span>

@@ -1,4 +1,4 @@
-/* specflow — refined minimal, warm-cream */
+/* Aflow — refined minimal, warm-cream */
 :root {
   --bg: #f6f3ec;            /* warm cream canvas */
   --bg-panel: #fbfaf6;      /* off-white surfaces */
@@ -89,18 +89,13 @@ input, textarea, select { font-family: inherit; font-size: inherit; color: inher
   font-size: 14px;
 }
 .brand-mark {
-  width: 18px; height: 18px;
-  border-radius: 5px;
-  background: var(--ink);
-  position: relative;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
+  box-shadow: var(--shadow-sm);
 }
-.brand-mark::before, .brand-mark::after {
-  content: '';
-  position: absolute;
-  background: var(--bg);
-}
-.brand-mark::before { left: 4px; top: 4px; width: 4px; height: 4px; border-radius: 1px; }
-.brand-mark::after { left: 10px; top: 10px; width: 4px; height: 4px; border-radius: 1px; box-shadow: -6px 0 0 var(--bg), 0 -6px 0 var(--bg); }
 
 .crumbs { display: flex; align-items: center; gap: 8px; color: var(--ink-3); font-size: 12px; }
 .crumbs .sep { color: var(--ink-4); }

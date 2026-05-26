@@ -1,15 +1,15 @@
 {
-  "name": "Specflow",
-  "short_name": "specflow",
+  "name": "Aflow",
+  "short_name": "Aflow",
   "icons": [
     {
-      "src": "/web-app-manifest-192x192.png",
+      "src": "/aflow.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "maskable"
     },
     {
-      "src": "/web-app-manifest-512x512.png",
+      "src": "/aflow.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
