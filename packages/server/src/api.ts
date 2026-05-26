@@ -1579,10 +1579,13 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
         const record = await loadRun(id, root);
         // Pre-fix runs that crashed mid-flight never persisted their invocations,
         // and invocations that reused an existing ACP session may have been
-        // written without an acpSessionId. Either case: rebuild from the log
+        // written without an acpSessionId. The session index (record.agentSessions)
+        // may also be stale from an earlier partial repair. Rebuild from the log
         // and merge missing fields back into the record.
         const empty = !record.agentInvocations?.length;
         const needsEnrichment = !empty && record.agentInvocations.some((inv) => !inv.acpSessionId);
+        const coveredInvocations = new Set(record.agentSessions?.flatMap((s) => s.invocationIds ?? []) ?? []);
+        const sessionsOutOfSync = !empty && record.agentInvocations.some((inv) => !coveredInvocations.has(inv.id));
         if (empty || needsEnrichment) {
           const reconstructed = await reconstructInvocationsFromRunLog(root, record);
           if (reconstructed.length > 0) {
@@ -1607,6 +1610,10 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
             await saveRun(record, root);
             await upsertAgentSessionsFromRun(record, root);
           }
+        } else if (sessionsOutOfSync) {
+          // Invocations are healthy but the session index is stale (e.g. from
+          // a partial repair on a previous server version). Just re-derive.
+          await upsertAgentSessionsFromRun(record, root);
         }
         const suggested = pickResumableInvocation(record);
         if (!suggested) {
