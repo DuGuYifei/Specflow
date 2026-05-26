@@ -12,7 +12,7 @@ import {
   saveCanvas,
   deleteCanvas,
 } from "./canvas-store";
-import { formatDuration, listRuns, loadRun, saveRun, deleteRun, type RunRecord, type RunState } from "./run-store";
+import { formatDuration, listRuns, loadRun, reconcileInterruptedRuns, saveRun, deleteRun, type RunRecord, type RunState } from "./run-store";
 import {
   listAgentSessions,
   loadAgentSession,
@@ -279,6 +279,97 @@ function summarizeElicitationResolution(resolution: unknown): unknown {
   };
 }
 
+interface LifecyclePayload {
+  type: string;
+  at: string;
+  sessionId?: string;
+  parentSessionId?: string;
+  stopReason?: string;
+  error?: string;
+  [key: string]: unknown;
+}
+
+function pickResumableInvocation(record: RunRecord): RunRecord["agentInvocations"][number] | undefined {
+  if (!record.agentInvocations?.length) return undefined;
+  const sortByStartDesc = [...record.agentInvocations].sort((a, b) => b.startedAt.localeCompare(a.startedAt));
+  // Prefer an invocation that was still running — that's the one mid-flight when interrupted.
+  const stillRunning = sortByStartDesc.find((inv) => inv.status === "running");
+  if (stillRunning) return stillRunning;
+  // Otherwise the most recently finished invocation; the user can prompt it to continue the flow.
+  return sortByStartDesc[0];
+}
+
+function buildContinuationPrompt(input: {
+  nodeTitle?: string;
+  invocationStatus: "running" | "done" | "failed";
+  runStatus: "running" | "success" | "error" | "cancelled";
+  errorMsg?: string;
+}): string {
+  const node = input.nodeTitle ? `"${input.nodeTitle}"` : "the last step";
+  const lines: string[] = [];
+  if (input.invocationStatus === "running") {
+    lines.push(`Specflow detected that the previous run was interrupted while ${node} was still in progress.`);
+  } else if (input.runStatus === "cancelled") {
+    lines.push(`Specflow detected that the previous run was cancelled after ${node} completed.`);
+  } else if (input.runStatus === "error") {
+    lines.push(`Specflow detected that the previous run failed after ${node} completed${input.errorMsg ? `: ${input.errorMsg}` : ""}.`);
+  } else {
+    lines.push(`Specflow is resuming the conversation that backed ${node}.`);
+  }
+  lines.push(
+    "Before doing more work, briefly summarize what you completed in your last actions and what (if anything) was left undone. " +
+    "Then, if it makes sense, finish the outstanding work. If you cannot tell what to do, ask me a clarifying question instead of guessing.",
+  );
+  return lines.join("\n\n");
+}
+
+function upsertRunInvocation(record: RunRecord, input: {
+  id: string;
+  runId: string;
+  nodeRunId?: string;
+  nodeId?: string;
+  edgeId?: string;
+  agentId: string;
+  agentServerId: string;
+  lifecycle: LifecyclePayload;
+}): void {
+  const existingIdx = record.agentInvocations.findIndex((inv) => inv.id === input.id);
+  const at = input.lifecycle.at ?? new Date().toISOString();
+  const lifecycleSessionId = typeof input.lifecycle.sessionId === "string" ? input.lifecycle.sessionId : undefined;
+  const parentSessionId = typeof input.lifecycle.parentSessionId === "string" ? input.lifecycle.parentSessionId : undefined;
+  const error = typeof input.lifecycle.error === "string" ? input.lifecycle.error : undefined;
+
+  if (existingIdx < 0) {
+    record.agentInvocations.push({
+      id: input.id,
+      runId: input.runId,
+      nodeRunId: input.nodeRunId,
+      nodeId: input.nodeId,
+      edgeId: input.edgeId,
+      agentId: input.agentId,
+      agentServerId: input.agentServerId,
+      acpSessionId: lifecycleSessionId,
+      parentSessionId,
+      prompt: "",
+      status: "running",
+      startedAt: at,
+    });
+    return;
+  }
+  const existing = record.agentInvocations[existingIdx]!;
+  if (lifecycleSessionId && !existing.acpSessionId) existing.acpSessionId = lifecycleSessionId;
+  if (parentSessionId && !existing.parentSessionId) existing.parentSessionId = parentSessionId;
+  if (input.lifecycle.type === "session_closed" || input.lifecycle.type === "prompt_stopped") {
+    if (existing.status === "running") existing.status = "done";
+    if (!existing.completedAt) existing.completedAt = at;
+  }
+  if (input.lifecycle.type === "prompt_failed") {
+    existing.status = "failed";
+    existing.completedAt = at;
+    if (error) existing.error = error;
+  }
+}
+
 // ── API handler factory ───────────────────────────────────────────────────────
 
 export function createApiHandler(bridge: SpecflowBridge, root: string) {
@@ -287,6 +378,17 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
   const restoreControllers = new Map<string, AbortController>();
   const activeConversations = new Map<string, ActiveConversation>();
   const runControllers = new Map<string, AbortController>();
+
+  // Reconcile any runs left "running" from a previous process — server restart
+  // or kill -9 — so the UI shows the real state instead of a stuck spinner.
+  // The ACP session itself can still be resumed via the agent-session restore flow.
+  void reconcileInterruptedRuns(root, "Server restart detected; run was interrupted before completion.")
+    .then((ids) => {
+      if (ids.length > 0) {
+        console.log(`[specflow] reconciled ${ids.length} interrupted run(s):`, ids.join(", "));
+      }
+    })
+    .catch((error) => console.error("Failed to reconcile interrupted runs", error));
 
   async function closeActiveConversation(active: ActiveConversation, reason = "Restored conversation closed."): Promise<void> {
     active.promptController?.abort();
@@ -375,6 +477,14 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
 
         enqueue("hello", { runId });
 
+        let priorRunStatus: string | undefined;
+        try {
+          const prior = await loadRun(runId, root);
+          priorRunStatus = prior.status;
+        } catch {
+          // Run may not exist yet; subscribe optimistically.
+        }
+
         for (const event of await listRunLogEvents(root, runId)) {
           if (event.type === "terminal") {
             enqueue("terminal", {
@@ -386,13 +496,12 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
             });
           } else if (event.type === "session_update") {
             enqueue("session-update", { ...event, replay: true });
-          } else if (event.type === "node_status" && event.gateDecision) {
+          } else if (event.type === "node_status") {
             enqueue("node-status", {
               nodeId: event.nodeId,
               status: event.status === "done" ? "success" : event.status,
               runId,
-              gateDecision: event.gateDecision,
-              gateBranches: event.gateBranches,
+              ...(event.gateDecision ? { gateDecision: event.gateDecision, gateBranches: event.gateBranches } : {}),
               replay: true,
             });
           }
@@ -416,6 +525,13 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
 
         for (const interaction of bridge.interactions.list({ runId, status: "pending" })) {
           enqueue("interaction-requested", interaction);
+        }
+
+        if (priorRunStatus && priorRunStatus !== "running") {
+          enqueue("run-status", { runId, status: priorRunStatus, replay: true });
+          setTimeout(() => {
+            try { controller.close(); } catch { /* already closed */ }
+          }, 50);
         }
 
         cleanup = () => {
@@ -523,6 +639,8 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
 
     let lastTermSeq = 0;
     let currentNodeId: string | undefined;
+    const invocationNodeMap = new Map<string, string>();
+    const invocationSessionMap = new Map<string, string>();
     let logWrite = Promise.resolve();
     const appendLog = (event: Parameters<typeof appendRunLogEvent>[1]) => {
       logWrite = logWrite
@@ -540,13 +658,19 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
       for (const te of all) {
         if (te.sequence > lastTermSeq) {
           lastTermSeq = te.sequence;
-          const event = { type: "terminal" as const, ...te, nodeId: currentNodeId };
+          const attributedNodeId = (te.agentInvocationId && invocationNodeMap.get(te.agentInvocationId))
+            ?? currentNodeId;
+          const specflowSessionId = te.agentInvocationId
+            ? invocationSessionMap.get(te.agentInvocationId)
+            : undefined;
+          const event = { type: "terminal" as const, ...te, nodeId: attributedNodeId };
           appendLog(event);
           bus.emit(`${runId}:term`, {
             chunk: te.chunk,
             stream: te.stream,
-            nodeId: currentNodeId,
+            nodeId: attributedNodeId,
             agentInvocationId: te.agentInvocationId,
+            specflowSessionId,
           });
         }
       }
@@ -616,6 +740,10 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
     const executor = new WorkflowExecutor({
       cwd: root,
       terminalEvents: bridge.terminalEvents,
+      agentServerSettingsResolver: async (agentServerId) => {
+        const entries = await bridge.listAgentServers(root);
+        return entries.find((entry) => entry.id === agentServerId)?.settings;
+      },
       onNodeStatus,
       onRunStatus,
       onAgentLifecycle: (event) => {
@@ -629,6 +757,28 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
           agentServerId,
           ...lifecycle
         } = event;
+        if (agentInvocationId && nodeId) {
+          invocationNodeMap.set(agentInvocationId, nodeId);
+          const node = agentflow.nodes.find((candidate) => candidate.id === nodeId);
+          if (node?.kind === "step" && node.sessionId) {
+            invocationSessionMap.set(agentInvocationId, node.sessionId);
+          }
+        }
+        // Persist invocation rows incrementally so an unexpected shutdown
+        // still leaves enough metadata to drive a "resume run" action later.
+        if (agentInvocationId) {
+          upsertRunInvocation(record, {
+            id: agentInvocationId,
+            runId,
+            nodeRunId,
+            nodeId,
+            edgeId,
+            agentId,
+            agentServerId,
+            lifecycle,
+          });
+          void saveRun(record, root);
+        }
         appendLog({
           type: "agent_lifecycle",
           runId,
@@ -642,6 +792,9 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
         });
       },
       onAgentSessionUpdate: (event) => {
+        if (event.agentInvocationId && event.nodeId) {
+          invocationNodeMap.set(event.agentInvocationId, event.nodeId);
+        }
         const persisted = { type: "session_update" as const, ...event };
         appendLog(persisted);
         bus.emit(`${runId}:session-update`, persisted);
@@ -803,7 +956,11 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
         });
       },
       onPermissionRequest: mode === "continue"
-        ? (request) => bridge.interactions.requestPermission(interactionContext, request)
+        ? async (request) => {
+            const entries = await bridge.listAgentServers(root);
+            const policy = entries.find((entry) => entry.id === session.agentServerId)?.settings.permissionPolicy;
+            return bridge.interactions.requestPermission(interactionContext, request, policy);
+          }
         : undefined,
       onElicitationRequest: mode === "continue"
         ? (request) => bridge.interactions.requestElicitation(interactionContext, request)
@@ -1332,6 +1489,46 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         const status = message.includes("Unknown interaction") ? 404 : 409;
+        return Response.json({ error: message }, { status });
+      }
+    }
+
+    // GET /api/runs/:id/resumable-session — find the agent session most appropriate for resuming
+    const resumableMatch = pathname.match(/^\/api\/runs\/([^/]+)\/resumable-session$/);
+    if (resumableMatch && request.method === "GET") {
+      const id = resumableMatch[1];
+      try {
+        const record = await loadRun(id, root);
+        const suggested = pickResumableInvocation(record);
+        if (!suggested) {
+          return Response.json({ error: "No resumable agent session found for this run" }, { status: 404 });
+        }
+        const sessions = await listAgentSessions(root, { workflowId: record.workflowId });
+        const session = sessions.find((candidate) => candidate.invocationIds.includes(suggested.id));
+        if (!session) {
+          return Response.json({ error: "Agent session record is missing for the last incomplete step" }, { status: 404 });
+        }
+        const node = suggested.nodeId
+          ? record.agentflowSnapshot.nodes.find((n) => n.id === suggested.nodeId)
+          : undefined;
+        const continuationPrompt = buildContinuationPrompt({
+          nodeTitle: node && "title" in node ? node.title : suggested.nodeId,
+          invocationStatus: suggested.status,
+          runStatus: record.status,
+          errorMsg: record.errorMsg,
+        });
+        return Response.json({
+          agentSessionId: session.id,
+          acpSessionId: session.acpSessionId,
+          agentServerId: session.agentServerId,
+          nodeId: suggested.nodeId,
+          continuationPrompt,
+          canLoad: session.acpSupportsLoadSession,
+          canResume: session.acpSupportsResumeSession,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        const status = message.includes("not found") ? 404 : 500;
         return Response.json({ error: message }, { status });
       }
     }

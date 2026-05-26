@@ -93,6 +93,31 @@ export async function saveRun(record: RunRecord, root: string): Promise<void> {
   await writeFile(path, `${JSON.stringify(record, null, 2)}\n`, "utf8");
 }
 
+/**
+ * Mark any run records left in "running" state as cancelled. Called on server
+ * startup so a previous crash or kill -9 doesn't leave runs stuck pretending
+ * to be live. The ACP session itself may still be recoverable via the agent
+ * session restore flow.
+ */
+export async function reconcileInterruptedRuns(root: string, reason: string): Promise<string[]> {
+  const runs = await listRuns(undefined, root);
+  const interrupted: string[] = [];
+  const completedAt = new Date().toISOString();
+  for (const rec of runs) {
+    if (rec.status !== "running") continue;
+    rec.status = "cancelled";
+    rec.errorMsg = reason;
+    rec.completedAt = completedAt;
+    rec.duration = formatDuration(rec.startedAt, completedAt);
+    for (const [nodeId, state] of Object.entries(rec.nodeStates)) {
+      if (state === "running") rec.nodeStates[nodeId] = "cancelled";
+    }
+    await saveRun(rec, root);
+    interrupted.push(rec.id);
+  }
+  return interrupted;
+}
+
 export async function deleteRun(id: string, root: string): Promise<void> {
   try {
     await unlink(runPath(id, root));
