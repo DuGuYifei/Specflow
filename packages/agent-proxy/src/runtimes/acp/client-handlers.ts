@@ -7,9 +7,11 @@ import type {
   AgentPermissionResult,
   AgentSessionUpdateEvent,
   AgentTerminalEvent,
+  PermissionPolicy,
 } from "../../types";
 import { assertInsideAllowedRoots } from "../../util";
 import { handleSessionUpdate } from "./events";
+import { resolveByPolicy } from "./permission-policy";
 
 interface TerminalRecord {
   proc: Bun.Subprocess<"ignore", "pipe", "pipe">;
@@ -24,6 +26,7 @@ export class AcpClientHandlers implements acp.Client {
   readonly #cwd: string;
   readonly #allowedRoots: string[];
   readonly #terminalEnabled: boolean;
+  readonly #permissionPolicy: PermissionPolicy | undefined;
   readonly #terminals = new Map<string, TerminalRecord>();
   readonly #appendOutput: (text: string) => void;
   readonly #onTerminalEvent: ((event: AgentTerminalEvent) => void) | undefined;
@@ -38,6 +41,7 @@ export class AcpClientHandlers implements acp.Client {
     cwd: string;
     additionalDirectories?: string[];
     terminalEnabled?: boolean;
+    permissionPolicy?: PermissionPolicy;
     appendOutput: (text: string) => void;
     onTerminalEvent?: (event: AgentTerminalEvent) => void;
     onPermissionRequest?: (request: AgentPermissionRequest) => Promise<AgentPermissionResult>;
@@ -50,6 +54,7 @@ export class AcpClientHandlers implements acp.Client {
     this.#cwd = input.cwd;
     this.#allowedRoots = [input.cwd, ...(input.additionalDirectories ?? [])];
     this.#terminalEnabled = input.terminalEnabled ?? true;
+    this.#permissionPolicy = input.permissionPolicy;
     this.#appendOutput = input.appendOutput;
     this.#onTerminalEvent = input.onTerminalEvent;
     this.#onPermissionRequest = input.onPermissionRequest;
@@ -71,9 +76,11 @@ export class AcpClientHandlers implements acp.Client {
       })),
       raw: params,
     };
-    const result = this.#onPermissionRequest
-      ? await this.#onPermissionRequest(request)
-      : { outcome: "cancelled" } satisfies AgentPermissionResult;
+    const policyShortCircuit = resolveByPolicy(request.options, this.#permissionPolicy);
+    const result = policyShortCircuit
+      ?? (this.#onPermissionRequest
+        ? await this.#onPermissionRequest(request)
+        : { outcome: "cancelled" } satisfies AgentPermissionResult);
     if (result.outcome === "cancelled") {
       this.#onTerminalEvent?.({ stream: "system", chunk: "ACP permission request cancelled.\n" });
       return { outcome: { outcome: "cancelled" } };

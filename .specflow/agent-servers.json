@@ -5,13 +5,23 @@
       "registry_id": "codex-acp",
       "default_mode": "auto",
       "default_config_options": {},
-      "env": {}
+      "env": {},
+      "permission_policy": {
+        "mode": "prompt",
+        "prompt_timeout_ms": 600000,
+        "on_timeout": "accept"
+      }
     },
     "claude-acp": {
       "type": "registry",
       "registry_id": "claude-acp",
       "default_config_options": {},
-      "env": {}
+      "env": {},
+      "permission_policy": {
+        "mode": "prompt",
+        "prompt_timeout_ms": 600000,
+        "on_timeout": "accept"
+      }
     }
   }
 }

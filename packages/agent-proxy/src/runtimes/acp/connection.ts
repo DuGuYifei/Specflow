@@ -61,6 +61,7 @@ export class AcpAgentClient {
       cwd: options.cwd,
       additionalDirectories: options.additionalDirectories,
       terminalEnabled: options.resolved.settings.terminal?.enabled ?? true,
+      permissionPolicy: options.resolved.settings.permissionPolicy,
       appendOutput: options.appendOutput,
       onTerminalEvent: options.onTerminalEvent,
       onPermissionRequest: options.request.onPermissionRequest,

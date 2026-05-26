@@ -87,6 +87,7 @@ function normalizeConfig(config: AgentServerConfigFile): AgentServerConfigFile {
             defaultConfigOptions: raw.defaultConfigOptions ?? raw.default_config_options,
             additionalDirectories: raw.additionalDirectories ?? raw.additional_directories,
             terminal: normalizeTerminalPolicy(raw.terminal),
+            permissionPolicy: normalizePermissionPolicy(raw.permissionPolicy ?? raw.permission_policy),
           } satisfies AgentServerSettings];
         }
         if (value.type === "headless") {
@@ -100,6 +101,7 @@ function normalizeConfig(config: AgentServerConfigFile): AgentServerConfigFile {
             defaultConfigOptions: raw.defaultConfigOptions ?? raw.default_config_options,
             additionalDirectories: raw.additionalDirectories ?? raw.additional_directories,
             terminal: normalizeTerminalPolicy(raw.terminal),
+            permissionPolicy: normalizePermissionPolicy(raw.permissionPolicy ?? raw.permission_policy),
           } satisfies AgentServerSettings];
         }
         const raw = value as AgentServerSettings & CommonRawSettings;
@@ -110,6 +112,7 @@ function normalizeConfig(config: AgentServerConfigFile): AgentServerConfigFile {
           defaultConfigOptions: raw.defaultConfigOptions ?? raw.default_config_options,
           additionalDirectories: raw.additionalDirectories ?? raw.additional_directories,
           terminal: normalizeTerminalPolicy(raw.terminal),
+          permissionPolicy: normalizePermissionPolicy(raw.permissionPolicy ?? raw.permission_policy),
         } as AgentServerSettings];
       }),
     );
@@ -128,11 +131,38 @@ function normalizeTerminalPolicy(value: unknown): AgentServerSettings["terminal"
   };
 }
 
+function normalizePermissionPolicy(value: unknown): AgentServerSettings["permissionPolicy"] {
+  if (!value || typeof value !== "object") return undefined;
+  const raw = value as {
+    mode?: unknown;
+    promptTimeoutMs?: unknown;
+    prompt_timeout_ms?: unknown;
+    onTimeout?: unknown;
+    on_timeout?: unknown;
+  };
+  const mode = raw.mode === "auto_accept" || raw.mode === "auto_deny" || raw.mode === "prompt"
+    ? raw.mode
+    : "prompt";
+  const timeoutRaw = typeof raw.promptTimeoutMs === "number" ? raw.promptTimeoutMs
+    : typeof raw.prompt_timeout_ms === "number" ? raw.prompt_timeout_ms
+    : undefined;
+  const onTimeout = raw.onTimeout === "accept" || raw.onTimeout === "deny" ? raw.onTimeout
+    : raw.on_timeout === "accept" || raw.on_timeout === "deny" ? raw.on_timeout
+    : undefined;
+  return {
+    mode,
+    ...(typeof timeoutRaw === "number" && timeoutRaw > 0 ? { promptTimeoutMs: timeoutRaw } : {}),
+    ...(onTimeout ? { onTimeout } : {}),
+  };
+}
+
 type CommonRawSettings = {
   default_mode?: string;
   default_model?: string;
   default_config_options?: Record<string, string | boolean>;
   additional_directories?: string[];
+  permission_policy?: unknown;
+  permissionPolicy?: unknown;
 };
 
 type RegistryRawSettings = Extract<AgentServerSettings, { type: "registry" }> & {

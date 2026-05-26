@@ -21,6 +21,15 @@ export interface AgentServerCommand {
   env?: Record<string, string>;
 }
 
+export type PermissionPolicyMode = "prompt" | "auto_accept" | "auto_deny";
+export type PermissionTimeoutAction = "accept" | "deny";
+
+export interface PermissionPolicy {
+  mode: PermissionPolicyMode;
+  promptTimeoutMs?: number;
+  onTimeout?: PermissionTimeoutAction;
+}
+
 interface BaseAgentServerSettings {
   defaultMode?: string | null;
   defaultModel?: string | null;
@@ -31,6 +40,7 @@ interface BaseAgentServerSettings {
     enabled?: boolean;
     auth?: boolean;
   };
+  permissionPolicy?: PermissionPolicy;
 }
 
 export interface CustomAcpAgentServerSettings extends BaseAgentServerSettings {
