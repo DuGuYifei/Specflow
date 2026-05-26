@@ -523,8 +523,8 @@ edges:
     outputTag: blueprint_findings
     handoffPrompt: Forward the rejected blueprint audit and required corrections for
       a complete design revision. The designer is in a separate session; include
-      the complete actionable audit findings and required populated fields rather
-      than referring to the review conversation.
+      the complete actionable audit findings and required populated fields
+      rather than referring to the review conversation.
     branch: revise
     maxTraversals: 2
   - from: revise-blueprint
@@ -556,8 +556,8 @@ edges:
     outputTag: polish_report
     handoffPrompt: Forward the complete polished implementation report for release
       verification. The reviewer is in a separate session; include all changed
-      files, validation results, constraints and evidence needed to judge release
-      readiness without referring to prior messages.
+      files, validation results, constraints and evidence needed to judge
+      release readiness without referring to prior messages.
   - from: verify-release
     to: release-decision
   - from: release-decision

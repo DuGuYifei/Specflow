@@ -67,41 +67,41 @@ export interface LogLine {
 
 export type TimelineEvent =
   | {
-      type: 'terminal';
-      chunk: string;
-      nodeId?: string;
-      agentInvocationId?: string;
-      specflowSessionId?: string;
-      stream?: 'stdout' | 'stderr' | 'system';
-      localContext?: boolean;
-    }
+    type: 'terminal';
+    chunk: string;
+    nodeId?: string;
+    agentInvocationId?: string;
+    specflowSessionId?: string;
+    stream?: 'stdout' | 'stderr' | 'system';
+    localContext?: boolean;
+  }
   | {
-      type: 'session-update';
-      update: unknown;
-      nodeId?: string;
-      agentInvocationId?: string;
-      sessionId?: string;
-      specflowSessionId?: string;
-      localContext?: boolean;
-    }
+    type: 'session-update';
+    update: unknown;
+    nodeId?: string;
+    agentInvocationId?: string;
+    sessionId?: string;
+    specflowSessionId?: string;
+    localContext?: boolean;
+  }
   | {
-      type: 'gate-decision';
-      nodeId?: string;
+    type: 'gate-decision';
+    nodeId?: string;
+    branchId: string;
+    reason?: string;
+    branches?: Array<{
       branchId: string;
-      reason?: string;
-      branches?: Array<{
-        branchId: string;
-        label: string;
-        traversalsUsed: number;
-        maxTraversals: number;
-        available: boolean;
-      }>;
-    }
+      label: string;
+      traversalsUsed: number;
+      maxTraversals: number;
+      available: boolean;
+    }>;
+  }
   | {
-      type: 'display-message';
-      role: 'agent' | 'user' | 'system';
-      text: string;
-    };
+    type: 'display-message';
+    role: 'agent' | 'user' | 'system';
+    text: string;
+  };
 
 export interface Branch {
   id: string;
