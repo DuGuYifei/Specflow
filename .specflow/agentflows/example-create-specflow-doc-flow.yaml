@@ -1,0 +1,229 @@
+version: 1
+name: Create Specflow project docs
+sessions:
+  document-researcher:
+    agentServerId: unconfigured
+  code-analyst:
+    agentServerId: unconfigured
+  project-classifier:
+    agentServerId: unconfigured
+  documentation-writer:
+    agentServerId: unconfigured
+  documentation-reviewer:
+    agentServerId: unconfigured
+nodes:
+  discover-docs:
+    kind: step
+    num: "01"
+    title: Discover project documents
+    prompt: >-
+      Inventory existing project-level documentation before making changes.
+
+
+      Scan the entire repository for documentation sources, including
+      README/README.* files, ADR or adr-*.md files,
+      architecture/design/RFC/decision records, CONTRIBUTING and governance
+      files, and files under docs/, doc/, documentation/, adr/, decisions/, or
+      equivalent directories. Include relevant package-level READMEs when they
+      explain a subsystem. Also inspect any existing .specflow documentation.
+
+
+      Ignore dependency, build, coverage, generated, cache, and VCS directories
+      unless a file is intentionally authored documentation. Do not edit files
+      in this step. Return a compact source inventory grouped by purpose, with
+      relative paths, useful facts, conflicts, and documentation gaps.
+    session: document-researcher
+    locked: true
+    paths:
+      - README.md
+      - docs/
+      - .specflow/
+  survey-code:
+    kind: step
+    num: "02"
+    title: Roughly survey implementation
+    prompt: >-
+      Use <specflow_document_inventory> as the documentation evidence, then
+      perform a rough, read-only source scan.
+
+
+      Inspect the repository tree, package/build manifests, entry points,
+      primary source directories, runtime boundaries, tests, configuration, and
+      public APIs. Do not attempt exhaustive line-by-line analysis and do not
+      inspect vendor/build/generated/cache content. Identify languages and
+      tools, package or service boundaries, major runtime/data flows,
+      established conventions, product clues, and glossary-worthy terms.
+
+
+      Explicitly assess whether the project contains substantive first-party
+      implementation or meaningful product documentation. A repository that only
+      contains empty placeholders, editor/VCS setup, licenses, generated/vendor
+      artifacts, or trivial manifests should be treated as minimal/undetermined.
+      Return evidence with relative paths and carry forward the important
+      documentation sources from the inventory.
+    session: code-analyst
+    locked: true
+  classify-project:
+    kind: step
+    num: "03"
+    title: Classify documentation basis
+    prompt: >-
+      Review <specflow_repository_survey> and decide whether grounded project
+      documentation can be authored.
+
+
+      Return exactly one leading classification line: "classification:
+      substantive" when there is enough first-party code or documentation to
+      describe the project without invention, or "classification: undetermined"
+      when the repository is empty, placeholder-only, or too sparse. Then
+      provide an evidence-backed brief for a writer: verified facts, existing
+      documents to link, unknowns that must remain marked unknown, and
+      recommended optional .specflow files beyond the standard set.
+    session: project-classifier
+    locked: true
+  documentation-basis:
+    kind: gate
+    num: G1
+    title: Documentation basis
+    decisionCriteria: 'Route from the classification statement in the incoming
+      assessment. Choose substantive only when it begins with "classification:
+      substantive". Choose undetermined when it begins with "classification:
+      undetermined", or whenever evidence is insufficient to make accurate
+      project claims.'
+    branches:
+      substantive: {}
+      undetermined: {}
+  write-grounded-docs:
+    kind: step
+    num: 04·a
+    title: Write grounded Specflow docs
+    prompt: >-
+      Use <specflow_project_assessment> and verify cited sources as needed.
+      Create or conservatively update project documentation under .specflow
+      without deleting authored content.
+
+
+      Write the standard files:
+
+      - .specflow/product/product.md: purpose, users/use cases, capabilities and
+      current boundaries.
+
+      - .specflow/architecture.md: package/service map, runtime/data flow,
+      integrations and source links.
+
+      - .specflow/glossary.md: project terms and meanings supported by evidence.
+
+      - .specflow/conventions.md: evidenced engineering, file layout, testing
+      and workflow conventions.
+
+
+      Use Markdown links to existing repository documents instead of duplicating
+      long source text. Attribute key claims with relative source paths. Where
+      useful, add narrowly named custom docs such as .specflow/source-index.md,
+      .specflow/product/open-questions.md, or a subsystem note, but only when
+      evidence warrants it. Clearly label inferences and unknowns. Do not invent
+      product behavior or policy. Return the files changed and the source links
+      represented in them.
+    session: documentation-writer
+    paths:
+      - .specflow/
+  write-placeholder-docs:
+    kind: step
+    num: 04·b
+    title: Write undetermined docs
+    prompt: >-
+      Use <specflow_project_assessment>. The repository lacks enough substantive
+      evidence for descriptive documentation.
+
+
+      Create or conservatively update these files:
+
+      - .specflow/product/product.md
+
+      - .specflow/architecture.md
+
+      - .specflow/glossary.md
+
+      - .specflow/conventions.md
+
+
+      Each file must clearly say that the project is currently undetermined or
+      has insufficient source material, list any minimal evidence found, and
+      state what future evidence would allow the document to be filled in. Do
+      not fabricate purpose, architecture, terminology, or conventions. Add
+      .specflow/source-index.md only if it helps record the scan evidence.
+      Return the files changed and the reason they remain placeholders.
+    session: documentation-writer
+    paths:
+      - .specflow/
+  review-grounded-docs:
+    kind: step
+    num: 05·a
+    title: Verify grounded docs
+    prompt: Review the generated documentation using
+      <specflow_documentation_changes>. Check that the four standard .specflow
+      files exist, links resolve to real repository files, important claims are
+      traceable to source evidence, inferred statements are labeled, and no
+      unsupported content was added. Fix small documentation defects directly
+      when needed. Summarize coverage, custom files, fixes, and remaining
+      unknowns.
+    session: documentation-reviewer
+    paths:
+      - .specflow/
+  review-placeholder-docs:
+    kind: step
+    num: 05·b
+    title: Verify undetermined docs
+    prompt: Review the placeholder documentation using
+      <specflow_placeholder_changes>. Confirm that the four standard .specflow
+      files exist, each explicitly records insufficient evidence rather than
+      fabricated facts, and any cited paths actually exist. Fix small
+      documentation defects directly when needed. Summarize what evidence is
+      still required before substantive docs can be produced.
+    session: documentation-reviewer
+    paths:
+      - .specflow/
+  docs-ready:
+    kind: end
+    num: END
+    title: Docs ready
+edges:
+  - from: discover-docs
+    to: survey-code
+    transmit: true
+    outputTag: document_inventory
+    handoffPrompt: Pass the discovered documentation sources and gaps into the
+      implementation survey.
+  - from: survey-code
+    to: classify-project
+    transmit: true
+    outputTag: repository_survey
+    handoffPrompt: Pass the evidence-based repository survey for documentation classification.
+  - from: classify-project
+    to: documentation-basis
+  - from: documentation-basis
+    to: write-grounded-docs
+    branch: substantive
+    transmit: true
+    outputTag: project_assessment
+    handoffPrompt: Provide the validated assessment for grounded documentation authoring.
+  - from: documentation-basis
+    to: write-placeholder-docs
+    branch: undetermined
+    transmit: true
+    outputTag: project_assessment
+    handoffPrompt: Provide the minimal-evidence assessment for placeholder documentation.
+  - from: write-grounded-docs
+    to: review-grounded-docs
+    transmit: true
+    outputTag: documentation_changes
+    handoffPrompt: Pass the documentation change report for source-grounded review.
+  - from: write-placeholder-docs
+    to: review-placeholder-docs
+    transmit: true
+    outputTag: placeholder_changes
+    handoffPrompt: Pass the placeholder change report for non-fabrication review.
+  - from: review-grounded-docs
+    to: docs-ready
+  - from: review-placeholder-docs
+    to: docs-ready

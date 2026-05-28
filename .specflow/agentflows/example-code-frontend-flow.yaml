@@ -1,0 +1,180 @@
+version: 1
+name: Frontend ticket flow
+sessions:
+  parser:
+    agentServerId: unconfigured
+  builder:
+    agentServerId: unconfigured
+  reviewer:
+    agentServerId: unconfigured
+  interview:
+    agentServerId: unconfigured
+  plan-code:
+    agentServerId: unconfigured
+nodes:
+  n1:
+    kind: step
+    num: "01"
+    title: Ticket
+    prompt: Capture the incoming ticket — title, description, attached screenshots.
+    session: parser
+    locked: true
+    images:
+      - path: .specflow/assets/example-code-frontend-flow/images/ticket.png
+        label: ticket.png
+        mimeType: image/png
+    paths:
+      - /issues/PROD-2841
+  n2a:
+    kind: step
+    num: 02·a
+    title: Parse image components
+    prompt: Vision pass over the ticket screenshot. Identify named components and
+      regions.
+    session: parser
+    paths:
+      - design/figma-export.json
+  n2b:
+    kind: step
+    num: 02·b
+    title: Generate HTML
+    prompt: Synthesize draft HTML reproducing <specflow_component_tree> using the
+      project DS.
+    session: builder
+    paths:
+      - src/components/
+  n2c:
+    kind: step
+    num: 02·c
+    title: Agent reviews component
+    prompt: Reviewer agent diffs <specflow_draft_html> against the source image and
+      surfaces visual regressions.
+    session: reviewer
+  g1:
+    kind: gate
+    num: G1
+    title: Component review verdict
+    decisionCriteria: Decide whether the generated component faithfully matches the
+      ticket screenshot. Choose pass when visual regressions are absent and
+      intent is preserved; rework when meaningful divergence remains.
+    branches:
+      pass: {}
+      rework: {}
+      fail: {}
+  n3a:
+    kind: step
+    num: 03·a
+    title: Interview · feature & task
+    prompt: Using <specflow_review_findings>, run targeted Q&A clarifying feature
+      scope and the specific task being requested.
+    session: interview
+    locked: true
+  n3b:
+    kind: step
+    num: 03·b
+    title: Interview · edge cases
+    prompt: Probe for exception cases, failure modes, and boundary behavior.
+    session: interview
+    locked: true
+  n3c:
+    kind: step
+    num: 03·c
+    title: Summarize interview
+    prompt: Consolidate Q&A into a structured spec brief.
+    session: interview
+    locked: true
+  n4a:
+    kind: step
+    num: 04·a
+    title: Plan
+    prompt: Break <specflow_spec_brief> into ordered, file-scoped implementation
+      steps with explicit acceptance.
+    session: plan-code
+  n4b:
+    kind: step
+    num: 04·b
+    title: Code
+    prompt: Author implementation against the plan. Touches only declared files.
+    session: plan-code
+    paths:
+      - src/
+      - tests/
+  n4c:
+    kind: step
+    num: 04·c
+    title: Review
+    prompt: "Review <specflow_diff>: run tests, lint, type-check, verify acceptance."
+    session: reviewer
+  g2:
+    kind: gate
+    num: G2
+    title: Implementation verdict
+    decisionCriteria: Decide whether implementation passes review. Pass when tests,
+      lint, types green and acceptance criteria met; rework when fixable; replan
+      when scope or approach was wrong.
+    branches:
+      pass: {}
+      rework: {}
+      replan: {}
+  end1:
+    kind: end
+    num: END
+    title: Done
+edges:
+  - from: n1
+    to: n2a
+  - from: n2a
+    to: n2b
+    transmit: true
+    outputTag: component_tree
+    handoffPrompt: Forward the parsed component tree as JSON, preserving nesting.
+  - from: n2b
+    to: n2c
+    transmit: true
+    outputTag: draft_html
+    handoffPrompt: Send the generated HTML draft for visual review.
+  - from: n2c
+    to: g1
+  - from: g1
+    to: n3a
+    branch: pass
+    transmit: true
+    outputTag: review_findings
+    handoffPrompt: Summarize review findings for the interview step.
+  - from: g1
+    to: n2b
+    branch: rework
+    loopback: true
+  - from: g1
+    to: n2a
+    branch: fail
+    loopback: true
+  - from: n3a
+    to: n3b
+  - from: n3b
+    to: n3c
+  - from: n3c
+    to: n4a
+    transmit: true
+    outputTag: spec_brief
+    handoffPrompt: Hand the final interview brief to planning.
+  - from: n4a
+    to: n4b
+  - from: n4b
+    to: n4c
+    transmit: true
+    outputTag: diff
+    handoffPrompt: Forward the resulting diff plus test outputs for review.
+  - from: n4c
+    to: g2
+  - from: g2
+    to: end1
+    branch: pass
+  - from: g2
+    to: n4b
+    branch: rework
+    loopback: true
+  - from: g2
+    to: n4a
+    branch: replan
+    loopback: true
