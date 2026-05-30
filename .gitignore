@@ -24,3 +24,5 @@ Thumbs.db
 .codex
 .vscode/
 .idea/
+
+tmp/

@@ -66,6 +66,7 @@
 - [ ] 合并inspect和resume的界面到logs
 - [ ] 个人页面风格骗号等，没有记录
 - [x] ACP skill怎么实现 (好像是自己去读 ~/.agents/skills和 project/.agents/skills)
+- [ ] 日志大小上限，文件数量上限
 
 ## Bug
 
