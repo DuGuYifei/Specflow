@@ -11,6 +11,7 @@ import {
   type AgentServerCapabilities,
   type SkillSummary,
 } from '../api';
+import { useI18n } from '../i18n';
 
 function insertAtCaret(el: HTMLTextAreaElement | null, token: string, write: (next: string) => void) {
   if (!el) return;
@@ -68,15 +69,16 @@ function StepPanelContent(props: NodePanelProps & {
   tab: string;
   setTab: (tab: string) => void;
 }) {
+  const { t } = useI18n();
   const { node, run, sessions, timelineEvents, tab, setTab } = props;
   const session = sessions.find((candidate) => candidate.id === node.sessionId);
   const nodeLogEvents = timelineEvents.filter((event) => !('nodeId' in event) || !event.nodeId || event.nodeId === node.id);
   const tabs = run
-    ? [{ key: 'overview', label: 'Overview' }, { key: 'logs', label: 'Logs', count: nodeLogEvents.length || undefined }, { key: 'output', label: 'Output' }]
-    : [{ key: 'overview', label: 'Definition' }, { key: 'images', label: 'Images', count: node.images?.length || undefined }, { key: 'paths', label: 'Paths', count: node.paths?.length || undefined }];
+    ? [{ key: 'overview', label: t('node.tabs.overview') }, { key: 'logs', label: t('node.tabs.logs'), count: nodeLogEvents.length || undefined }, { key: 'output', label: t('node.tabs.output') }]
+    : [{ key: 'overview', label: t('node.tabs.definition') }, { key: 'images', label: t('node.tabs.images'), count: node.images?.length || undefined }, { key: 'paths', label: t('node.tabs.paths'), count: node.paths?.length || undefined }];
   const label = (
     <>
-      <Icon name="flow" size={11} /> Step · {node.num}
+      <Icon name="flow" size={11} /> {t('node.stepLabel', { num: node.num })}
       {session && <><span style={{ color: 'var(--ink-4)' }}>·</span><span className="ses-dot" style={{ background: sessionAccent(session) }} />{session.name}</>}
     </>
   );
@@ -96,6 +98,7 @@ function StepOverview(props: NodePanelProps & {
   readonly: boolean;
   session?: Session;
 }) {
+  const { t } = useI18n();
   const { node, run, session, sessions, nodes, edges, readonly } = props;
   const promptRef = useRef<HTMLTextAreaElement>(null);
   const { capabilities, refreshing, refresh } = useAgentCapabilities(session?.agentServerId);
@@ -107,13 +110,13 @@ function StepOverview(props: NodePanelProps & {
     .map((input) => ({ token: input.variableName, hint: input.description }));
   const outputTokens = edges
     .filter((edge) => edge.to === node.id && edge.transmit && edge.outputTag)
-    .map((edge) => ({ token: `specflow_${edge.outputTag}`, hint: 'Transferred output from the connected step.' }));
+    .map((edge) => ({ token: `specflow_${edge.outputTag}`, hint: t('node.transferredOutputHint') }));
   return (
     <>
       {run && <div className="output-card"><span className={`status-dot ${node.runState || 'pending'}`} /> {node.runState || 'pending'}</div>}
-      <div className="section-title">Title</div>
+      <div className="section-title">{t('node.title')}</div>
       <input className="input" value={node.title} disabled={node.locked || readonly} onChange={(event) => props.onEditNode(node.id, { title: event.target.value })} />
-      <div className="section-title">Prompt</div>
+      <div className="section-title">{t('node.prompt')}</div>
       {!readonly && [...inputTokens, ...outputTokens].length > 0 && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 4 }}>
           {[...inputTokens, ...outputTokens].map(({ token, hint }) => (
@@ -151,7 +154,7 @@ function StepOverview(props: NodePanelProps & {
           });
         }}
       />
-      <div className="section-title">Human checkpoint</div>
+      <div className="section-title">{t('node.humanCheckpoint')}</div>
       <label className="toggle-row">
         <input
           type="checkbox"
@@ -159,13 +162,10 @@ function StepOverview(props: NodePanelProps & {
           disabled={readonly}
           onChange={(event) => props.onEditNode(node.id, { pauseAfterRun: event.target.checked || undefined })}
         />
-        Pause after this node finishes for manual agent interaction
+        {t('node.pauseAfter')}
       </label>
-      <div className="code-hint">
-        ACP does not yet expose an ask-human tool. This pauses the workflow so you can prompt the agent directly.
-        Native elicitation support will be added after the Agent Client Protocol Elicitation RFD is merged.
-      </div>
-      <div className="section-title">Session</div>
+      <div className="code-hint">{t('node.pauseHint')}</div>
+      <div className="section-title">{t('node.session')}</div>
       <div className="node-session-control">
         <select
           className="input node-session-select"
@@ -175,12 +175,12 @@ function StepOverview(props: NodePanelProps & {
             if (event.target.value) props.onChangeSession(node.id, event.target.value);
           }}
         >
-          {!node.sessionId && <option value="">Select session</option>}
+          {!node.sessionId && <option value="">{t('node.selectSession')}</option>}
           {sessions.map((candidate) => (
             <option key={candidate.id} value={candidate.id}>{candidate.name} ({candidate.agentServerId ?? candidate.agent})</option>
           ))}
         </select>
-        {!readonly && <button className="btn sm ghost" onClick={props.onAddSessionRequest}><Icon name="plus" size={11} />Add</button>}
+        {!readonly && <button className="btn sm ghost" onClick={props.onAddSessionRequest}><Icon name="plus" size={11} />{t('node.add')}</button>}
       </div>
       {session && props.onEditSession && (
         <McpServersEditor
@@ -196,6 +196,7 @@ function StepOverview(props: NodePanelProps & {
 }
 
 function NodeImages(props: NodePanelProps & { node: StepNode; readonly: boolean; compact?: boolean }) {
+  const { t } = useI18n();
   const inputRef = useRef<HTMLInputElement>(null);
   const onFiles = (event: ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files ?? []);
@@ -211,8 +212,8 @@ function NodeImages(props: NodePanelProps & { node: StepNode; readonly: boolean;
   };
   return (
     <div onPaste={onPaste}>
-      {!props.compact && <div className="section-title">Images</div>}
-      {props.compact && <div className="section-title">Images</div>}
+      {!props.compact && <div className="section-title">{t('node.images')}</div>}
+      {props.compact && <div className="section-title">{t('node.images')}</div>}
       <div className="attach-row">
         {(props.node.images ?? []).map((image, index) => (
           <div key={image.path} className="attach-thumb">
@@ -220,15 +221,16 @@ function NodeImages(props: NodePanelProps & { node: StepNode; readonly: boolean;
             {!props.readonly && <button className="icon-btn" onClick={() => props.onDeleteImage(props.node.id, index)}><Icon name="trash" size={11} /></button>}
           </div>
         ))}
-        {!props.readonly && <button className="attach-add" onClick={() => inputRef.current?.click()} title="Choose image files"><Icon name="plus" size={14} /></button>}
+        {!props.readonly && <button className="attach-add" onClick={() => inputRef.current?.click()} title={t('node.chooseImageFiles')}><Icon name="plus" size={14} /></button>}
       </div>
-      {!props.readonly && <div className="code-hint">Choose image files or paste images here. Images are sent to the agent as multimodal context, not prompt variables.</div>}
+      {!props.readonly && <div className="code-hint">{t('node.imagesHint')}</div>}
       <input ref={inputRef} type="file" accept="image/*" multiple hidden onChange={onFiles} />
     </div>
   );
 }
 
 function NodePaths(props: NodePanelProps & { node: StepNode; readonly: boolean; compact?: boolean }) {
+  const { t } = useI18n();
   const fileRef = useRef<HTMLInputElement>(null);
   const folderRef = useRef<HTMLInputElement>(null);
   const onImport = (event: ChangeEvent<HTMLInputElement>, directory: boolean) => {
@@ -237,7 +239,7 @@ function NodePaths(props: NodePanelProps & { node: StepNode; readonly: boolean; 
   };
   return (
     <>
-      <div className="section-title">Files &amp; folders</div>
+      <div className="section-title">{t('node.filesFolders')}</div>
       {(props.node.paths ?? []).map((path, index) => (
         <div key={`${path}-${index}`} className="path-row">
           <Icon name={path.endsWith('/') ? 'folder' : 'file'} size={13} />
@@ -247,9 +249,9 @@ function NodePaths(props: NodePanelProps & { node: StepNode; readonly: boolean; 
       ))}
       {!props.readonly && (
         <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
-          <button className="btn sm ghost" onClick={() => props.onAddPath(props.node.id, '')}><Icon name="plus" size={12} />Type path</button>
-          <button className="btn sm ghost" onClick={() => fileRef.current?.click()}>Choose file</button>
-          <button className="btn sm ghost" onClick={() => folderRef.current?.click()}>Choose folder</button>
+          <button className="btn sm ghost" onClick={() => props.onAddPath(props.node.id, '')}><Icon name="plus" size={12} />{t('node.typePath')}</button>
+          <button className="btn sm ghost" onClick={() => fileRef.current?.click()}>{t('node.chooseFile')}</button>
+          <button className="btn sm ghost" onClick={() => folderRef.current?.click()}>{t('node.chooseFolder')}</button>
         </div>
       )}
       <input ref={fileRef} type="file" multiple hidden onChange={(event) => onImport(event, false)} />
@@ -259,6 +261,7 @@ function NodePaths(props: NodePanelProps & { node: StepNode; readonly: boolean; 
 }
 
 function GatePanelContent(props: NodePanelProps & { node: GateNode; readonly: boolean }) {
+  const { t } = useI18n();
   const { node, nodes, edges, readonly } = props;
   const criteriaRef = useRef<HTMLTextAreaElement>(null);
   const predecessorEdge = edges.find((edge) => edge.to === node.id && nodes.find((candidate) => candidate.id === edge.from)?.kind !== 'input');
@@ -270,14 +273,14 @@ function GatePanelContent(props: NodePanelProps & { node: GateNode; readonly: bo
   const { capabilities, refreshing, refresh } = useAgentCapabilities(predecessorSession?.agentServerId);
   const skills = useSkills();
   return (
-    <RightPanel label={<><Icon name="route" size={11} /> Gate · {node.num}</>} title={node.title} onClose={props.onClose}>
+    <RightPanel label={<><Icon name="route" size={11} /> {t('node.gateLabel', { num: node.num })}</>} title={node.title} onClose={props.onClose}>
       <div className="code-hint">
-        The gate uses the previous step context to select exactly one branch and must return a JSON decision.
+        {t('node.gateHint')}
         {predecessorSession && (supportsForkHint
-          ? ' This Claude ACP session can be forked at runtime so the decision does not alter the original conversation.'
-          : ' Runtime checks fork capability; when unavailable, the decision continues in the previous session.')}
+          ? t('node.gateForkClaudeHint')
+          : t('node.gateForkRuntimeHint'))}
       </div>
-      <div className="section-title">Decision criteria</div>
+      <div className="section-title">{t('node.decisionCriteria')}</div>
       <SlashCommandTextarea
         ref={criteriaRef}
         rows={6}
@@ -304,46 +307,48 @@ function GatePanelContent(props: NodePanelProps & { node: GateNode; readonly: bo
           });
         }}
       />
-      <div className="code-hint">Input edges carry the previous step output automatically and have no transfer properties.</div>
-      <div className="section-title">Branches</div>
+      <div className="code-hint">{t('node.inputEdgesHint')}</div>
+      <div className="section-title">{t('node.branches')}</div>
       {node.branches.map((branch) => (
         <div key={branch.id} className="output-card" style={{ marginBottom: 6 }}>
           <div style={{ display: 'flex', gap: 8 }}>
             <span style={{ width: 10, height: 10, borderRadius: '50%', background: branchAccent(branch) }} />
             <input className="input" value={branch.label} disabled={readonly} onChange={(event) => props.onEditBranch(node.id, branch.id, { label: event.target.value })} />
-            {!readonly && <button className="icon-btn" disabled={node.branches.length <= 1} title={node.branches.length <= 1 ? 'A gate must keep at least one branch' : 'Delete branch'} onClick={() => props.onDeleteBranch(node.id, branch.id)}><Icon name="trash" size={12} /></button>}
+            {!readonly && <button className="icon-btn" disabled={node.branches.length <= 1} title={node.branches.length <= 1 ? t('node.deleteBranchRequired') : t('node.deleteBranch')} onClick={() => props.onDeleteBranch(node.id, branch.id)}><Icon name="trash" size={12} /></button>}
           </div>
-          <input className="input" value={branch.description ?? ''} disabled={readonly} placeholder="Describe when this branch should be selected" onChange={(event) => props.onEditBranch(node.id, branch.id, { description: event.target.value || undefined })} />
+          <input className="input" value={branch.description ?? ''} disabled={readonly} placeholder={t('node.branchDescriptionPlaceholder')} onChange={(event) => props.onEditBranch(node.id, branch.id, { description: event.target.value || undefined })} />
         </div>
       ))}
-      {!readonly && <button className="btn sm ghost" onClick={() => props.onAddBranch(node.id)}><Icon name="plus" size={12} />Add branch</button>}
+      {!readonly && <button className="btn sm ghost" onClick={() => props.onAddBranch(node.id)}><Icon name="plus" size={12} />{t('node.addBranch')}</button>}
     </RightPanel>
   );
 }
 
 function InputPanelContent({ node, readonly, onClose, onEditNode }: { node: InputNode; readonly: boolean; onClose: () => void; onEditNode: (id: string, patch: Record<string, unknown>) => void }) {
+  const { t } = useI18n();
   const rawName = node.variableName.startsWith('specflow_') ? node.variableName.slice(9) : node.variableName;
   return (
-    <RightPanel label={<><Icon name="tag" size={11} />Run input · {node.num}</>} title={node.title} onClose={onClose}>
-      <div className="section-title">Title</div>
+    <RightPanel label={<><Icon name="tag" size={11} />{t('node.runInputLabel', { num: node.num })}</>} title={node.title} onClose={onClose}>
+      <div className="section-title">{t('node.title')}</div>
       <input className="input" value={node.title} disabled={readonly} onChange={(event) => onEditNode(node.id, { title: event.target.value })} />
-      <div className="section-title">Variable name</div>
+      <div className="section-title">{t('node.variableName')}</div>
       <input className="input" value={rawName} disabled={readonly} onChange={(event) => {
         const value = event.target.value.replace(/[^A-Za-z0-9_]/g, '');
         if (value) onEditNode(node.id, { variableName: `specflow_${value}` });
       }} />
-      <div className="section-title">Default value</div>
+      <div className="section-title">{t('node.defaultValue')}</div>
       <input className="input" value={node.defaultValue ?? ''} disabled={readonly} onChange={(event) => onEditNode(node.id, { defaultValue: event.target.value || undefined })} />
-      <div className="section-title">Description</div>
+      <div className="section-title">{t('node.description')}</div>
       <input className="input" value={node.description ?? ''} disabled={readonly} onChange={(event) => onEditNode(node.id, { description: event.target.value || undefined })} />
     </RightPanel>
   );
 }
 
 function EndPanelContent({ node, readonly, onClose, onEditNode }: { node: Extract<WorkflowNode, { kind: 'end' }>; readonly: boolean; onClose: () => void; onEditNode: (id: string, patch: Record<string, unknown>) => void }) {
+  const { t } = useI18n();
   return (
-    <RightPanel label={<><Icon name="check" size={11} />End</>} title="End of path" onClose={onClose}>
-      <div className="code-hint">Reaching this node terminates the selected path.</div>
+    <RightPanel label={<><Icon name="check" size={11} />{t('node.end')}</>} title={t('node.endTitle')} onClose={onClose}>
+      <div className="code-hint">{t('node.endHint')}</div>
       <input className="input" value={node.title} disabled={readonly} onChange={(event) => onEditNode(node.id, { title: event.target.value })} />
     </RightPanel>
   );
@@ -354,7 +359,8 @@ function NodeLogs({ events }: { events: TimelineEvent[] }) {
 }
 
 function NodeOutput({ output }: { output?: string }) {
-  return <div className="output-card">{output || 'No output yet.'}</div>;
+  const { t } = useI18n();
+  return <div className="output-card">{output || t('node.noOutputYet')}</div>;
 }
 
 // ── ACP capability-driven controls (mode / model / effort / other) ────────────
@@ -415,6 +421,7 @@ interface AcpControlsProps {
 }
 
 function AcpControls(props: AcpControlsProps) {
+  const { t } = useI18n();
   const { capabilities, configOptions, readonly } = props;
   const modes = capabilities?.modes?.availableModes ?? [];
   const options = capabilities?.configOptions ?? [];
@@ -424,11 +431,10 @@ function AcpControls(props: AcpControlsProps) {
     return (
       <div className="output-card" style={{ marginTop: 6 }}>
         <div className="code-hint">
-          ACP mode / model / effort selectors will appear here after this agent has been probed.
-          Run the workflow once, or refresh capabilities now.
+          {t('node.acpProbeHint')}
         </div>
         <button className="btn sm ghost" disabled={props.refreshing} onClick={() => void props.refresh()}>
-          {props.refreshing ? 'Probing…' : 'Probe capabilities'}
+          {props.refreshing ? t('node.probing') : t('node.probeCapabilities')}
         </button>
       </div>
     );
@@ -447,17 +453,17 @@ function AcpControls(props: AcpControlsProps) {
   });
   return (
     <>
-      <div className="section-title">ACP overrides</div>
+      <div className="section-title">{t('node.acpOverrides')}</div>
       {hasMode && (
         <div style={{ marginBottom: 6 }}>
-          <label style={{ display: 'block', fontSize: 11, color: 'var(--ink-3)', marginBottom: 2 }}>Mode</label>
+          <label style={{ display: 'block', fontSize: 11, color: 'var(--ink-3)', marginBottom: 2 }}>{t('node.mode')}</label>
           <select
             className="input"
             value={props.modeId ?? ''}
             disabled={readonly}
             onChange={(event) => props.onChangeMode?.(event.target.value || undefined)}
           >
-            <option value="">Inherit / keep current session mode</option>
+            <option value="">{t('node.inheritSessionMode')}</option>
             {modes.map((mode) => (
               <option key={mode.id} value={mode.id}>{mode.name || mode.id}</option>
             ))}
@@ -474,9 +480,9 @@ function AcpControls(props: AcpControlsProps) {
         />
       ))}
       <div className="code-hint">
-        Per-node values override the agent server defaults. Leaving "Inherit" keeps whatever the session is currently using.
+        {t('node.acpOverridesHint')}
         <button className="btn sm ghost" style={{ marginLeft: 6 }} disabled={props.refreshing} onClick={() => void props.refresh()}>
-          {props.refreshing ? 'Refreshing…' : 'Refresh'}
+          {props.refreshing ? t('node.refreshing') : t('node.refresh')}
         </button>
       </div>
     </>
@@ -489,6 +495,7 @@ function ConfigOptionControl(props: {
   readonly: boolean;
   onChange: (value: string | boolean | undefined) => void;
 }) {
+  const { t } = useI18n();
   const { option } = props;
   if (option.type === 'boolean') {
     const checked = typeof props.value === 'boolean' ? props.value : option.currentValue === true;
@@ -534,7 +541,7 @@ function ConfigOptionControl(props: {
         disabled={props.readonly}
         onChange={(event) => props.onChange(event.target.value || undefined)}
       >
-        <option value="">Inherit / agent default</option>
+        <option value="">{t('node.inheritAgentDefault')}</option>
         {groups.map((group) => group.name === '__flat__'
           ? group.options.map((opt) => <option key={opt.value} value={opt.value}>{opt.name || opt.value}</option>)
           : (
@@ -555,6 +562,7 @@ function McpServersEditor(props: {
   readonly: boolean;
   onChange: (value: string) => void;
 }) {
+  const { t } = useI18n();
   const [draft, setDraft] = useState(props.session.mcpServers ?? '');
   const [error, setError] = useState<string | undefined>(undefined);
   // Reset local draft if the session changes (different node opened with a different session).
@@ -583,7 +591,7 @@ function McpServersEditor(props: {
   };
   return (
     <>
-      <div className="section-title">MCP servers (session-level)</div>
+      <div className="section-title">{t('node.mcpServers')}</div>
       <textarea
         className="textarea"
         rows={6}
@@ -595,9 +603,9 @@ function McpServersEditor(props: {
         onChange={(event) => setDraft(event.target.value)}
         onBlur={commit}
       />
-      {error && <div className="code-hint" style={{ color: 'var(--accent-red, #d33)' }}>JSON error: {error}</div>}
+      {error && <div className="code-hint" style={{ color: 'var(--accent-red, #d33)' }}>{t('node.jsonError', { error })}</div>}
       <div className="code-hint">
-        ACP <code>McpServer[]</code> as JSON. Applied at session creation only — changes take effect on the next run.
+        {t('node.mcpServersHint')}
       </div>
     </>
   );
@@ -772,6 +780,7 @@ function SlashCommandWarnings(props: {
   skills: SkillSummary[];
   availableCommands: AgentServerCapabilities['availableCommands'] | undefined;
 }) {
+  const { t } = useI18n();
   const { prompt, skills, availableCommands } = props;
   // Lightweight client-side parse: line-leading `/` followed by [a-z0-9_:.-]+.
   // Mirrors the server's slash-parser logic well enough to surface warnings.
@@ -783,7 +792,7 @@ function SlashCommandWarnings(props: {
   if (issues.length === 0) return null;
   return (
     <div className="code-hint" style={{ color: 'var(--accent-red, #d33)' }}>
-      {issues.map((token) => `"/${token.display}"`).join(', ')} did not match any skill or this agent's advertised commands. They will still be sent verbatim — confirm the agent can handle them.
+      {t('node.slashWarning', { commands: issues.map((token) => `"/${token.display}"`).join(', ') })}
     </div>
   );
 }

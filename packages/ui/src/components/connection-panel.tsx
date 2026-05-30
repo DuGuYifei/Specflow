@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { Edge, WorkflowNode } from '../types';
 import { Icon } from './icon';
 import { RightPanel } from './right-panel';
+import { useI18n } from '../i18n';
 
 interface ConnectionPanelProps {
   edge: Edge;
@@ -19,6 +20,7 @@ function sessionId(node: WorkflowNode | undefined): string | null {
 }
 
 export function ConnectionPanel(props: ConnectionPanelProps) {
+  const { t } = useI18n();
   const { edge, fromNode, toNode, transferSourceNode = fromNode, viewMode, onClose, onEditEdge, onDeleteEdge } = props;
   const inputRelation = fromNode?.kind === 'input';
   const completionEdge = toNode?.kind === 'end';
@@ -26,11 +28,11 @@ export function ConnectionPanel(props: ConnectionPanelProps) {
   const sameSession = Boolean(sessionId(transferSourceNode) && sessionId(transferSourceNode) === sessionId(toNode));
   if (inputRelation || completionEdge) {
     return (
-      <RightPanel label={<><Icon name="link" size={11} />Control connection</>} title={inputRelation ? 'Run input reference' : 'Workflow completion'} onClose={onClose}>
+      <RightPanel label={<><Icon name="link" size={11} />{t('connection.control')}</>} title={inputRelation ? t('connection.runInputReference') : t('connection.workflowCompletion')} onClose={onClose}>
         <div className="code-hint">
           {inputRelation
-            ? 'This connection documents an input variable reference. The variable is substituted in prompts before runtime and this edge carries no output.'
-            : 'This connection marks completion of the selected path and carries no output.'}
+            ? t('connection.inputHint')
+            : t('connection.completionHint')}
         </div>
         {completionEdge && fromNode?.kind === 'gate' && <TraversalLimit edge={edge} readonly={viewMode === 'run'} onEditEdge={onEditEdge} />}
         {viewMode === 'edit' && <DeleteButton edge={edge} onDeleteEdge={onDeleteEdge} onClose={onClose} />}
@@ -39,17 +41,17 @@ export function ConnectionPanel(props: ConnectionPanelProps) {
   }
   if (gateInput) {
     return (
-      <RightPanel label={<><Icon name="route" size={11} />Gate input</>} title="Decision context" onClose={onClose}>
-        <div className="code-hint">This edge supplies the previous step output for branch selection. It has no output tag or handoff configuration.</div>
+      <RightPanel label={<><Icon name="route" size={11} />{t('connection.gateInput')}</>} title={t('connection.decisionContext')} onClose={onClose}>
+        <div className="code-hint">{t('connection.gateInputHint')}</div>
         {viewMode === 'edit' && <DeleteButton edge={edge} onDeleteEdge={onDeleteEdge} onClose={onClose} />}
       </RightPanel>
     );
   }
   if (sameSession) {
     return (
-      <RightPanel label={<><Icon name="link" size={11} />Same-session connection</>} title="Continue conversation" onClose={onClose}>
-        <div className="code-hint">The selected target continues in the same session as the content-producing step. No explicit output transfer is needed.</div>
-        {fromNode?.kind === 'gate' && <div className="code-hint">This branch continues the input step&apos;s session after the gate selects it.</div>}
+      <RightPanel label={<><Icon name="link" size={11} />{t('connection.sameSession')}</>} title={t('connection.continueConversation')} onClose={onClose}>
+        <div className="code-hint">{t('connection.sameSessionHint')}</div>
+        {fromNode?.kind === 'gate' && <div className="code-hint">{t('connection.gateBranchSameSessionHint')}</div>}
         {fromNode?.kind === 'gate' && <TraversalLimit edge={edge} readonly={viewMode === 'run'} onEditEdge={onEditEdge} />}
         {viewMode === 'edit' && <DeleteButton edge={edge} onDeleteEdge={onDeleteEdge} onClose={onClose} />}
       </RightPanel>
@@ -59,6 +61,7 @@ export function ConnectionPanel(props: ConnectionPanelProps) {
 }
 
 function TransferPanel({ edge, fromNode, toNode, transferSourceNode, viewMode, onClose, onEditEdge, onDeleteEdge }: ConnectionPanelProps) {
+  const { t } = useI18n();
   const [transmit, setTransmit] = useState(edge.transmit === true);
   const [outputTag, setOutputTag] = useState(edge.outputTag ?? '');
   const [handoffPrompt, setHandoffPrompt] = useState(edge.handoffPrompt ?? '');
@@ -67,25 +70,25 @@ function TransferPanel({ edge, fromNode, toNode, transferSourceNode, viewMode, o
   const viaGate = fromNode?.kind === 'gate';
   const validOutputTag = /^[A-Za-z_][A-Za-z0-9_.-]*$/.test(outputTag);
   return (
-    <RightPanel label={<><Icon name="route" size={11} />Connection</>} title={`${transferSourceNode?.title ?? ''} -> ${toNode?.title ?? ''}`} onClose={onClose}>
-      {viaGate && <div className="code-hint">After this branch is selected, transferred content comes from the step before the gate.</div>}
+    <RightPanel label={<><Icon name="route" size={11} />{t('connection.connection')}</>} title={`${transferSourceNode?.title ?? ''} -> ${toNode?.title ?? ''}`} onClose={onClose}>
+      {viaGate && <div className="code-hint">{t('connection.viaGateHint')}</div>}
       {viaGate && <TraversalLimit edge={{ ...edge, maxTraversals }} readonly={readonly} onValueChange={setMaxTraversals} />}
-      <div className="section-title">Transfer output</div>
+      <div className="section-title">{t('connection.transferOutput')}</div>
       <div className="output-card" style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
         <button className={`switch${transmit ? ' on' : ''}`} disabled={readonly} onClick={() => setTransmit(!transmit)} />
-        <span>{transmit ? 'Pass explicit content to the target session.' : 'Activate target without passing explicit content.'}</span>
+        <span>{transmit ? t('connection.passContent') : t('connection.activateWithoutContent')}</span>
       </div>
       {transmit && (
         <>
-          <div className="section-title">Output tag</div>
+          <div className="section-title">{t('connection.outputTag')}</div>
           <input className="input" value={outputTag} disabled={readonly} placeholder="implementation" onChange={(event) => setOutputTag(event.target.value.replace(/[^A-Za-z0-9_.-]/g, ''))} />
           <div className="code-hint">
-            Reference in the target prompt as <code>&lt;specflow_{outputTag || 'tag_name'}&gt;</code>. At runtime it becomes <code>&lt;{outputTag || 'tag_name'}&gt;...content...&lt;/{outputTag || 'tag_name'}&gt;</code>.
+            {t('connection.outputTagHint')} <code>&lt;specflow_{outputTag || 'tag_name'}&gt;</code>. {t('connection.outputTagRuntimeHint')} <code>&lt;{outputTag || 'tag_name'}&gt;...content...&lt;/{outputTag || 'tag_name'}&gt;</code>.
           </div>
-          {outputTag && !validOutputTag && <div className="code-hint">Output tag must start with a letter or underscore.</div>}
-          <div className="section-title">Handoff prompt</div>
-          <textarea className="textarea code" rows={5} value={handoffPrompt} disabled={readonly} onChange={(event) => setHandoffPrompt(event.target.value)} placeholder="Optional: ask the source step to format or summarize its last output before transferring it." />
-          <div className="code-hint">When empty, the source step&apos;s last output is transferred unchanged. When set, this prompt runs in the source session because it has the producing context.</div>
+          {outputTag && !validOutputTag && <div className="code-hint">{t('connection.outputTagInvalid')}</div>}
+          <div className="section-title">{t('connection.handoffPrompt')}</div>
+          <textarea className="textarea code" rows={5} value={handoffPrompt} disabled={readonly} onChange={(event) => setHandoffPrompt(event.target.value)} placeholder={t('connection.handoffPlaceholder')} />
+          <div className="code-hint">{t('connection.handoffHint')}</div>
         </>
       )}
       {!readonly && (
@@ -96,7 +99,7 @@ function TransferPanel({ edge, fromNode, toNode, transferSourceNode, viewMode, o
             outputTag: transmit ? outputTag : undefined,
             handoffPrompt: transmit && handoffPrompt ? handoffPrompt : undefined,
             ...(viaGate ? { maxTraversals } : {}),
-          })}><Icon name="check" size={12} />Save</button>
+          })}><Icon name="check" size={12} />{t('common.save')}</button>
         </div>
       )}
     </RightPanel>
@@ -109,10 +112,11 @@ function TraversalLimit({ edge, readonly, onEditEdge, onValueChange }: {
   onEditEdge?: (id: string, patch: Partial<Edge>) => void;
   onValueChange?: (value: number) => void;
 }) {
+  const { t } = useI18n();
   const [value, setValue] = useState(edge.maxTraversals ?? 1);
   return (
     <>
-      <div className="section-title">Branch traversal limit</div>
+      <div className="section-title">{t('connection.branchTraversalLimit')}</div>
       <input
         className="input"
         type="number"
@@ -127,15 +131,16 @@ function TraversalLimit({ edge, readonly, onEditEdge, onValueChange }: {
           if (!onValueChange) onEditEdge?.(edge.id, { maxTraversals: next });
         }}
       />
-      <div className="code-hint">Maximum times this gate branch may be selected during one run. Loopback branches use this bound to prevent infinite revision cycles.</div>
+      <div className="code-hint">{t('connection.branchTraversalHint')}</div>
     </>
   );
 }
 
 function DeleteButton({ edge, onDeleteEdge, onClose }: Pick<ConnectionPanelProps, 'edge' | 'onDeleteEdge' | 'onClose'>) {
+  const { t } = useI18n();
   return (
     <button className="btn ghost" style={{ color: 'var(--err)' }} onClick={() => { onDeleteEdge?.(edge.id); onClose(); }}>
-      <Icon name="trash" size={12} />Delete
+      <Icon name="trash" size={12} />{t('common.delete')}
     </button>
   );
 }

@@ -433,7 +433,7 @@ export function App() {
     const node = nodesRef.current.find((n) => n.id === id);
     if (!node) return;
     if ((node as WorkflowNode & { locked?: boolean }).locked) return;
-    if (!window.confirm(`Delete node "${node.title}"?`)) return;
+    if (!window.confirm(t('node.deleteConfirm', { title: node.title }))) return;
     const updatedNodes = nodesRef.current.filter((n) => n.id !== id);
     const updatedEdges = edgesRef.current.filter((e) => e.from !== id && e.to !== id);
     nodesRef.current = updatedNodes;
@@ -442,7 +442,7 @@ export function App() {
     setEdges(updatedEdges);
     setSelection(null);
     scheduleSave();
-  }, [scheduleSave]);
+  }, [scheduleSave, t]);
 
   // ── session management ────────────────────────────────────────────────────
 

@@ -266,7 +266,7 @@ export function AgentServerManager({ onClose, onChanged, onAuthRequired }: Agent
                 <input type="checkbox" checked={customTerminalAuth} onChange={(e) => setCustomTerminalAuth(e.target.checked)} disabled={!customTerminalEnabled} />
                 <span>{t('agentServers.terminalAuth')}</span>
               </label>
-              <textarea className="textarea code" value={customEnv} onChange={(e) => setCustomEnv(e.target.value)} placeholder="ENV=value per line" rows={4} />
+              <textarea className="textarea code" value={customEnv} onChange={(e) => setCustomEnv(e.target.value)} placeholder={t('agentServers.customEnv')} rows={4} />
               <button className="btn primary" disabled={!customId.trim() || !customCommand.trim() || Boolean(busy)} onClick={saveCustom}>
                 <Icon name="check" size={12} />{t('agentServers.saveCustom')}
               </button>
@@ -282,7 +282,7 @@ export function AgentServerManager({ onClose, onChanged, onAuthRequired }: Agent
                         <span>{server.id}</span>
                         <span className="mono-id">{server.settings.command}</span>
                       </div>
-                      <div className="agent-server-desc">{server.settings.args?.join(' ') || 'no args'}</div>
+                      <div className="agent-server-desc">{server.settings.args?.join(' ') || t('agentServers.noArgs')}</div>
                     </div>
                     <div className="agent-server-actions">
                       <button className="btn sm" disabled={busy === server.id} onClick={() => remove(server.id)}>
