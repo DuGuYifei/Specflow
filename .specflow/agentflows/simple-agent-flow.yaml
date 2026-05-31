@@ -17,7 +17,7 @@ nodes:
     num: "01"
     title: Add one
     prompt: 1 + <specflow_value> = ?
-    session: claude-acp
+    session: codex-acp
     paths: []
   n2:
     kind: step

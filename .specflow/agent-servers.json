@@ -3,7 +3,6 @@
     "codex-acp": {
       "type": "registry",
       "registry_id": "codex-acp",
-      "default_mode": "auto",
       "default_config_options": {},
       "env": {},
       "permission_policy": {
