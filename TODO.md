@@ -78,3 +78,4 @@
 - [ ] 重新进入运行中的workflow，session不会更新，应该要主动发一次请求是不是？（好像解决了，但是不记得了）
 - [ ] UI: input value节点不能连线
 - [ ] UI: 新建workflow，会有一个默认的unconfigured session，应该默认不创建。
+- [ ] 当直接退出程序并重启时，如果直接发现run-logs里有running的节点，则先改为cancel状态。

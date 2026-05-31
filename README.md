@@ -146,3 +146,13 @@ bun run dev        # start server + Vite dev proxy
 bun run build      # build:ui then build:bin, producing ./specflow
 bun run typecheck  # type-check all packages
 ```
+
+## Acknowledgements
+
+Specflow references and learns from the following projects and communities:
+
+- [Agent Client Protocol](https://github.com/agentclientprotocol/agent-client-protocol) by [@agentclientprotocol](https://github.com/agentclientprotocol)
+- [Zed](https://github.com/zed-industries/zed) by [@zed-industries](https://github.com/zed-industries)
+- [Pi](https://github.com/earendil-works/pi) by [@earendil-works](https://github.com/earendil-works)
+
+These links are listed as reference materials for protocol, editor, and agent harness design.

@@ -146,3 +146,13 @@ bun run dev        # 启动 server + Vite dev proxy
 bun run build      # build:ui 后 build:bin，生成 ./specflow
 bun run typecheck  # 对所有 packages 做类型检查
 ```
+
+## 致谢
+
+Specflow 的设计参考和学习了以下项目与社区：
+
+- [Agent Client Protocol](https://github.com/agentclientprotocol/agent-client-protocol)，GitHub 账号：[@agentclientprotocol](https://github.com/agentclientprotocol)
+- [Zed](https://github.com/zed-industries/zed)，GitHub 账号：[@zed-industries](https://github.com/zed-industries)
+- [Pi](https://github.com/earendil-works/pi)，GitHub 账号：[@earendil-works](https://github.com/earendil-works)
+
+以上链接作为参考资料列出，用于说明 Specflow 在协议、编辑器和 agent harness 设计上的参考来源。
