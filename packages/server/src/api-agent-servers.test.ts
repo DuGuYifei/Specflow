@@ -252,7 +252,7 @@ describe("agent server API", () => {
       nodes: [{
         kind: "step",
         id: "n1",
-        num: "1",
+        alias: "1",
         x: 0,
         y: 0,
         w: 200,

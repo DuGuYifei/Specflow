@@ -57,7 +57,7 @@ export interface AgentSessionInvocationRef {
   nodeRunId?: string;
   nodeId?: string;
   edgeId?: string;
-  status: 'running' | 'done' | 'failed';
+  status: 'running' | 'done' | 'failed' | 'cancelled';
   startedAt: string;
   completedAt?: string;
 }
@@ -88,7 +88,7 @@ export interface AgentSessionRecord {
   lastSeenAt: string;
   latestRunId: string;
   latestInvocationId: string;
-  latestStatus: 'running' | 'done' | 'failed';
+  latestStatus: 'running' | 'done' | 'failed' | 'cancelled';
   runIds: string[];
   invocationIds: string[];
   invocations: AgentSessionInvocationRef[];
@@ -311,6 +311,19 @@ export type ApiRunLogEvent =
       at: string;
     }
   | {
+      type: 'agent_prompt';
+      runId: string;
+      nodeRunId?: string;
+      nodeId?: string;
+      edgeId?: string;
+      agentInvocationId: string;
+      agentId: string;
+      agentServerId: string;
+      specflowSessionId?: string;
+      prompt: string;
+      at: string;
+    }
+  | {
       type: 'node_status';
       runId: string;
       nodeId: string;
@@ -378,7 +391,8 @@ export async function createCanvas(name: string): Promise<CanvasDoc> {
 }
 
 export async function deleteCanvas(id: string): Promise<void> {
-  await fetch(`/api/canvases/${id}`, { method: 'DELETE' });
+  const res = await fetch(`/api/canvases/${id}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error(await apiError(res, `Failed to delete canvas ${id}`));
 }
 
 export async function runCanvas(
@@ -814,6 +828,15 @@ export function apiRunLogsToTimelineEvents(events: ApiRunLogEvent[]): TimelineEv
           nodeId: event.nodeId,
           agentInvocationId: event.agentInvocationId,
           sessionId: event.sessionId,
+        }];
+      }
+      if (event.type === 'agent_prompt') {
+        return [{
+          type: 'display-message',
+          role: 'user',
+          text: event.prompt,
+          nodeId: event.nodeId,
+          specflowSessionId: event.specflowSessionId,
         }];
       }
       if (event.type === 'node_status' && event.gateDecision) {

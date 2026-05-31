@@ -2,7 +2,7 @@ import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type Clip
 import type { WorkflowNode, Edge, Run, Session, RunState, GateNode, StepNode, InputNode, TimelineEvent } from '../types';
 import { Icon } from './icon';
 import { RightPanel } from './right-panel';
-import { branchAccent, sessionAccent } from '../appearance';
+import { branchAccent, edgeKey, sessionAccent } from '../appearance';
 import { SessionTimeline } from './session-timeline';
 import {
   fetchAgentServerCapabilities,
@@ -37,6 +37,8 @@ interface NodePanelProps {
   onChangeSession: (id: string, sid: string) => void;
   onEditSession?: (id: string, patch: Partial<Session>) => void;
   onAddSessionRequest: () => void;
+  onAddEdge: (edge: Edge) => void;
+  onDeleteEdge: (id: string) => void;
   onAddBranch: (gateId: string) => void;
   onEditBranch: (gateId: string, branchId: string, patch: { label?: string; description?: string }) => void;
   onDeleteBranch: (gateId: string, branchId: string) => void;
@@ -52,7 +54,7 @@ export function NodePanel(props: NodePanelProps) {
   const [tab, setTab] = useState('overview');
   const readonly = props.viewMode === 'run';
   if (props.node.kind === 'input') {
-    return <InputPanelContent node={props.node} readonly={readonly} onClose={props.onClose} onEditNode={props.onEditNode} />;
+    return <InputPanelContent {...props} node={props.node} readonly={readonly} />;
   }
   if (props.node.kind === 'gate') {
     return <GatePanelContent {...props} node={props.node} readonly={readonly} />;
@@ -74,11 +76,11 @@ function StepPanelContent(props: NodePanelProps & {
   const session = sessions.find((candidate) => candidate.id === node.sessionId);
   const nodeLogEvents = timelineEvents.filter((event) => !('nodeId' in event) || !event.nodeId || event.nodeId === node.id);
   const tabs = run
-    ? [{ key: 'overview', label: t('node.tabs.overview') }, { key: 'logs', label: t('node.tabs.logs'), count: nodeLogEvents.length || undefined }, { key: 'output', label: t('node.tabs.output') }]
+    ? [{ key: 'overview', label: t('node.tabs.overview') }, { key: 'logs', label: t('node.tabs.logs'), count: nodeLogEvents.length || undefined }]
     : [{ key: 'overview', label: t('node.tabs.definition') }, { key: 'images', label: t('node.tabs.images'), count: node.images?.length || undefined }, { key: 'paths', label: t('node.tabs.paths'), count: node.paths?.length || undefined }];
   const label = (
     <>
-      <Icon name="flow" size={11} /> {t('node.stepLabel', { num: node.num })}
+      <Icon name="flow" size={11} /> {t('node.stepLabel', { alias: node.alias })}
       {session && <><span style={{ color: 'var(--ink-4)' }}>·</span><span className="ses-dot" style={{ background: sessionAccent(session) }} />{session.name}</>}
     </>
   );
@@ -86,7 +88,6 @@ function StepPanelContent(props: NodePanelProps & {
     <RightPanel label={label} title={node.title} onClose={props.onClose} tabs={tabs} activeTab={tab} onTabChange={setTab}>
       {tab === 'overview' && <StepOverview {...props} session={session} />}
       {tab === 'logs' && <NodeLogs events={nodeLogEvents} />}
-      {tab === 'output' && <NodeOutput output={run?.nodeOutputs?.[node.id]} />}
       {tab === 'images' && <NodeImages {...props} />}
       {tab === 'paths' && <NodePaths {...props} />}
     </RightPanel>
@@ -116,6 +117,32 @@ function StepOverview(props: NodePanelProps & {
       {run && <div className="output-card"><span className={`status-dot ${node.runState || 'pending'}`} /> {node.runState || 'pending'}</div>}
       <div className="section-title">{t('node.title')}</div>
       <input className="input" value={node.title} disabled={node.locked || readonly} onChange={(event) => props.onEditNode(node.id, { title: event.target.value })} />
+      <div className="section-title">{t('node.alias')}</div>
+      <input className="input" value={node.alias} disabled={node.locked || readonly} onChange={(event) => props.onEditNode(node.id, { alias: event.target.value })} />
+      <div className="section-title">{t('node.session')}</div>
+      <div className="node-session-control">
+        <select
+          className="input node-session-select"
+          value={node.sessionId ?? ''}
+          disabled={readonly || sessions.length === 0}
+          onChange={(event) => {
+            if (event.target.value) props.onChangeSession(node.id, event.target.value);
+          }}
+        >
+          {!node.sessionId && <option value="">{t('node.selectSession')}</option>}
+          {sessions.map((candidate) => (
+            <option key={candidate.id} value={candidate.id}>{candidate.name} ({candidate.agentServerId ?? candidate.agent})</option>
+          ))}
+        </select>
+        {!readonly && <button className="btn sm ghost" onClick={props.onAddSessionRequest}><Icon name="plus" size={11} />{t('node.add')}</button>}
+      </div>
+      {session && props.onEditSession && (
+        <McpServersEditor
+          session={session}
+          readonly={readonly}
+          onChange={(value) => props.onEditSession!(session.id, { mcpServers: value || undefined })}
+        />
+      )}
       <div className="section-title">{t('node.prompt')}</div>
       {!readonly && [...inputTokens, ...outputTokens].length > 0 && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 4 }}>
@@ -165,30 +192,6 @@ function StepOverview(props: NodePanelProps & {
         {t('node.pauseAfter')}
       </label>
       <div className="code-hint">{t('node.pauseHint')}</div>
-      <div className="section-title">{t('node.session')}</div>
-      <div className="node-session-control">
-        <select
-          className="input node-session-select"
-          value={node.sessionId ?? ''}
-          disabled={readonly || sessions.length === 0}
-          onChange={(event) => {
-            if (event.target.value) props.onChangeSession(node.id, event.target.value);
-          }}
-        >
-          {!node.sessionId && <option value="">{t('node.selectSession')}</option>}
-          {sessions.map((candidate) => (
-            <option key={candidate.id} value={candidate.id}>{candidate.name} ({candidate.agentServerId ?? candidate.agent})</option>
-          ))}
-        </select>
-        {!readonly && <button className="btn sm ghost" onClick={props.onAddSessionRequest}><Icon name="plus" size={11} />{t('node.add')}</button>}
-      </div>
-      {session && props.onEditSession && (
-        <McpServersEditor
-          session={session}
-          readonly={readonly}
-          onChange={(value) => props.onEditSession!(session.id, { mcpServers: value || undefined })}
-        />
-      )}
       <NodeImages {...props} compact />
       <NodePaths {...props} compact />
     </>
@@ -273,13 +276,17 @@ function GatePanelContent(props: NodePanelProps & { node: GateNode; readonly: bo
   const { capabilities, refreshing, refresh } = useAgentCapabilities(predecessorSession?.agentServerId);
   const skills = useSkills();
   return (
-    <RightPanel label={<><Icon name="route" size={11} /> {t('node.gateLabel', { num: node.num })}</>} title={node.title} onClose={props.onClose}>
+    <RightPanel label={<><Icon name="route" size={11} /> {t('node.gateLabel', { alias: node.alias })}</>} title={node.title} onClose={props.onClose}>
       <div className="code-hint">
         {t('node.gateHint')}
         {predecessorSession && (supportsForkHint
           ? t('node.gateForkClaudeHint')
           : t('node.gateForkRuntimeHint'))}
       </div>
+      <div className="section-title">{t('node.title')}</div>
+      <input className="input" value={node.title} disabled={readonly} onChange={(event) => props.onEditNode(node.id, { title: event.target.value })} />
+      <div className="section-title">{t('node.alias')}</div>
+      <input className="input" value={node.alias} disabled={readonly} onChange={(event) => props.onEditNode(node.id, { alias: event.target.value })} />
       <div className="section-title">{t('node.decisionCriteria')}</div>
       <SlashCommandTextarea
         ref={criteriaRef}
@@ -324,22 +331,51 @@ function GatePanelContent(props: NodePanelProps & { node: GateNode; readonly: bo
   );
 }
 
-function InputPanelContent({ node, readonly, onClose, onEditNode }: { node: InputNode; readonly: boolean; onClose: () => void; onEditNode: (id: string, patch: Record<string, unknown>) => void }) {
+function InputPanelContent(props: NodePanelProps & { node: InputNode; readonly: boolean }) {
   const { t } = useI18n();
+  const { node, readonly, nodes, edges } = props;
   const rawName = node.variableName.startsWith('specflow_') ? node.variableName.slice(9) : node.variableName;
+  const stepNodes = nodes.filter((candidate): candidate is StepNode => candidate.kind === 'step');
   return (
-    <RightPanel label={<><Icon name="tag" size={11} />{t('node.runInputLabel', { num: node.num })}</>} title={node.title} onClose={onClose}>
+    <RightPanel label={<><Icon name="tag" size={11} />{t('node.runInputLabel', { alias: node.alias })}</>} title={node.title} onClose={props.onClose}>
       <div className="section-title">{t('node.title')}</div>
-      <input className="input" value={node.title} disabled={readonly} onChange={(event) => onEditNode(node.id, { title: event.target.value })} />
+      <input className="input" value={node.title} disabled={readonly} onChange={(event) => props.onEditNode(node.id, { title: event.target.value })} />
+      <div className="section-title">{t('node.alias')}</div>
+      <input className="input" value={node.alias} disabled={readonly} onChange={(event) => props.onEditNode(node.id, { alias: event.target.value })} />
       <div className="section-title">{t('node.variableName')}</div>
       <input className="input" value={rawName} disabled={readonly} onChange={(event) => {
         const value = event.target.value.replace(/[^A-Za-z0-9_]/g, '');
-        if (value) onEditNode(node.id, { variableName: `specflow_${value}` });
+        if (value) props.onEditNode(node.id, { variableName: `specflow_${value}` });
       }} />
       <div className="section-title">{t('node.defaultValue')}</div>
-      <input className="input" value={node.defaultValue ?? ''} disabled={readonly} onChange={(event) => onEditNode(node.id, { defaultValue: event.target.value || undefined })} />
+      <input className="input" value={node.defaultValue ?? ''} disabled={readonly} onChange={(event) => props.onEditNode(node.id, { defaultValue: event.target.value || undefined })} />
       <div className="section-title">{t('node.description')}</div>
-      <input className="input" value={node.description ?? ''} disabled={readonly} onChange={(event) => onEditNode(node.id, { description: event.target.value || undefined })} />
+      <input className="input" value={node.description ?? ''} disabled={readonly} onChange={(event) => props.onEditNode(node.id, { description: event.target.value || undefined })} />
+      <div className="section-title">{t('node.inputTargets')}</div>
+      <div className="input-target-list">
+        {stepNodes.length === 0 && <div className="code-hint">{t('node.noStepTargets')}</div>}
+        {stepNodes.map((step) => {
+          const existingEdge = edges.find((edge) => edge.from === node.id && edge.to === step.id);
+          return (
+            <label key={step.id} className="toggle-row input-target-row">
+              <input
+                type="checkbox"
+                checked={Boolean(existingEdge)}
+                disabled={readonly}
+                onChange={(event) => {
+                  if (event.target.checked) {
+                    props.onAddEdge({ id: edgeKey({ from: node.id, to: step.id }), from: node.id, to: step.id });
+                  } else if (existingEdge) {
+                    props.onDeleteEdge(existingEdge.id);
+                  }
+                }}
+              />
+              <span className="node-ref">{step.alias}</span>
+              <span>{step.title}</span>
+            </label>
+          );
+        })}
+      </div>
     </RightPanel>
   );
 }
@@ -349,18 +385,16 @@ function EndPanelContent({ node, readonly, onClose, onEditNode }: { node: Extrac
   return (
     <RightPanel label={<><Icon name="check" size={11} />{t('node.end')}</>} title={t('node.endTitle')} onClose={onClose}>
       <div className="code-hint">{t('node.endHint')}</div>
+      <div className="section-title">{t('node.title')}</div>
       <input className="input" value={node.title} disabled={readonly} onChange={(event) => onEditNode(node.id, { title: event.target.value })} />
+      <div className="section-title">{t('node.alias')}</div>
+      <input className="input" value={node.alias} disabled={readonly} onChange={(event) => onEditNode(node.id, { alias: event.target.value })} />
     </RightPanel>
   );
 }
 
 function NodeLogs({ events }: { events: TimelineEvent[] }) {
   return <div className="log-block"><SessionTimeline events={events} /></div>;
-}
-
-function NodeOutput({ output }: { output?: string }) {
-  const { t } = useI18n();
-  return <div className="output-card">{output || t('node.noOutputYet')}</div>;
 }
 
 // ── ACP capability-driven controls (mode / model / effort / other) ────────────

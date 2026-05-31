@@ -8,6 +8,8 @@ interface SidebarProps {
   runs: Run[];
   activeWorkflow: string;
   activeRun: string;
+  layout: SidebarLayout;
+  onLayoutChange: (layout: SidebarLayout) => void;
   onSelectWorkflow: (id: string) => void;
   onSelectRun: (id: string) => void;
   onNewRun: () => void;
@@ -16,9 +18,43 @@ interface SidebarProps {
   onDeleteRun: (id: string) => void;
   onCreateWorkflow: (name: string) => void;
   onRenameWorkflow: (id: string, name: string) => void;
+  onDeleteWorkflow: (id: string) => void;
 }
 
-export function Sidebar({ workflows, runs, activeWorkflow, activeRun, onSelectWorkflow, onSelectRun, onNewRun, onRerunRun, onResumeRun, onDeleteRun, onCreateWorkflow, onRenameWorkflow }: SidebarProps) {
+export interface SidebarLayout {
+  workflowsWidth: number;
+  runsWidth: number;
+  workflowsCollapsed: boolean;
+  runsCollapsed: boolean;
+}
+
+const COLLAPSED_WIDTH = 44;
+const MIN_PANEL_WIDTH = 150;
+const MAX_PANEL_WIDTH = 460;
+
+export function sidebarTotalWidth(layout: SidebarLayout): number {
+  return (layout.workflowsCollapsed ? COLLAPSED_WIDTH : layout.workflowsWidth)
+    + (layout.runsCollapsed ? COLLAPSED_WIDTH : layout.runsWidth)
+    + 12;
+}
+
+export function Sidebar({
+  workflows,
+  runs,
+  activeWorkflow,
+  activeRun,
+  layout,
+  onLayoutChange,
+  onSelectWorkflow,
+  onSelectRun,
+  onNewRun,
+  onRerunRun,
+  onResumeRun,
+  onDeleteRun,
+  onCreateWorkflow,
+  onRenameWorkflow,
+  onDeleteWorkflow,
+}: SidebarProps) {
   const { t } = useI18n();
   const [query, setQuery] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
@@ -29,6 +65,8 @@ export function Sidebar({ workflows, runs, activeWorkflow, activeRun, onSelectWo
   const createInputRef = useRef<HTMLInputElement>(null);
   const wf = workflows.find((w) => w.id === activeWorkflow) || workflows[0];
   const runLabelById = new Map(runs.map((run) => [run.id, run.label]));
+  const workflowPanelWidth = layout.workflowsCollapsed ? COLLAPSED_WIDTH : layout.workflowsWidth;
+  const runsPanelWidth = layout.runsCollapsed ? COLLAPSED_WIDTH : layout.runsWidth;
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -71,17 +109,53 @@ export function Sidebar({ workflows, runs, activeWorkflow, activeRun, onSelectWo
     onRenameWorkflow(editingWorkflowId, name);
     cancelRenameWorkflow();
   };
+  const setCollapsed = (key: 'workflowsCollapsed' | 'runsCollapsed', value: boolean) => {
+    onLayoutChange({ ...layout, [key]: value });
+  };
+  const startResize = (key: 'workflowsWidth' | 'runsWidth') => (event: React.MouseEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = layout[key];
+    const onMove = (moveEvent: MouseEvent) => {
+      const delta = moveEvent.clientX - startX;
+      const next = Math.min(MAX_PANEL_WIDTH, Math.max(MIN_PANEL_WIDTH, startWidth + delta));
+      onLayoutChange({ ...layout, [key]: next, [key === 'workflowsWidth' ? 'workflowsCollapsed' : 'runsCollapsed']: false });
+    };
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
 
   return (
-    <div className="left two-col">
-      <div className="col">
+    <div
+      className="left two-col"
+      style={{
+        width: sidebarTotalWidth(layout),
+        gridTemplateColumns: `${workflowPanelWidth}px 6px ${runsPanelWidth}px 6px`,
+      }}
+    >
+      <div className={`col${layout.workflowsCollapsed ? ' collapsed' : ''}`}>
+        {layout.workflowsCollapsed ? (
+          <button className="sidebar-collapsed-tab" title={t('sidebar.expandPanel')} onClick={() => setCollapsed('workflowsCollapsed', false)}>
+            <Icon name="workflow" size={14} />
+          </button>
+        ) : (
+          <>
         <div className="col-head">
           <div>
             <div className="col-title">{t('sidebar.workflows')}</div>
           </div>
-          <button className="btn sm icon" title={t('sidebar.newWorkflow')} onClick={() => setCreateOpen(true)}>
-            <Icon name="plus" size={12} />
-          </button>
+          <div className="col-actions">
+            <button className="btn sm icon" title={t('sidebar.collapsePanel')} onClick={() => setCollapsed('workflowsCollapsed', true)}>
+              <Icon name="chevron-right" size={12} />
+            </button>
+            <button className="btn sm icon" title={t('sidebar.newWorkflow')} onClick={() => setCreateOpen(true)}>
+              <Icon name="plus" size={12} />
+            </button>
+          </div>
         </div>
         {createOpen && (
           <div className="workflow-create">
@@ -150,6 +224,16 @@ export function Sidebar({ workflows, runs, activeWorkflow, activeRun, onSelectWo
                 >
                   <Icon name="edit" size={10} />
                 </button>
+                <button
+                  className="btn sm icon workflow-delete"
+                  title={t('sidebar.deleteWorkflow')}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onDeleteWorkflow(w.id);
+                  }}
+                >
+                  <Icon name="trash" size={10} />
+                </button>
               </div>
               <div className="meta">
                 <span><Icon name="flow" size={10} style={{ verticalAlign: -1 }} /> {w.meta}</span>
@@ -158,17 +242,31 @@ export function Sidebar({ workflows, runs, activeWorkflow, activeRun, onSelectWo
             </div>
           ))}
         </div>
+        </>
+        )}
       </div>
+      <div className="sidebar-resizer" onMouseDown={startResize('workflowsWidth')} />
 
-      <div className="col">
+      <div className={`col${layout.runsCollapsed ? ' collapsed' : ''}`}>
+        {layout.runsCollapsed ? (
+          <button className="sidebar-collapsed-tab" title={t('sidebar.expandPanel')} onClick={() => setCollapsed('runsCollapsed', false)}>
+            <Icon name="history" size={14} />
+          </button>
+        ) : (
+          <>
         <div className="col-head">
           <div>
             <div className="col-title">{t('sidebar.runs')}</div>
             <div className="col-sub">{wf?.name}</div>
           </div>
-          <button className="btn sm primary" title={t('sidebar.startRunTitle')} onClick={onNewRun}>
-            <Icon name="play-circle" size={12} />{t('sidebar.start')}
-          </button>
+          <div className="col-actions">
+            <button className="btn sm icon" title={t('sidebar.collapsePanel')} onClick={() => setCollapsed('runsCollapsed', true)}>
+              <Icon name="chevron-right" size={12} />
+            </button>
+            <button className="btn sm primary" title={t('sidebar.startRunTitle')} onClick={onNewRun}>
+              <Icon name="play-circle" size={12} />{t('sidebar.start')}
+            </button>
+          </div>
         </div>
         <div className="col-list">
           {runs.map((r) => (
@@ -226,7 +324,10 @@ export function Sidebar({ workflows, runs, activeWorkflow, activeRun, onSelectWo
             </div>
           ))}
         </div>
+        </>
+        )}
       </div>
+      <div className="sidebar-resizer edge" onMouseDown={startResize('runsWidth')} />
     </div>
   );
 }

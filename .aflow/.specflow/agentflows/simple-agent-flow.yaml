@@ -3,36 +3,37 @@ name: Simple paused Codex flow
 sessions:
   codex:
     agentServerId: codex-acp
+  claude:
+    agentServerId: claude-acp
 nodes:
   input-value:
     kind: input
-    num: IN
+    alias: IN
     title: Input value
     variableName: specflow_value
     defaultValue: "1"
     description: Value used by the arithmetic steps.
   add-one:
     kind: step
-    num: "01"
+    alias: "01"
     title: Add one and pause
-    prompt: |-
-      Do not edit files.
-      Calculate 1 + <specflow_value>.
-      Reply with the result and one short question that the paused-session composer can answer.
+    prompt: Calculate 1 + <specflow_value>.
     session: codex
     pauseAfterRun: true
-    modeId: auto
+    modeId: full-access
+    configOptions:
+      model: gpt-5.5
+      reasoning_effort: low
   add-two:
     kind: step
-    num: "02"
+    alias: "02"
     title: Continue arithmetic
-    prompt: |-
-      Continue from the paused conversation in this same ACP session.
-      Add 2 to the previous result and reply with only the final arithmetic statement.
+    prompt: Add 2 to the previous result and reply with only the final arithmetic
+      statement.
     session: codex
   done:
     kind: end
-    num: END
+    alias: END
     title: Done
 edges:
   - from: input-value

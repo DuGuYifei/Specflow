@@ -128,7 +128,7 @@ function parseNodes(raw: Record<string, unknown>, sessionIds: Set<string>): Agen
       return {
         kind,
         id,
-        num: optionalString(node.num) ?? "IN",
+        alias: optionalString(node.alias) ?? "IN",
         title,
         variableName: requireString(node.variableName, `node "${id}".variableName`),
         defaultValue: optionalString(node.defaultValue),
@@ -140,7 +140,7 @@ function parseNodes(raw: Record<string, unknown>, sessionIds: Set<string>): Agen
       return {
         kind,
         id,
-        num: optionalString(node.num) ?? "END",
+        alias: optionalString(node.alias) ?? "END",
         title,
         sessionId: null,
       };
@@ -157,7 +157,7 @@ function parseNodes(raw: Record<string, unknown>, sessionIds: Set<string>): Agen
       return {
         kind,
         id,
-        num: optionalString(node.num) ?? String(stepNumber).padStart(2, "0"),
+        alias: optionalString(node.alias) ?? String(stepNumber).padStart(2, "0"),
         title,
         prompt: optionalString(node.prompt) ?? "",
         sessionId,
@@ -178,7 +178,7 @@ function parseNodes(raw: Record<string, unknown>, sessionIds: Set<string>): Agen
       return {
         kind,
         id,
-        num: optionalString(node.num) ?? `G${gateNumber}`,
+        alias: optionalString(node.alias) ?? `G${gateNumber}`,
         title,
         decisionCriteria: optionalString(node.decisionCriteria) ?? "",
         branches: parseBranches(asRecord(node.branches, `node "${id}".branches`), id),
@@ -249,7 +249,7 @@ function serializeNode(node: AgentFlowNode): Record<string, unknown> {
   if (node.kind === "input") {
     return compact({
       kind: node.kind,
-      num: node.num,
+      alias: node.alias,
       title: node.title,
       variableName: node.variableName,
       defaultValue: node.defaultValue,
@@ -257,12 +257,12 @@ function serializeNode(node: AgentFlowNode): Record<string, unknown> {
     });
   }
   if (node.kind === "end") {
-    return compact({ kind: node.kind, num: node.num, title: node.title });
+    return compact({ kind: node.kind, alias: node.alias, title: node.title });
   }
   if (node.kind === "step") {
     return compact({
       kind: node.kind,
-      num: node.num,
+      alias: node.alias,
       title: node.title,
       prompt: node.prompt,
       session: node.sessionId,
@@ -276,7 +276,7 @@ function serializeNode(node: AgentFlowNode): Record<string, unknown> {
   }
   return compact({
     kind: node.kind,
-    num: node.num,
+    alias: node.alias,
     title: node.title,
     decisionCriteria: node.decisionCriteria,
     branches: Object.fromEntries(node.branches.map((branch) => [

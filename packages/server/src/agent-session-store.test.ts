@@ -53,6 +53,31 @@ describe("agent session store", () => {
     expect(sessions.find((session) => session.latestRunId === "run2")?.acpSupportsResumeSession).toBe(true);
   });
 
+  it("indexes cancelled ACP invocations as cancelled sessions", async () => {
+    const root = await tempProject();
+    const run = sampleRun("run-cancelled");
+    run.status = "cancelled";
+    run.agentInvocations = [
+      {
+        ...run.agentInvocations[0]!,
+        status: "cancelled",
+        completedAt: "2026-05-19T10:01:00.000Z",
+        error: "server restarted",
+      },
+    ];
+    await upsertAgentSessionsFromRun(run, root);
+
+    const [session] = await listAgentSessions(root);
+    expect(session).toMatchObject({
+      latestStatus: "cancelled",
+      latestInvocationId: "inv1",
+    });
+    expect(session?.invocations[0]).toMatchObject({
+      invocationId: "inv1",
+      status: "cancelled",
+    });
+  });
+
   it("drops agent sessions when their run record is deleted", async () => {
     const root = await tempProject();
     await upsertAgentSessionsFromRun(sampleRun("run1"), root);
@@ -171,9 +196,9 @@ function sampleCanvas(): CanvasDoc {
     name: "Workflow",
     sessions: [{ id: "s1", name: "main", agentServerId: "codex-acp" }],
     nodes: [
-      { kind: "step", id: "n1", num: "01", x: 10, y: 20, w: 220, title: "Step 1", prompt: "Do it", sessionId: "s1" },
-      { kind: "step", id: "n2", num: "02", x: 260, y: 20, w: 220, title: "Step 2", prompt: "Do more", sessionId: "s1" },
-      { kind: "end", id: "done", num: "END", x: 520, y: 20, w: 140, title: "Done", sessionId: null },
+      { kind: "step", id: "n1", alias: "01", x: 10, y: 20, w: 220, title: "Step 1", prompt: "Do it", sessionId: "s1" },
+      { kind: "step", id: "n2", alias: "02", x: 260, y: 20, w: 220, title: "Step 2", prompt: "Do more", sessionId: "s1" },
+      { kind: "end", id: "done", alias: "END", x: 520, y: 20, w: 140, title: "Done", sessionId: null },
     ],
     edges: [
       { id: "e1", from: "n1", to: "n2" },

@@ -4,7 +4,7 @@ import { isSymbolKey } from './appearance';
 import {
   fetchCanvases, fetchCanvas, saveCanvas, uploadCanvasAssets, runCanvas,
   fetchRuns, fetchRun, fetchRunLogs, subscribeToRun,
-  createCanvas, deleteRun as apiDeleteRun, rerunRun as apiRerunRun,
+  createCanvas, deleteCanvas as apiDeleteCanvas, deleteRun as apiDeleteRun, rerunRun as apiRerunRun,
   cancelRun as apiCancelRun,
   fetchAgentSessions, fetchAgentServers, restoreAgentSession, subscribeToRestore,
   fetchAgentSession, fetchResumableSession, fetchRunLogsRange, resumeWorkflowRun,
@@ -22,7 +22,7 @@ import {
   type PausedNodeSession,
 } from './api';
 import { TopBar } from './components/top-bar';
-import { Sidebar } from './components/sidebar';
+import { Sidebar, sidebarTotalWidth, type SidebarLayout } from './components/sidebar';
 import { Canvas } from './components/canvas';
 import { NodePanel } from './components/node-panel';
 import { ConnectionPanel } from './components/connection-panel';
@@ -44,10 +44,34 @@ function runStatusFromEvent(status: string): RunStatus {
   return 'running';
 }
 
+const DEFAULT_SIDEBAR_LAYOUT: SidebarLayout = {
+  workflowsWidth: 220,
+  runsWidth: 280,
+  workflowsCollapsed: false,
+  runsCollapsed: false,
+};
+
+function loadSidebarLayout(): SidebarLayout {
+  try {
+    const raw = localStorage.getItem('sf-sidebar-layout');
+    if (!raw) return DEFAULT_SIDEBAR_LAYOUT;
+    const parsed = JSON.parse(raw) as Partial<SidebarLayout>;
+    return {
+      workflowsWidth: typeof parsed.workflowsWidth === 'number' ? parsed.workflowsWidth : DEFAULT_SIDEBAR_LAYOUT.workflowsWidth,
+      runsWidth: typeof parsed.runsWidth === 'number' ? parsed.runsWidth : DEFAULT_SIDEBAR_LAYOUT.runsWidth,
+      workflowsCollapsed: parsed.workflowsCollapsed === true,
+      runsCollapsed: parsed.runsCollapsed === true,
+    };
+  } catch {
+    return DEFAULT_SIDEBAR_LAYOUT;
+  }
+}
+
 export function App() {
   const { t } = useI18n();
   const [activeWorkflow, setActiveWorkflow] = useState('');
   const [activeCanvasName, setActiveCanvasName] = useState('');
+  const [sidebarLayout, setSidebarLayout] = useState<SidebarLayout>(() => loadSidebarLayout());
 
   const [nodes, setNodes] = useState<WorkflowNode[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
@@ -169,6 +193,10 @@ export function App() {
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
+
+  useEffect(() => {
+    try { localStorage.setItem('sf-sidebar-layout', JSON.stringify(sidebarLayout)); } catch { /* ignore */ }
+  }, [sidebarLayout]);
 
   // Load canvases list once
   useEffect(() => {
@@ -1147,6 +1175,40 @@ export function App() {
     }
   }, [activeWorkflow]);
 
+  const onDeleteWorkflow = useCallback(async (id: string) => {
+    const workflow = workflows.find((candidate) => candidate.id === id);
+    if (!workflow || !window.confirm(t('app.deleteWorkflowConfirm', { name: workflow.name }))) return;
+    try {
+      clearTimeout(saveTimerRef.current);
+      await apiDeleteCanvas(id);
+      setWorkflows((prev) => prev.filter((candidate) => candidate.id !== id));
+      if (id === activeWorkflow) {
+        const next = workflows.find((candidate) => candidate.id !== id);
+        if (next) {
+          setActiveWorkflow(next.id);
+        } else {
+          setActiveWorkflow('');
+          setActiveCanvasName('');
+          setSessions([]);
+          sessionsRef.current = [];
+          setNodes([]);
+          nodesRef.current = [];
+          setEdges([]);
+          edgesRef.current = [];
+          setRuns([]);
+          setActiveRunId('');
+          setSelection(null);
+          setActiveSessionId('');
+          setLogEvents([]);
+          setPendingInteractions([]);
+          setPausedNode(null);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to delete workflow', err);
+    }
+  }, [activeWorkflow, t, workflows]);
+
   // ── derived selection state ───────────────────────────────────────────────
 
   const selectedNode     = selection?.kind === 'node' ? displayNodes.find((n) => n.id === selection.id) : null;
@@ -1162,11 +1224,12 @@ export function App() {
   const hasRightPanel = !!selection;
   const barH     = barExpanded ? barHeight : 32;
   const rootClass = ['app', 'two-col-left', 'has-bottom-bar', hasRightPanel ? '' : 'no-right'].filter(Boolean).join(' ');
+  const leftWidth = sidebarTotalWidth(sidebarLayout);
 
   return (
     <div
       className={rootClass}
-      style={{ '--bar-h': `${barH}px` } as React.CSSProperties}
+      style={{ '--bar-h': `${barH}px`, '--left-w': `${leftWidth}px` } as React.CSSProperties}
     >
       <TopBar
         theme={theme}
@@ -1188,6 +1251,8 @@ export function App() {
         runs={runs}
         activeWorkflow={activeWorkflow}
         activeRun={activeRunId}
+        layout={sidebarLayout}
+        onLayoutChange={setSidebarLayout}
         onSelectWorkflow={setActiveWorkflow}
         onSelectRun={onSelectRun}
         onNewRun={onOpenNewRun}
@@ -1196,6 +1261,7 @@ export function App() {
         onDeleteRun={onDeleteRun}
         onCreateWorkflow={onCreateWorkflow}
         onRenameWorkflow={onRenameWorkflow}
+        onDeleteWorkflow={onDeleteWorkflow}
       />
 
       <div className="canvas-cell" style={{ position: 'relative', overflow: 'hidden', minHeight: 0, height: '100%' }}>
@@ -1295,6 +1361,8 @@ export function App() {
             if ('mcpServers' in patch) onUpdateSessionMcpServers(id, patch.mcpServers ?? undefined);
           }}
           onAddSessionRequest={onAddSessionRequest}
+          onAddEdge={onAddEdge}
+          onDeleteEdge={onDeleteEdge}
           onAddBranch={onAddBranch}
           onEditBranch={onEditBranch}
           onDeleteBranch={onDeleteBranch}

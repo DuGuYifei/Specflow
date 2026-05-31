@@ -108,7 +108,7 @@ function sampleCanvas(): CanvasDoc {
       {
         kind: "step",
         id: "node-1",
-        num: "1",
+        alias: "1",
         x: 80,
         y: 80,
         w: 240,

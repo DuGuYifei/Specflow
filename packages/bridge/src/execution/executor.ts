@@ -83,6 +83,19 @@ export type AgentSessionUpdateStatusEvent = AgentSessionUpdateEvent & {
   specflowSessionId?: string;
 };
 
+export interface AgentPromptStatusEvent {
+  runId: string;
+  nodeRunId?: string;
+  nodeId?: string;
+  edgeId?: string;
+  agentInvocationId: string;
+  agentId: string;
+  agentServerId: string;
+  specflowSessionId?: string;
+  prompt: string;
+  at: string;
+}
+
 export interface WorkflowExecutorOptions {
   cwd?: string;
   terminalEvents?: TerminalEventStore;
@@ -93,6 +106,7 @@ export interface WorkflowExecutorOptions {
   onRunStatus?: (event: RunStatusEvent) => void;
   onAgentLifecycle?: (event: AgentLifecycleStatusEvent) => void;
   onAgentSessionUpdate?: (event: AgentSessionUpdateStatusEvent) => void;
+  onAgentPrompt?: (event: AgentPromptStatusEvent) => void;
   /**
    * Optional pre-flight on each prompt. Receives the rendered node prompt
    * plus the agent server id; returns the text that should actually be sent
@@ -181,6 +195,7 @@ export class WorkflowExecutor {
   readonly #onRunStatus: ((event: RunStatusEvent) => void) | undefined;
   readonly #onAgentLifecycle: ((event: AgentLifecycleStatusEvent) => void) | undefined;
   readonly #onAgentSessionUpdate: ((event: AgentSessionUpdateStatusEvent) => void) | undefined;
+  readonly #onAgentPrompt: ((event: AgentPromptStatusEvent) => void) | undefined;
   readonly #promptTransformer: PromptTransformer | undefined;
   readonly #forkCounts = new Map<string, number>();
 
@@ -194,6 +209,7 @@ export class WorkflowExecutor {
     this.#onRunStatus = options.onRunStatus;
     this.#onAgentLifecycle = options.onAgentLifecycle;
     this.#onAgentSessionUpdate = options.onAgentSessionUpdate;
+    this.#onAgentPrompt = options.onAgentPrompt;
     this.#promptTransformer = options.promptTransformer;
   }
 
@@ -617,16 +633,11 @@ export class WorkflowExecutor {
     resumeMode?: "continuation";
   }): Promise<string> {
     assertValidAgentNodeSession(input.workflow, input.node);
-    // Interrupted nodes already have the original task in their ACP session
-    // history (via session/load or session/resume on first prompt). Send a
-    // continuation prompt instead of re-running the original to avoid telling
-    // the agent to do everything over.
+    const originalPrompt = renderNodePrompt({ node: input.node, input: input.input, edgeValues: input.edgeValues });
     const prompt = input.resumeMode === "continuation"
-      ? buildWorkflowContinuationPrompt({ nodeTitle: input.node.title })
-      : renderNodePrompt({ node: input.node, input: input.input, edgeValues: input.edgeValues });
-    const promptBlocks = input.resumeMode === "continuation"
-      ? undefined
-      : await buildPromptBlocksForNode({ node: input.node, prompt, cwd: this.#cwd });
+      ? buildWorkflowContinuationPrompt({ nodeTitle: input.node.title, originalTask: originalPrompt })
+      : originalPrompt;
+    const promptBlocks = await buildPromptBlocksForNode({ node: input.node, prompt, cwd: this.#cwd });
     const invocation = this.#createInvocation({
       run: input.run,
       nodeRun: input.nodeRun,
@@ -747,62 +758,81 @@ export class WorkflowExecutor {
       // downstream UI / logs can show the resolved skill body.
       input.invocation.prompt = promptToSend;
     }
-    const result = await input.agentRunner({
-      agentServerId,
-      prompt: promptToSend,
-      promptBlocks: input.promptBlocks,
-      cwd: this.#cwd,
+    this.#onAgentPrompt?.({
       runId: input.run.id,
-      workflowSessionId: input.invocation.sessionId,
-      forkFromWorkflowSessionId: input.forkFromSessionId,
-      signal: input.signal,
-      ...(input.modeId ? { modeId: input.modeId } : {}),
-      ...(input.configOptions && Object.keys(input.configOptions).length > 0 ? { configOptions: input.configOptions } : {}),
-      ...(input.mcpServers && input.mcpServers.length > 0 ? { mcpServers: input.mcpServers } : {}),
-      onTerminalEvent: (event) => this.#appendAgentTerminalEvent({
+      nodeRunId: input.nodeRun?.id,
+      nodeId: input.invocation.nodeId,
+      edgeId: input.invocation.edgeId,
+      agentInvocationId: input.invocation.id,
+      agentId: input.agentId,
+      agentServerId,
+      specflowSessionId: input.invocation.sessionId,
+      prompt: promptToSend,
+      at: new Date().toISOString(),
+    });
+    let result: AgentCommandResult;
+    try {
+      result = await input.agentRunner({
+        agentServerId,
+        prompt: promptToSend,
+        promptBlocks: input.promptBlocks,
+        cwd: this.#cwd,
         runId: input.run.id,
-        nodeRunId: input.nodeRun?.id,
-        agentInvocationId: input.invocation.id,
-        event,
-      }),
-      onLifecycleEvent: (event) => this.#onAgentLifecycle?.({
-        ...event,
-        runId: input.run.id,
-        nodeRunId: input.nodeRun?.id,
-        nodeId: input.invocation.nodeId,
-        edgeId: input.invocation.edgeId,
-        agentInvocationId: input.invocation.id,
-        agentId: input.agentId,
-        specflowSessionId: input.invocation.sessionId,
-      }),
-      onSessionUpdate: (event) => this.#onAgentSessionUpdate?.({
-        ...event,
-        runId: input.run.id,
-        nodeRunId: input.nodeRun?.id,
-        nodeId: input.invocation.nodeId,
-        edgeId: input.invocation.edgeId,
-        agentInvocationId: input.invocation.id,
-        agentId: input.agentId,
-        agentServerId: resolveAgentServerId(agent),
-        at: new Date().toISOString(),
-        specflowSessionId: input.invocation.sessionId,
-      }),
-      onPermissionRequest: async (request) => {
-        const agentServerId = resolveAgentServerId(agent);
-        return this.#interactions.requestPermission(
+        workflowSessionId: input.invocation.sessionId,
+        forkFromWorkflowSessionId: input.forkFromSessionId,
+        signal: input.signal,
+        ...(input.modeId ? { modeId: input.modeId } : {}),
+        ...(input.configOptions && Object.keys(input.configOptions).length > 0 ? { configOptions: input.configOptions } : {}),
+        ...(input.mcpServers && input.mcpServers.length > 0 ? { mcpServers: input.mcpServers } : {}),
+        onTerminalEvent: (event) => this.#appendAgentTerminalEvent({
+          runId: input.run.id,
+          nodeRunId: input.nodeRun?.id,
+          agentInvocationId: input.invocation.id,
+          event,
+        }),
+        onLifecycleEvent: (event) => this.#onAgentLifecycle?.({
+          ...event,
+          runId: input.run.id,
+          nodeRunId: input.nodeRun?.id,
+          nodeId: input.invocation.nodeId,
+          edgeId: input.invocation.edgeId,
+          agentInvocationId: input.invocation.id,
+          agentId: input.agentId,
+          specflowSessionId: input.invocation.sessionId,
+        }),
+        onSessionUpdate: (event) => this.#onAgentSessionUpdate?.({
+          ...event,
+          runId: input.run.id,
+          nodeRunId: input.nodeRun?.id,
+          nodeId: input.invocation.nodeId,
+          edgeId: input.invocation.edgeId,
+          agentInvocationId: input.invocation.id,
+          agentId: input.agentId,
+          agentServerId,
+          at: new Date().toISOString(),
+          specflowSessionId: input.invocation.sessionId,
+        }),
+        onPermissionRequest: async (request) => this.#interactions.requestPermission(
           this.#interactionContext(input, agentServerId),
           request,
-        );
-      },
-      onElicitationRequest: (request) => this.#interactions.requestElicitation(
-        this.#interactionContext(input, resolveAgentServerId(agent)),
-        request,
-      ),
-      onElicitationComplete: (notification) => this.#interactions.recordElicitationComplete(
-        this.#interactionContext(input, resolveAgentServerId(agent)),
-        notification,
-      ),
-    });
+        ),
+        onElicitationRequest: (request) => this.#interactions.requestElicitation(
+          this.#interactionContext(input, agentServerId),
+          request,
+        ),
+        onElicitationComplete: (notification) => this.#interactions.recordElicitationComplete(
+          this.#interactionContext(input, agentServerId),
+          notification,
+        ),
+      });
+    } catch (error) {
+      input.invocation.status = input.signal?.aborted || error instanceof WorkflowCancelledError
+        ? "cancelled"
+        : "failed";
+      input.invocation.error = error instanceof Error ? error.message : String(error);
+      input.invocation.completedAt = new Date().toISOString();
+      throw error;
+    }
     if (input.signal?.aborted) throw new WorkflowCancelledError();
     input.invocation.agentServerId = result.agentServerId;
     input.invocation.acpSessionId = result.sessionId;
@@ -1027,11 +1057,15 @@ function parseMcpServersField(
  * history, so this only nudges it to produce final contract output instead of
  * starting over. There is no live user — the output is consumed automatically.
  */
-function buildWorkflowContinuationPrompt(input: { nodeTitle?: string }): string {
+function buildWorkflowContinuationPrompt(input: { nodeTitle?: string; originalTask: string }): string {
   const node = input.nodeTitle ? `"${input.nodeTitle}"` : "the previous step";
   return [
     `[Workflow resume]`,
-    `Specflow is resuming this ACP session to finish step ${node}, which was interrupted before producing its final output. The original task and your prior reasoning are already in this conversation's history.`,
+    `Specflow is resuming this ACP session to finish step ${node}, which was interrupted before producing its final output.`,
+    `Specflow cannot prove exactly where the interruption happened; you may have received none, part, or all of the original task. The fully rendered original task is included below so you can recover even if the ACP session history is incomplete.`,
+    `<original_task>`,
+    input.originalTask,
+    `</original_task>`,
     `Please:`,
     `1. Briefly note what you already completed in this step (one short paragraph; do not redo the work).`,
     `2. If your prior work already satisfies the step's contract, emit the final output now — follow every formatting rule the original task laid out.`,

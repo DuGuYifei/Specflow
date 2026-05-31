@@ -42,7 +42,6 @@ export function TopBar({
         <span>Aflow</span>
       </div>
       <div className="crumbs">
-        <span>Acme</span><span className="sep">/</span>
         <span>{t('topbar.workspace')}</span><span className="sep">/</span>
         <span className="current">{workflowName ?? t('topbar.loadingWorkflow')}</span>
         {runLabel && view === 'run' && (

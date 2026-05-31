@@ -2,6 +2,9 @@ import { mkdir, readdir, readFile, writeFile, unlink } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { parse } from "yaml";
 import { SPECFLOW_WORKSPACE_PATH } from "@specflow/shared";
+import type { NodeStatus } from "@specflow/shared";
+import type { WorkflowRunStatus } from "@specflow/workflow";
+import { appendRunLogEvent, listRunLogEvents } from "./run-log-store";
 import type { AgentFlowDoc, CanvasDoc, CanvasLayoutDoc } from "./canvas-doc";
 import { splitCanvasDoc } from "./canvas-store";
 import type { AgentInvocation } from "@specflow/workflow";
@@ -109,18 +112,99 @@ export async function reconcileInterruptedRuns(root: string, reason: string): Pr
   const interrupted: string[] = [];
   const completedAt = new Date().toISOString();
   for (const rec of runs) {
-    if (rec.status !== "running") continue;
-    rec.status = "cancelled";
-    rec.errorMsg = reason;
-    rec.completedAt = completedAt;
-    rec.duration = formatDuration(rec.startedAt, completedAt);
-    for (const [nodeId, state] of Object.entries(rec.nodeStates)) {
-      if (state === "running") rec.nodeStates[nodeId] = "cancelled";
+    let changed = false;
+    const wasRunning = rec.status === "running";
+    const effectiveCompletedAt = rec.completedAt ?? completedAt;
+    if (wasRunning) {
+      rec.status = "cancelled";
+      rec.errorMsg = reason;
+      rec.completedAt = completedAt;
+      rec.duration = formatDuration(rec.startedAt, completedAt);
+      changed = true;
     }
-    await saveRun(rec, root);
-    interrupted.push(rec.id);
+    for (const [nodeId, state] of Object.entries(rec.nodeStates)) {
+      if (rec.status === "cancelled" && (state === "running" || state === "paused")) {
+        rec.nodeStates[nodeId] = "cancelled";
+        changed = true;
+      } else if (rec.status === "error" && state === "running") {
+        rec.nodeStates[nodeId] = "error";
+        changed = true;
+      }
+    }
+    for (const invocation of rec.agentInvocations) {
+      if (invocation.status !== "running") continue;
+      if (rec.status === "cancelled") {
+        invocation.status = "cancelled";
+        invocation.error ??= rec.errorMsg ?? reason;
+        invocation.completedAt ??= effectiveCompletedAt;
+        changed = true;
+      } else if (rec.status === "error") {
+        invocation.status = "failed";
+        invocation.error ??= rec.errorMsg;
+        invocation.completedAt ??= effectiveCompletedAt;
+        changed = true;
+      }
+    }
+    await appendMissingTerminalLogEvents(rec, root, effectiveCompletedAt);
+    if (changed) {
+      await saveRun(rec, root);
+      interrupted.push(rec.id);
+    }
   }
   return interrupted;
+}
+
+async function appendMissingTerminalLogEvents(record: RunRecord, root: string, at: string): Promise<void> {
+  if (record.status === "running") return;
+  const events = await listRunLogEvents(root, record.id);
+  const latestNodeStatus = new Map<string, string>();
+  let latestRunStatus: string | undefined;
+  for (const event of events) {
+    if (event.type === "node_status") latestNodeStatus.set(event.nodeId, event.status);
+    if (event.type === "run_status") latestRunStatus = event.status;
+  }
+  for (const [nodeId, state] of Object.entries(record.nodeStates)) {
+    const status = nodeStatusFromRunState(state);
+    if (!status || latestNodeStatus.get(nodeId) === status) continue;
+    await appendRunLogEvent(root, {
+      type: "node_status",
+      runId: record.id,
+      nodeId,
+      status,
+      at,
+    });
+  }
+  const runStatus = workflowStatusFromRecordStatus(record.status);
+  if (runStatus && latestRunStatus !== runStatus) {
+    await appendRunLogEvent(root, {
+      type: "run_status",
+      runId: record.id,
+      workflowId: record.workflowId,
+      status: runStatus,
+      error: record.errorMsg,
+      at,
+    });
+  }
+}
+
+function nodeStatusFromRunState(state: RunState): NodeStatus | undefined {
+  switch (state) {
+    case "success": return "done";
+    case "error": return "failed";
+    case "cancelled": return "cancelled";
+    case "paused": return "paused";
+    case "running": return "running";
+    default: return undefined;
+  }
+}
+
+function workflowStatusFromRecordStatus(status: RunRecord["status"]): WorkflowRunStatus | undefined {
+  switch (status) {
+    case "success": return "done";
+    case "error": return "failed";
+    case "cancelled": return "cancelled";
+    default: return undefined;
+  }
 }
 
 export async function deleteRun(id: string, root: string): Promise<void> {

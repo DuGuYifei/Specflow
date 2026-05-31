@@ -10,7 +10,7 @@ const doc: AgentFlowDoc = {
     {
       kind: "input",
       id: "in1",
-      num: "IN",
+      alias: "IN",
       title: "Value",
       variableName: "specflow_value",
       sessionId: null,
@@ -18,7 +18,7 @@ const doc: AgentFlowDoc = {
     {
       kind: "step",
       id: "n1",
-      num: "01",
+      alias: "01",
       title: "Add one",
       prompt: "1 + <specflow_value> = ?",
       sessionId: "s1",

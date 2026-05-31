@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { SPECFLOW_WORKSPACE_PATH } from "@specflow/shared";
 import type { TerminalOutputEvent } from "@specflow/workflow";
 import type {
+  AgentPromptStatusEvent,
   AgentSessionUpdateStatusEvent,
   NodeStatusEvent,
   RunInteraction,
@@ -31,6 +32,7 @@ export type RestoreAttemptLogEvent = {
 export type RunLogEvent =
   | ({ type: "terminal" } & TerminalOutputEvent & { nodeId?: string; specflowSessionId?: string })
   | ({ type: "session_update" } & AgentSessionUpdateStatusEvent & { specflowSessionId?: string })
+  | ({ type: "agent_prompt" } & AgentPromptStatusEvent)
   | ({ type: "node_status" } & NodeStatusEvent)
   | ({ type: "run_status" } & RunStatusEvent)
   | {

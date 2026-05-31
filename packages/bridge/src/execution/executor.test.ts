@@ -508,6 +508,41 @@ describe("WorkflowExecutor", () => {
     expect(run.agentInvocations[0]?.output).toBe("allow");
   });
 
+  test("records the rendered agent prompt before the agent runner starts", async () => {
+    const promptEvents: string[] = [];
+    const runnerStarts: string[] = [];
+    const order: string[] = [];
+    const executor = new WorkflowExecutor({
+      onAgentPrompt(event) {
+        order.push("prompt");
+        promptEvents.push(event.prompt);
+      },
+      agentRunner: async (request) => {
+        order.push("runner");
+        runnerStarts.push(request.prompt);
+        return {
+          agentServerId: request.agentServerId,
+          sessionId: "acp-session",
+          exitCode: 0,
+          output: "done",
+        };
+      },
+    });
+
+    const run = await executor.run(
+      createWorkflow({
+        nodes: [agentNode("source", "source <specflow_input>")],
+        edges: [],
+      }),
+      "initial input",
+    );
+
+    expect(run.status).toBe("done");
+    expect(promptEvents).toEqual(["source initial input"]);
+    expect(runnerStarts).toEqual(["source initial input"]);
+    expect(order).toEqual(["prompt", "runner"]);
+  });
+
   test("adds workflow context to agent lifecycle events", async () => {
     const lifecycleEvents: string[] = [];
     const executor = new WorkflowExecutor({
@@ -639,7 +674,7 @@ describe("WorkflowExecutor", () => {
     expect(run.nodeRuns[0]?.status).toBe("failed");
   });
 
-  test("continues a previously cancelled node instead of repeating its original prompt", async () => {
+  test("continues a previously cancelled node with the rendered original prompt as recovery context", async () => {
     const prompts: string[] = [];
     const executor = new WorkflowExecutor({
       agentRunner: createAgentRunner((request) => {
@@ -665,7 +700,8 @@ describe("WorkflowExecutor", () => {
 
     expect(run.status).toBe("done");
     expect(prompts[0]).toContain("[Workflow resume]");
-    expect(prompts[0]).not.toContain("original prompt");
+    expect(prompts[0]).toContain("original prompt initial input");
+    expect(prompts[0]).toContain("Specflow cannot prove exactly where the interruption happened");
   });
 
   test("cancels a run waiting for a permission decision", async () => {

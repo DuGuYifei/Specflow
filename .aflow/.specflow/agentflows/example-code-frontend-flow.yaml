@@ -14,7 +14,7 @@ sessions:
 nodes:
   n1:
     kind: step
-    num: "01"
+    alias: "01"
     title: Ticket
     prompt: |-
       Inspect the incoming ticket, including title, description, linked issue context and attached screenshots.
@@ -30,7 +30,7 @@ nodes:
       - /issues/PROD-2841
   n2a:
     kind: step
-    num: 02·a
+    alias: 02·a
     title: Parse image components
     prompt: |-
       Use the ticket brief and screenshot to identify the UI component tree, visual regions, states, spacing, typography and reusable design-system pieces.
@@ -40,7 +40,7 @@ nodes:
       - design/figma-export.json
   n2b:
     kind: step
-    num: 02·b
+    alias: 02·b
     title: Generate HTML
     prompt: |-
       Use <specflow_component_tree> and the project design-system context to implement the requested component draft.
@@ -50,7 +50,7 @@ nodes:
       - src/components/
   n2c:
     kind: step
-    num: 02·c
+    alias: 02·c
     title: Agent reviews component
     prompt: |-
       Review <specflow_draft_html> against the ticket screenshot and requested behavior.
@@ -58,7 +58,7 @@ nodes:
     session: reviewer
   g1:
     kind: gate
-    num: G1
+    alias: G1
     title: Component review verdict
     decisionCriteria: Decide whether the generated component faithfully matches the
       ticket screenshot. Choose pass when visual regressions are absent and
@@ -69,7 +69,7 @@ nodes:
       fail: {}
   n3a:
     kind: step
-    num: 03·a
+    alias: 03·a
     title: Interview · feature & task
     prompt: |-
       Use <specflow_review_findings> to ask only targeted clarification questions about feature scope, user intent and acceptance criteria.
@@ -78,21 +78,21 @@ nodes:
     locked: true
   n3b:
     kind: step
-    num: 03·b
+    alias: 03·b
     title: Interview · edge cases
     prompt: Probe for exception cases, failure modes, accessibility requirements, responsive behavior and boundary data states.
     session: interview
     locked: true
   n3c:
     kind: step
-    num: 03·c
+    alias: 03·c
     title: Summarize interview
     prompt: Consolidate the interview into a structured implementation brief with facts, decisions, remaining unknowns and acceptance criteria.
     session: interview
     locked: true
   n4a:
     kind: step
-    num: 04·a
+    alias: 04·a
     title: Plan
     prompt: |-
       Break <specflow_spec_brief> into ordered, file-scoped implementation steps.
@@ -100,7 +100,7 @@ nodes:
     session: plan-code
   n4b:
     kind: step
-    num: 04·b
+    alias: 04·b
     title: Code
     prompt: |-
       Implement the approved plan. Touch only files needed for the requested UI change.
@@ -111,7 +111,7 @@ nodes:
       - tests/
   n4c:
     kind: step
-    num: 04·c
+    alias: 04·c
     title: Review
     prompt: |-
       Review <specflow_diff>. Run relevant tests, lint or type-check commands when available, verify the acceptance criteria and inspect for regressions.
@@ -119,7 +119,7 @@ nodes:
     session: reviewer
   g2:
     kind: gate
-    num: G2
+    alias: G2
     title: Implementation verdict
     decisionCriteria: Decide whether implementation passes review. Pass when tests,
       lint, types green and acceptance criteria met; rework when fixable; replan
@@ -130,7 +130,7 @@ nodes:
       replan: {}
   end1:
     kind: end
-    num: END
+    alias: END
     title: Done
 edges:
   - from: n1

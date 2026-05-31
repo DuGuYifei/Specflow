@@ -49,7 +49,7 @@ export interface AgentInvocation {
   acpSupportsForkSession?: boolean;
   acpSessionForked?: boolean;
   prompt: string;
-  status: "running" | "done" | "failed";
+  status: "running" | "done" | "failed" | "cancelled";
   startedAt: string;
   completedAt?: string;
   output?: string;

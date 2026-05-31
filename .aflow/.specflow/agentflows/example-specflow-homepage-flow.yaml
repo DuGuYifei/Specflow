@@ -16,7 +16,7 @@ sessions:
 nodes:
   source-project-path:
     kind: input
-    num: IN
+    alias: IN
     title: Source project directory
     variableName: specflow_source_project_path
     description: Absolute directory of the read-only source project. The flow
@@ -24,7 +24,7 @@ nodes:
       written only to the current workspace.
   homepage-direction:
     kind: input
-    num: IN
+    alias: IN
     title: Homepage direction
     variableName: specflow_homepage_direction
     defaultValue: Build a premium, credible landing page for a developer-facing
@@ -35,7 +35,7 @@ nodes:
       delivery requirements.
   page-languages:
     kind: input
-    num: IN
+    alias: IN
     title: Page languages
     variableName: specflow_page_languages
     defaultValue: zh-CN and en-US with a visible language switcher; both versions
@@ -44,7 +44,7 @@ nodes:
       a complete Chinese and English landing page.
   inspect-source:
     kind: step
-    num: "01"
+    alias: "01"
     title: Validate and inspect source
     prompt: >-
       You are researching a software product in order to build its public-facing
@@ -72,9 +72,9 @@ nodes:
 
 
       If it is accessible, begin with exactly "readiness: ready" and perform an
-      evidence-driven, read-only discovery pass. Inspect README files, .aflow/.specflow
-      product/architecture/glossary/conventions notes, docs/ and ADRs,
-      package/build manifests, primary entrypoints, visible UI
+      evidence-driven, read-only discovery pass. Inspect README files,
+      .aflow/.specflow product/architecture/glossary/conventions notes, docs/
+      and ADRs, package/build manifests, primary entrypoints, visible UI
       components/styles/assets, screenshots or brand assets, and install/run
       instructions. Ignore dependencies, generated builds, caches, runs,
       secrets, and irrelevant internal churn.
@@ -97,7 +97,7 @@ nodes:
     session: homepage-researcher
   source-readiness:
     kind: gate
-    num: G1
+    alias: G1
     title: Source usable?
     decisionCriteria: 'Read the first classification line from the source dossier.
       Choose ready only if it begins with "readiness: ready" and contains
@@ -110,7 +110,7 @@ nodes:
       blocked: {}
   report-blocked:
     kind: step
-    num: STOP
+    alias: STOP
     title: Report setup required
     prompt: "The source-project preflight did not pass. Do not create a speculative
       landing page. Summarize exactly how to make the next run actionable: use
@@ -120,7 +120,7 @@ nodes:
     session: homepage-researcher
   study-product-visuals:
     kind: step
-    num: "02"
+    alias: "02"
     title: Study UI and visual assets
     prompt: >-
       Use <specflow_source_dossier> as the factual basis. Work read-only in the
@@ -161,7 +161,7 @@ nodes:
     session: homepage-visual-researcher
   position-product:
     kind: step
-    num: "03"
+    alias: "03"
     title: Define positioning and copy
     prompt: >-
       Use <specflow_source_dossier> as the only factual basis and apply these
@@ -197,7 +197,7 @@ nodes:
     session: homepage-strategist
   design-blueprint:
     kind: step
-    num: "04"
+    alias: "04"
     title: Design page blueprint
     prompt: >-
       Use <specflow_positioning_brief> and <specflow_visual_evidence> to produce
@@ -238,7 +238,7 @@ nodes:
     session: homepage-designer
   audit-blueprint:
     kind: step
-    num: "05"
+    alias: "05"
     title: Audit claims and UX brief
     prompt: >-
       Review whichever populated blueprint is provided:
@@ -269,7 +269,7 @@ nodes:
     session: homepage-reviewer
   blueprint-decision:
     kind: gate
-    num: G2
+    alias: G2
     title: Blueprint approved?
     decisionCriteria: 'Choose approve only when the blueprint audit begins with
       "verdict: approve". Choose revise when it begins with "verdict: revise",
@@ -282,7 +282,7 @@ nodes:
       unresolved: {}
   revise-blueprint:
     kind: step
-    num: 06R
+    alias: 06R
     title: Revise rejected blueprint
     prompt: "Use <specflow_blueprint_findings> and the preceding visual-design
       context in this session. Revise the entire landing-page blueprint before
@@ -294,7 +294,7 @@ nodes:
     session: homepage-designer
   report-blueprint-unresolved:
     kind: step
-    num: STOP
+    alias: STOP
     title: Report unresolved design review
     prompt: Continue from the unresolved blueprint audit in this session. Produce an
       honest design review report for the user. Do not proceed to implementation
@@ -304,7 +304,7 @@ nodes:
     session: homepage-reviewer
   plan-site:
     kind: step
-    num: "08"
+    alias: "08"
     title: Plan target implementation
     prompt: >-
       Use the approved specification in <specflow_approved_homepage_spec>.
@@ -315,8 +315,8 @@ nodes:
 
       Inspect the output workspace and determine its delivery shape. If it
       already contains an intentional frontend scaffold, preserve its toolchain,
-      conventions and build path. If it is empty apart from .aflow/.specflow files,
-      produce a dependency-free responsive static site using index.html,
+      conventions and build path. If it is empty apart from .aflow/.specflow
+      files, produce a dependency-free responsive static site using index.html,
       styles.css, optional main.js and an output README with preview
       instructions; do not require package installation merely to view the
       landing page.
@@ -329,7 +329,7 @@ nodes:
     session: homepage-builder
   build-site:
     kind: step
-    num: "09"
+    alias: "09"
     title: Build landing page
     prompt: >-
       Implement the approved homepage according to the plan already established
@@ -366,7 +366,7 @@ nodes:
     session: homepage-builder
   polish-experience:
     kind: step
-    num: "10"
+    alias: "10"
     title: Polish visual experience
     prompt: >-
       Use <specflow_implementation_report>, then open the generated site files
@@ -388,7 +388,7 @@ nodes:
     session: homepage-designer
   verify-release:
     kind: step
-    num: "11"
+    alias: "11"
     title: Verify release quality
     prompt: >-
       Use whichever implementation report is populated: <specflow_polish_report>
@@ -416,7 +416,7 @@ nodes:
     session: homepage-reviewer
   release-decision:
     kind: gate
-    num: G3
+    alias: G3
     title: Release verdict
     decisionCriteria: 'Choose pass only when the incoming review begins with
       "verdict: pass". Choose fix when it begins with "verdict: fix", defects
@@ -428,7 +428,7 @@ nodes:
       unresolved: {}
   repair-site:
     kind: step
-    num: "12"
+    alias: "12"
     title: Repair release issues
     prompt: Use <specflow_release_findings>. Repair all substantive release issues
       in OUTPUT WORKSPACE while preserving the approved truthful messaging and
@@ -439,7 +439,7 @@ nodes:
     session: homepage-builder
   report-unresolved:
     kind: step
-    num: STOP
+    alias: STOP
     title: Report unresolved quality issues
     prompt: Continue from the unresolved design or release review in this session.
       Produce an honest delivery report for the user. Do not claim that the
@@ -449,15 +449,15 @@ nodes:
     session: homepage-reviewer
   homepage-ready:
     kind: end
-    num: END
+    alias: END
     title: Homepage ready
   homepage-blocked:
     kind: end
-    num: END
+    alias: END
     title: Setup required
   homepage-unresolved:
     kind: end
-    num: END
+    alias: END
     title: Manual follow-up required
 edges:
   - from: source-project-path

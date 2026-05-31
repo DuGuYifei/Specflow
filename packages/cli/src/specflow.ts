@@ -102,7 +102,7 @@ async function runWorkflowCommand(args: string[]): Promise<void> {
   const nodeTitles = new Map(
     prepared.doc.nodes
       .filter((n) => n.kind === "step" || n.kind === "gate")
-      .map((n) => [n.id, `${n.num} ${n.title}`]),
+      .map((n) => [n.id, `${n.alias} ${n.title}`]),
   );
 
   const run = await executeAgentFlowDoc({
@@ -206,7 +206,7 @@ function printRunPlan(filePath: string, doc: AgentFlowDoc, variables: RunInputVa
   }
   console.log(`Nodes: ${runtimeNodes.length}`);
   for (const n of runtimeNodes) {
-    console.log(`  - ${n.num} ${n.title} (${n.kind})`);
+    console.log(`  - ${n.alias} ${n.title} (${n.kind})`);
   }
 
   if (variables.length > 0) {

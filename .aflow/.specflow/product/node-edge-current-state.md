@@ -26,7 +26,7 @@
 | 字段 | 类型 | 用途 |
 | --- | --- | --- |
 | `kind` | `"step"` | 类型标识 |
-| `id`、`num`、`title` | `string` | 稳定 id、显示编号、标题 |
+| `id`、`alias`、`title` | `string` | 稳定 id、显示编号、标题 |
 | `prompt` | `string` | 用户编写的执行 prompt；不是 description |
 | `sessionId` | `string \| null` | 所用 workflow session；有效执行必须指向存在的 session |
 | `images` | `{ path, label?, mimeType? }[]` | 图片上下文 |
@@ -54,7 +54,7 @@
 | 字段 | 类型 | 用途 |
 | --- | --- | --- |
 | `kind` | `"gate"` | 类型标识 |
-| `id`、`num`、`title` | `string` | 稳定 id、显示编号、标题 |
+| `id`、`alias`、`title` | `string` | 稳定 id、显示编号、标题 |
 | `decisionCriteria` | `string` | 分支判断标准 |
 | `branches` | `{ id, label, description? }[]` | 可选择输出分支；运行时还携带由输出边确定的遍历预算 |
 

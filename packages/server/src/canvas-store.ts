@@ -275,7 +275,7 @@ function defaultWidth(kind: AgentFlowNode["kind"]): number {
 }
 
 function compareNodesForLayout(a: AgentFlowNode, b: AgentFlowNode): number {
-  return (a.num || "").localeCompare(b.num || "", undefined, { numeric: true }) ||
+  return (a.alias || "").localeCompare(b.alias || "", undefined, { numeric: true }) ||
     a.title.localeCompare(b.title) ||
     a.id.localeCompare(b.id);
 }

@@ -355,8 +355,8 @@ edges:
       name: "Regenerate",
       sessions: [{ id: "s1", name: "main", agentServerId: "codex-acp" }],
       nodes: [
-        { kind: "step", id: "a", num: "01", x: 10, y: 20, w: 220, title: "A", prompt: "A", sessionId: "s1" },
-        { kind: "end", id: "done", num: "END", x: 300, y: 20, w: 140, title: "Done", sessionId: null },
+        { kind: "step", id: "a", alias: "01", x: 10, y: 20, w: 220, title: "A", prompt: "A", sessionId: "s1" },
+        { kind: "end", id: "done", alias: "END", x: 300, y: 20, w: 140, title: "Done", sessionId: null },
       ],
       edges: [{ id: "e1", from: "a", to: "done" }],
     };
@@ -432,7 +432,7 @@ sessions:
 nodes:
   - kind: input
     id: in
-    num: IN
+    alias: IN
     x: 0
     y: 0
     w: 200
@@ -441,7 +441,7 @@ nodes:
     sessionId: null
   - kind: step
     id: step
-    num: "01"
+    alias: "01"
     x: 260
     y: 0
     w: 220
@@ -450,7 +450,7 @@ nodes:
     sessionId: s1
   - kind: end
     id: done
-    num: END
+    alias: END
     x: 540
     y: 0
     w: 140

@@ -40,7 +40,7 @@ function stepNode(id: string, x: number, y: number, w: number): Extract<Workflow
   return {
     kind: "step",
     id,
-    num: id,
+    alias: id,
     x,
     y,
     w,

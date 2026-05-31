@@ -14,28 +14,28 @@ export const SEED_CANVAS_DOCS: CanvasDoc[] = [
       { id: "plan-code", name: "plan-code", agentServerId: UNCONFIGURED_AGENT_SERVER_ID },
     ],
     nodes: [
-      { kind: "step", id: "n1",  num: "01",   x: 60,   y: 240, w: 230,
+      { kind: "step", id: "n1",  alias: "01",   x: 60,   y: 240, w: 230,
         title: "Ticket",
         prompt: "Capture the incoming ticket — title, description, attached screenshots.",
         images: [{ path: ".aflow/.specflow/assets/example-code-frontend-flow/images/ticket.png", label: "ticket.png", mimeType: "image/png" }], paths: ["/issues/PROD-2841"],
         sessionId: "parser", locked: true },
 
-      { kind: "step", id: "n2a", num: "02·a", x: 340,  y: 80,  w: 220,
+      { kind: "step", id: "n2a", alias: "02·a", x: 340,  y: 80,  w: 220,
         title: "Parse image components",
         prompt: "Vision pass over the ticket screenshot. Identify named components and regions.",
         paths: ["design/figma-export.json"],
         sessionId: "parser" },
-      { kind: "step", id: "n2b", num: "02·b", x: 600,  y: 80,  w: 220,
+      { kind: "step", id: "n2b", alias: "02·b", x: 600,  y: 80,  w: 220,
         title: "Generate HTML",
         prompt: "Synthesize draft HTML reproducing <specflow_component_tree> using the project DS.",
         paths: ["src/components/"],
         sessionId: "builder" },
-      { kind: "step", id: "n2c", num: "02·c", x: 860,  y: 80,  w: 220,
+      { kind: "step", id: "n2c", alias: "02·c", x: 860,  y: 80,  w: 220,
         title: "Agent reviews component",
         prompt: "Reviewer agent diffs <specflow_draft_html> against the source image and surfaces visual regressions.",
         sessionId: "reviewer" },
 
-      { kind: "gate", id: "g1", num: "G1", x: 1130, y: 100, w: 200,
+      { kind: "gate", id: "g1", alias: "G1", x: 1130, y: 100, w: 200,
         title: "Component review verdict",
         decisionCriteria: "Decide whether the generated component faithfully matches the ticket screenshot. Choose pass when visual regressions are absent and intent is preserved; rework when meaningful divergence remains.",
         branches: [
@@ -44,34 +44,34 @@ export const SEED_CANVAS_DOCS: CanvasDoc[] = [
           { id: "fail", label: "fail" },
         ], },
 
-      { kind: "step", id: "n3a", num: "03·a", x: 340, y: 360, w: 230,
+      { kind: "step", id: "n3a", alias: "03·a", x: 340, y: 360, w: 230,
         title: "Interview · feature & task",
         prompt: "Using <specflow_review_findings>, run targeted Q&A clarifying feature scope and the specific task being requested.",
         sessionId: "interview", locked: true },
-      { kind: "step", id: "n3b", num: "03·b", x: 610, y: 360, w: 230,
+      { kind: "step", id: "n3b", alias: "03·b", x: 610, y: 360, w: 230,
         title: "Interview · edge cases",
         prompt: "Probe for exception cases, failure modes, and boundary behavior.",
         sessionId: "interview", locked: true },
-      { kind: "step", id: "n3c", num: "03·c", x: 880, y: 360, w: 230,
+      { kind: "step", id: "n3c", alias: "03·c", x: 880, y: 360, w: 230,
         title: "Summarize interview",
         prompt: "Consolidate Q&A into a structured spec brief.",
         sessionId: "interview", locked: true },
 
-      { kind: "step", id: "n4a", num: "04·a", x: 340, y: 600, w: 220,
+      { kind: "step", id: "n4a", alias: "04·a", x: 340, y: 600, w: 220,
         title: "Plan",
         prompt: "Break <specflow_spec_brief> into ordered, file-scoped implementation steps with explicit acceptance.",
         sessionId: "plan-code" },
-      { kind: "step", id: "n4b", num: "04·b", x: 600, y: 600, w: 220,
+      { kind: "step", id: "n4b", alias: "04·b", x: 600, y: 600, w: 220,
         title: "Code",
         prompt: "Author implementation against the plan. Touches only declared files.",
         paths: ["src/", "tests/"],
         sessionId: "plan-code" },
-      { kind: "step", id: "n4c", num: "04·c", x: 860, y: 600, w: 220,
+      { kind: "step", id: "n4c", alias: "04·c", x: 860, y: 600, w: 220,
         title: "Review",
         prompt: "Review <specflow_diff>: run tests, lint, type-check, verify acceptance.",
         sessionId: "reviewer" },
 
-      { kind: "gate", id: "g2", num: "G2", x: 1130, y: 620, w: 200,
+      { kind: "gate", id: "g2", alias: "G2", x: 1130, y: 620, w: 200,
         title: "Implementation verdict",
         decisionCriteria: "Decide whether implementation passes review. Pass when tests, lint, types green and acceptance criteria met; rework when fixable; replan when scope or approach was wrong.",
         branches: [
@@ -80,7 +80,7 @@ export const SEED_CANVAS_DOCS: CanvasDoc[] = [
           { id: "replan", label: "replan" },
         ], },
 
-      { kind: "end", id: "end1", num: "END", x: 1410, y: 640, w: 140, title: "Done", sessionId: null },
+      { kind: "end", id: "end1", alias: "END", x: 1410, y: 640, w: 140, title: "Done", sessionId: null },
     ],
     edges: [
       { id: "e1",  from: "n1",  to: "n2a" },
@@ -116,7 +116,7 @@ export const SEED_CANVAS_DOCS: CanvasDoc[] = [
       { id: "documentation-reviewer", name: "documentation-reviewer", agentServerId: UNCONFIGURED_AGENT_SERVER_ID },
     ],
     nodes: [
-      { kind: "step", id: "discover-docs", num: "01", x: 60, y: 260, w: 250,
+      { kind: "step", id: "discover-docs", alias: "01", x: 60, y: 260, w: 250,
         title: "Discover project documents",
         prompt: `Inventory existing project-level documentation before making changes.
 
@@ -126,7 +126,7 @@ Ignore dependency, build, coverage, generated, cache, and VCS directories unless
         paths: ["README.md", "docs/", ".aflow/.specflow/"],
         sessionId: "document-researcher", locked: true },
 
-      { kind: "step", id: "survey-code", num: "02", x: 380, y: 260, w: 270,
+      { kind: "step", id: "survey-code", alias: "02", x: 380, y: 260, w: 270,
         title: "Roughly survey implementation",
         prompt: `Use <specflow_document_inventory> as the documentation evidence, then perform a rough, read-only source scan.
 
@@ -135,14 +135,14 @@ Inspect the repository tree, package/build manifests, entry points, primary sour
 Explicitly assess whether the project contains substantive first-party implementation or meaningful product documentation. A repository that only contains empty placeholders, editor/VCS setup, licenses, generated/vendor artifacts, or trivial manifests should be treated as minimal/undetermined. Return evidence with relative paths and carry forward the important documentation sources from the inventory.`,
         sessionId: "code-analyst", locked: true },
 
-      { kind: "step", id: "classify-project", num: "03", x: 720, y: 260, w: 270,
+      { kind: "step", id: "classify-project", alias: "03", x: 720, y: 260, w: 270,
         title: "Classify documentation basis",
         prompt: `Review <specflow_repository_survey> and decide whether grounded project documentation can be authored.
 
 Return exactly one leading classification line: "classification: substantive" when there is enough first-party code or documentation to describe the project without invention, or "classification: undetermined" when the repository is empty, placeholder-only, or too sparse. Then provide an evidence-backed brief for a writer: verified facts, existing documents to link, unknowns that must remain marked unknown, and recommended optional .aflow/.specflow files beyond the standard set.`,
         sessionId: "project-classifier", locked: true },
 
-      { kind: "gate", id: "documentation-basis", num: "G1", x: 1050, y: 270, w: 230,
+      { kind: "gate", id: "documentation-basis", alias: "G1", x: 1050, y: 270, w: 230,
         title: "Documentation basis",
         decisionCriteria: `Route from the classification statement in the incoming assessment. Choose substantive only when it begins with "classification: substantive". Choose undetermined when it begins with "classification: undetermined", or whenever evidence is insufficient to make accurate project claims.`,
         branches: [
@@ -150,7 +150,7 @@ Return exactly one leading classification line: "classification: substantive" wh
           { id: "undetermined", label: "undetermined" },
         ] },
 
-      { kind: "step", id: "write-grounded-docs", num: "04·a", x: 1360, y: 100, w: 300,
+      { kind: "step", id: "write-grounded-docs", alias: "04·a", x: 1360, y: 100, w: 300,
         title: "Write grounded Specflow docs",
         prompt: `Use <specflow_project_assessment> and verify cited sources as needed. Create or conservatively update project documentation under .aflow/.specflow without deleting authored content.
 
@@ -164,7 +164,7 @@ Use Markdown links to existing repository documents instead of duplicating long 
         paths: [".aflow/.specflow/"],
         sessionId: "documentation-writer" },
 
-      { kind: "step", id: "write-placeholder-docs", num: "04·b", x: 1360, y: 440, w: 300,
+      { kind: "step", id: "write-placeholder-docs", alias: "04·b", x: 1360, y: 440, w: 300,
         title: "Write undetermined docs",
         prompt: `Use <specflow_project_assessment>. The repository lacks enough substantive evidence for descriptive documentation.
 
@@ -178,19 +178,19 @@ Each file must clearly say that the project is currently undetermined or has ins
         paths: [".aflow/.specflow/"],
         sessionId: "documentation-writer" },
 
-      { kind: "step", id: "review-grounded-docs", num: "05·a", x: 1720, y: 100, w: 280,
+      { kind: "step", id: "review-grounded-docs", alias: "05·a", x: 1720, y: 100, w: 280,
         title: "Verify grounded docs",
         prompt: `Review the generated documentation using <specflow_documentation_changes>. Check that the four standard .aflow/.specflow files exist, links resolve to real repository files, important claims are traceable to source evidence, inferred statements are labeled, and no unsupported content was added. Fix small documentation defects directly when needed. Summarize coverage, custom files, fixes, and remaining unknowns.`,
         paths: [".aflow/.specflow/"],
         sessionId: "documentation-reviewer" },
 
-      { kind: "step", id: "review-placeholder-docs", num: "05·b", x: 1720, y: 440, w: 280,
+      { kind: "step", id: "review-placeholder-docs", alias: "05·b", x: 1720, y: 440, w: 280,
         title: "Verify undetermined docs",
         prompt: `Review the placeholder documentation using <specflow_placeholder_changes>. Confirm that the four standard .aflow/.specflow files exist, each explicitly records insufficient evidence rather than fabricated facts, and any cited paths actually exist. Fix small documentation defects directly when needed. Summarize what evidence is still required before substantive docs can be produced.`,
         paths: [".aflow/.specflow/"],
         sessionId: "documentation-reviewer" },
 
-      { kind: "end", id: "docs-ready", num: "END", x: 2070, y: 270, w: 160,
+      { kind: "end", id: "docs-ready", alias: "END", x: 2070, y: 270, w: 160,
         title: "Docs ready", sessionId: null },
     ],
     edges: [

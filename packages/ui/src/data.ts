@@ -17,28 +17,28 @@ const sessions: Session[] = [
 ];
 
 const nodes: WorkflowNode[] = [
-  { id: 'n1',  kind: 'step', num: '01',   x: 60,   y: 240, w: 230,
+  { id: 'n1',  kind: 'step', alias: '01',   x: 60,   y: 240, w: 230,
     title: 'Ticket',
     prompt: 'Capture the incoming ticket — title, description, attached screenshots.',
     images: [{ path: '.aflow/.specflow/assets/example-code-frontend-flow/images/ticket.png', label: 'ticket.png', mimeType: 'image/png' }], paths: ['/issues/PROD-2841'],
     sessionId: 's1', locked: true },
 
-  { id: 'n2a', kind: 'step', num: '02·a', x: 340,  y: 80,  w: 220,
+  { id: 'n2a', kind: 'step', alias: '02·a', x: 340,  y: 80,  w: 220,
     title: 'Parse image components',
     prompt: 'Vision pass over the ticket screenshot. Identify named components and regions.',
     paths: ['design/figma-export.json'],
     sessionId: 's1' },
-  { id: 'n2b', kind: 'step', num: '02·b', x: 600,  y: 80,  w: 220,
+  { id: 'n2b', kind: 'step', alias: '02·b', x: 600,  y: 80,  w: 220,
     title: 'Generate HTML',
     prompt: 'Synthesize draft HTML reproducing <specflow_component_tree> using the project DS.',
     paths: ['src/components/'],
     sessionId: 's2' },
-  { id: 'n2c', kind: 'step', num: '02·c', x: 860,  y: 80,  w: 220,
+  { id: 'n2c', kind: 'step', alias: '02·c', x: 860,  y: 80,  w: 220,
     title: 'Agent reviews component',
     prompt: 'Reviewer agent diffs <specflow_draft_html> against the source image and surfaces visual regressions.',
     sessionId: 's3' },
 
-  { id: 'g1', kind: 'gate', num: 'G1', x: 1130, y: 100, w: 200,
+  { id: 'g1', kind: 'gate', alias: 'G1', x: 1130, y: 100, w: 200,
     title: 'Component review verdict',
     decisionCriteria: 'Decide whether the generated component faithfully matches the ticket screenshot. Choose pass when visual regressions are absent and intent is preserved; rework when meaningful divergence remains.',
     branches: [
@@ -47,34 +47,34 @@ const nodes: WorkflowNode[] = [
       { id: 'fail', label: 'fail' },
     ], },
 
-  { id: 'n3a', kind: 'step', num: '03·a', x: 340, y: 360, w: 230,
+  { id: 'n3a', kind: 'step', alias: '03·a', x: 340, y: 360, w: 230,
     title: 'Interview · feature & task',
     prompt: 'Using <specflow_review_findings>, run targeted Q&A clarifying feature scope and the specific task being requested.',
     sessionId: 's4', locked: true },
-  { id: 'n3b', kind: 'step', num: '03·b', x: 610, y: 360, w: 230,
+  { id: 'n3b', kind: 'step', alias: '03·b', x: 610, y: 360, w: 230,
     title: 'Interview · edge cases',
     prompt: 'Probe for exception cases, failure modes, and boundary behavior.',
     sessionId: 's4', locked: true },
-  { id: 'n3c', kind: 'step', num: '03·c', x: 880, y: 360, w: 230,
+  { id: 'n3c', kind: 'step', alias: '03·c', x: 880, y: 360, w: 230,
     title: 'Summarize interview',
     prompt: 'Consolidate Q&A into a structured spec brief.',
     sessionId: 's4', locked: true },
 
-  { id: 'n4a', kind: 'step', num: '04·a', x: 340, y: 600, w: 220,
+  { id: 'n4a', kind: 'step', alias: '04·a', x: 340, y: 600, w: 220,
     title: 'Plan',
     prompt: 'Break <specflow_spec_brief> into ordered, file-scoped implementation steps with explicit acceptance.',
     sessionId: 's5' },
-  { id: 'n4b', kind: 'step', num: '04·b', x: 600, y: 600, w: 220,
+  { id: 'n4b', kind: 'step', alias: '04·b', x: 600, y: 600, w: 220,
     title: 'Code',
     prompt: 'Author implementation against the plan. Touches only declared files.',
     paths: ['src/', 'tests/'],
     sessionId: 's5' },
-  { id: 'n4c', kind: 'step', num: '04·c', x: 860, y: 600, w: 220,
+  { id: 'n4c', kind: 'step', alias: '04·c', x: 860, y: 600, w: 220,
     title: 'Review',
     prompt: 'Review <specflow_diff>: run tests, lint, type-check, verify acceptance.',
     sessionId: 's3' },
 
-  { id: 'g2', kind: 'gate', num: 'G2', x: 1130, y: 620, w: 200,
+  { id: 'g2', kind: 'gate', alias: 'G2', x: 1130, y: 620, w: 200,
     title: 'Implementation verdict',
     decisionCriteria: 'Decide whether implementation passes review. Pass when tests, lint, types green and acceptance criteria met; rework when fixable; replan when scope or approach was wrong.',
     branches: [
@@ -83,7 +83,7 @@ const nodes: WorkflowNode[] = [
       { id: 'replan', label: 'replan' },
     ], },
 
-  { id: 'end1', kind: 'end', num: 'END', x: 1410, y: 640, w: 140, title: 'Done', sessionId: null },
+  { id: 'end1', kind: 'end', alias: 'END', x: 1410, y: 640, w: 140, title: 'Done', sessionId: null },
 ];
 
 const edges: Edge[] = [

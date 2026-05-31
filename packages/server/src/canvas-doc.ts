@@ -16,7 +16,7 @@ export interface CanvasSession {
 export interface CanvasStepNode {
   kind: "step";
   id: string;
-  num: string;
+  alias: string;
   x: number;
   y: number;
   w: number;
@@ -34,7 +34,7 @@ export interface CanvasStepNode {
 export interface CanvasGateNode {
   kind: "gate";
   id: string;
-  num: string;
+  alias: string;
   x: number;
   y: number;
   w: number;
@@ -47,7 +47,7 @@ export interface CanvasGateNode {
 export interface CanvasEndNode {
   kind: "end";
   id: string;
-  num: string;
+  alias: string;
   x: number;
   y: number;
   w: number;
@@ -58,7 +58,7 @@ export interface CanvasEndNode {
 export interface CanvasInputNode {
   kind: "input";
   id: string;
-  num: string;
+  alias: string;
   x: number;
   y: number;
   w: number;

@@ -212,7 +212,7 @@ export function SessionsBar({
 
 interface LogsTabProps {
   sessions: Session[];
-  activeSession: Session;
+  activeSession?: Session;
   setActiveSessionId: (id: string) => void;
   stepNodes: WorkflowNode[];
   timelineEvents?: TimelineEvent[];
@@ -367,7 +367,7 @@ function LogsTab({
             </>
           )}
         </div>
-        {pausedNode?.specflowSessionId === activeSession?.id && (
+        {pausedNode && activeSession && pausedNode.specflowSessionId === activeSession.id && (
           <PausedNodeComposer
             node={stepNodes.find((candidate) => candidate.id === pausedNode.nodeId)}
             busy={pausedPromptBusy}
@@ -388,6 +388,9 @@ function LogsTab({
           <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9.5, color: 'var(--ink-4)' }}>{sessions.length}</span>
         </div>
         <div className="term-sidebar-list">
+          {sessions.length === 0 && (
+            <div className="term-empty-session">{t('sessions.noSessions')}</div>
+          )}
           {sessions.map((s) => {
             const count = stepNodes.filter((n) => n.kind === 'step' && n.sessionId === s.id).length;
             const isActive = s.id === activeSession?.id;
@@ -560,6 +563,7 @@ function AgentSessionsTab({
               {group.sessions.map((session) => {
                 const latestRunMissing = !knownRuns.has(session.latestRunId);
                 const status = restoreStatusBySession[session.id];
+                const canRestore = Boolean(session.acpSessionId);
                 return (
                   <div key={session.id} className="history-card">
                     <div className="history-card-head">
@@ -580,7 +584,7 @@ function AgentSessionsTab({
                         <CapabilityBadge label="fork" enabled={session.acpSupportsForkSession} />
                         <button
                           className="btn sm"
-                          disabled={!session.acpSupportsLoadSession && !session.acpSupportsResumeSession}
+                          disabled={!canRestore}
                           onClick={() => onRestoreSession?.(session, 'inspect')}
                           title={t('agentSession.inspectTitle')}
                         >
@@ -588,7 +592,7 @@ function AgentSessionsTab({
                         </button>
                         <button
                           className="btn sm primary"
-                          disabled={!session.acpSupportsLoadSession && !session.acpSupportsResumeSession}
+                          disabled={!canRestore}
                           onClick={() => onRestoreSession?.(session, 'continue')}
                           title={t('agentSession.resumeTitle')}
                         >
@@ -614,7 +618,7 @@ function AgentSessionsTab({
                             onClick={() => onOpenInvocationLog?.(ref.runId, ref.nodeId, session.specflowSessionId)}
                             title={runMissing ? t('agentSession.deletedRun') : t('agentSession.openRunLog')}
                           >
-                            <span className={`status-dot ${ref.status === 'done' ? 'success' : ref.status === 'failed' ? 'error' : 'running'}`} />
+                            <span className={`status-dot ${ref.status === 'done' ? 'success' : ref.status === 'failed' ? 'error' : ref.status}`} />
                             <span className="mono-id">{ref.nodeId ?? ref.edgeId ?? ref.invocationId}</span>
                             <span>{runMissing ? t('agentSession.missingRun') : runLabelById.get(ref.runId) ?? ref.runId}</span>
                           </button>
@@ -875,7 +879,7 @@ function SettingsTab({ sessions, stepNodes, onAssignSession, addSessionPing, onA
         {(stepNodes.filter((n) => n.kind === 'step') as Extract<WorkflowNode, { kind: 'step' }>[]).map((n) => (
           <div key={n.id} className="assn-row">
             <div className="nbox">
-              <span className="nid">{n.num}</span>
+              <span className="nid">{n.alias}</span>
               <span className="nname">{n.title}</span>
             </div>
             <div className="session-pick">

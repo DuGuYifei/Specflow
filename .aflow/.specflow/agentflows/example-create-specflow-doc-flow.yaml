@@ -14,7 +14,7 @@ sessions:
 nodes:
   discover-docs:
     kind: step
-    num: "01"
+    alias: "01"
     title: Discover project documents
     prompt: >-
       Inventory existing project-level documentation before making changes.
@@ -40,7 +40,7 @@ nodes:
       - .aflow/.specflow/
   survey-code:
     kind: step
-    num: "02"
+    alias: "02"
     title: Roughly survey implementation
     prompt: >-
       Use <specflow_document_inventory> as the documentation evidence, then
@@ -65,7 +65,7 @@ nodes:
     locked: true
   classify-project:
     kind: step
-    num: "03"
+    alias: "03"
     title: Classify documentation basis
     prompt: >-
       Review <specflow_repository_survey> and decide whether grounded project
@@ -83,7 +83,7 @@ nodes:
     locked: true
   documentation-basis:
     kind: gate
-    num: G1
+    alias: G1
     title: Documentation basis
     decisionCriteria: 'Route from the classification statement in the incoming
       assessment. Choose substantive only when it begins with "classification:
@@ -95,7 +95,7 @@ nodes:
       undetermined: {}
   write-grounded-docs:
     kind: step
-    num: 04·a
+    alias: 04·a
     title: Write grounded Specflow docs
     prompt: >-
       Use <specflow_project_assessment> and verify cited sources as needed.
@@ -129,7 +129,7 @@ nodes:
       - .aflow/.specflow/
   write-placeholder-docs:
     kind: step
-    num: 04·b
+    alias: 04·b
     title: Write undetermined docs
     prompt: >-
       Use <specflow_project_assessment>. The repository lacks enough substantive
@@ -158,7 +158,7 @@ nodes:
       - .aflow/.specflow/
   review-grounded-docs:
     kind: step
-    num: 05·a
+    alias: 05·a
     title: Verify grounded docs
     prompt: Review the generated documentation using
       <specflow_documentation_changes>. Check that the four standard .aflow/.specflow
@@ -172,7 +172,7 @@ nodes:
       - .aflow/.specflow/
   review-placeholder-docs:
     kind: step
-    num: 05·b
+    alias: 05·b
     title: Verify undetermined docs
     prompt: Review the placeholder documentation using
       <specflow_placeholder_changes>. Confirm that the four standard .aflow/.specflow
@@ -185,7 +185,7 @@ nodes:
       - .aflow/.specflow/
   docs-ready:
     kind: end
-    num: END
+    alias: END
     title: Docs ready
 edges:
   - from: discover-docs

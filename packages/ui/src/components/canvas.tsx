@@ -116,7 +116,7 @@ function StepCard({ n, session, selected, runState, onMouseDown, onSelect, onCon
       onClick={(e) => { e.stopPropagation(); onSelect(n.id); }}
     >
       <div className="node-head">
-        <span className="node-id">{n.num}</span>
+        <span className="node-id">{n.alias}</span>
         {n.locked && <span className="lock-badge"><Icon name="lock" size={10} /></span>}
         <span className="node-state-icon">
           {runState === 'running' && <><Icon name="loader" size={11} style={{ animation: 'spin 1.4s linear infinite' }} />{t('canvas.running')}</>}
@@ -173,7 +173,7 @@ function GateCard({ n, selected, runState, onMouseDown, onSelect, onAddBranch }:
     >
       <div className="gate-card">
         <div className="gate-head">
-          <span className="node-id">{n.num}</span>
+          <span className="node-id">{n.alias}</span>
           <span className="gate-sub"><Icon name="route" size={10} /> {t('canvas.gateBranches', { count: branches.length })}</span>
         </div>
         <h3 className="gate-title">{n.title}</h3>
@@ -251,7 +251,7 @@ function InputCard({ n, selected, onMouseDown, onSelect }: InputCardProps) {
     >
       <div className="input-node-head">
         <Icon name="tag" size={10} />
-        <span className="node-id">{n.num}</span>
+        <span className="node-id">{n.alias}</span>
         <span style={{ flex: 1 }}>{n.title}</span>
       </div>
       <div className="input-node-var">
@@ -500,18 +500,21 @@ export function Canvas({
         : mode === 'add-input' ? 'input'
         : 'end';
       const id = nextSymbolKey(keyPrefix, nodesRef.current.map((node) => node.id));
-      const num = `${nodesRef.current.length + 1}`;
       const firstSession = sessions[0]?.id ?? null;
 
       let newNode: WorkflowNode;
       if (mode === 'add-step') {
-        newNode = { kind: 'step', id, num, x: pos.x - 110, y: pos.y - 60, w: 220, title: t('canvas.untitled'), prompt: '', sessionId: firstSession };
+        const alias = String(nodesRef.current.filter((node) => node.kind === 'step').length + 1).padStart(2, '0');
+        newNode = { kind: 'step', id, alias, x: pos.x - 110, y: pos.y - 60, w: 220, title: t('canvas.untitled'), prompt: '', sessionId: firstSession };
       } else if (mode === 'add-gate') {
-        newNode = { kind: 'gate', id, num, x: pos.x - 110, y: pos.y - 55, w: 220, title: t('canvas.decision'), decisionCriteria: '', branches: [{ id: 'pass', label: 'pass' }, { id: 'fix', label: 'fix' }] };
+        const alias = `G${nodesRef.current.filter((node) => node.kind === 'gate').length + 1}`;
+        newNode = { kind: 'gate', id, alias, x: pos.x - 110, y: pos.y - 55, w: 220, title: t('canvas.decision'), decisionCriteria: '', branches: [{ id: 'pass', label: 'pass' }, { id: 'fix', label: 'fix' }] };
       } else if (mode === 'add-input') {
-        newNode = { kind: 'input', id, num, x: pos.x - 100, y: pos.y - 36, w: 200, title: t('canvas.runInput'), variableName: `specflow_var${nodesRef.current.filter((n) => n.kind === 'input').length + 1}`, sessionId: null };
+        const alias = 'IN';
+        newNode = { kind: 'input', id, alias, x: pos.x - 100, y: pos.y - 36, w: 200, title: t('canvas.runInput'), variableName: `specflow_var${nodesRef.current.filter((n) => n.kind === 'input').length + 1}`, sessionId: null };
       } else {
-        newNode = { kind: 'end', id, num, x: pos.x - 30, y: pos.y - 18, w: 80, title: t('canvas.doneNode'), sessionId: null };
+        const alias = 'END';
+        newNode = { kind: 'end', id, alias, x: pos.x - 30, y: pos.y - 18, w: 80, title: t('canvas.doneNode'), sessionId: null };
       }
 
       onAddNode(newNode);

@@ -27,7 +27,7 @@ describe('edge semantics', () => {
   test('resolves the content-producing step through a gate branch', () => {
     const nodes: WorkflowNode[] = [
       step('source', 'source-session'),
-      { kind: 'gate', id: 'gate', num: 'G1', x: 0, y: 0, w: 200, title: 'Gate', decisionCriteria: '', branches: [{ id: 'pass', label: 'pass' }] },
+      { kind: 'gate', id: 'gate', alias: 'G1', x: 0, y: 0, w: 200, title: 'Gate', decisionCriteria: '', branches: [{ id: 'pass', label: 'pass' }] },
       step('target', 'target-session'),
     ];
     const incoming: Edge = { id: 'in', from: 'source', to: 'gate' };
@@ -44,7 +44,7 @@ describe('edge semantics', () => {
   test('recognizes a review return edge that closes a gate-controlled cycle', () => {
     const nodes: WorkflowNode[] = [
       step('review', 'reviewer'),
-      { kind: 'gate', id: 'gate', num: 'G1', x: 0, y: 0, w: 200, title: 'Gate', decisionCriteria: '', branches: [{ id: 'fix', label: 'fix' }] },
+      { kind: 'gate', id: 'gate', alias: 'G1', x: 0, y: 0, w: 200, title: 'Gate', decisionCriteria: '', branches: [{ id: 'fix', label: 'fix' }] },
       step('fix', 'writer'),
     ];
     const edges: Edge[] = [
@@ -57,5 +57,5 @@ describe('edge semantics', () => {
 });
 
 function step(id: string, sessionId: string): Extract<WorkflowNode, { kind: 'step' }> {
-  return { kind: 'step', id, num: id, x: 0, y: 0, w: 200, title: id, prompt: '', sessionId };
+  return { kind: 'step', id, alias: id, x: 0, y: 0, w: 200, title: id, prompt: '', sessionId };
 }

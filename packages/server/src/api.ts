@@ -283,7 +283,30 @@ async function reconstructInvocationsFromRunLog(root: string, record: RunRecord)
   const events = await listRunLogEvents(root, record.id);
   const byInvocationId = new Map<string, RunRecord["agentInvocations"][number]>();
   for (const event of events) {
-    if (event.type === "agent_lifecycle") {
+    if (event.type === "agent_prompt") {
+      if (!event.agentInvocationId) continue;
+      let existing = byInvocationId.get(event.agentInvocationId);
+      if (!existing) {
+        existing = {
+          id: event.agentInvocationId,
+          runId: event.runId,
+          nodeRunId: event.nodeRunId,
+          nodeId: event.nodeId,
+          edgeId: event.edgeId,
+          agentId: event.agentId,
+          agentServerId: event.agentServerId,
+          sessionId: event.specflowSessionId,
+          prompt: event.prompt,
+          status: "running",
+          startedAt: event.at,
+        };
+        byInvocationId.set(event.agentInvocationId, existing);
+      } else {
+        existing.prompt = event.prompt;
+        existing.agentServerId ||= event.agentServerId;
+        existing.sessionId ||= event.specflowSessionId;
+      }
+    } else if (event.type === "agent_lifecycle") {
       const lifecycle = (event.lifecycle ?? {}) as { type?: string; at?: string; sessionId?: string; parentSessionId?: string; error?: string };
       if (!event.agentInvocationId) continue;
       let existing = byInvocationId.get(event.agentInvocationId);
@@ -339,15 +362,16 @@ function pickResumableInvocation(record: RunRecord): RunRecord["agentInvocations
 
 function buildContinuationPrompt(input: {
   nodeTitle?: string;
-  invocationStatus: "running" | "done" | "failed";
+  invocationStatus: "running" | "done" | "failed" | "cancelled";
   runStatus: "running" | "success" | "error" | "cancelled";
   errorMsg?: string;
+  originalTask?: string;
 }): string {
   const node = input.nodeTitle ? `"${input.nodeTitle}"` : "the last step";
   const lines: string[] = [];
   if (input.invocationStatus === "running") {
     lines.push(`Specflow detected that the previous run was interrupted while ${node} was still in progress.`);
-  } else if (input.runStatus === "cancelled") {
+  } else if (input.invocationStatus === "cancelled" || input.runStatus === "cancelled") {
     lines.push(`Specflow detected that the previous run was cancelled after ${node} completed.`);
   } else if (input.runStatus === "error") {
     lines.push(`Specflow detected that the previous run failed after ${node} completed${input.errorMsg ? `: ${input.errorMsg}` : ""}.`);
@@ -355,10 +379,36 @@ function buildContinuationPrompt(input: {
     lines.push(`Specflow is resuming the conversation that backed ${node}.`);
   }
   lines.push(
+    "Specflow cannot prove exactly where the interruption happened; you may have received none, part, or all of the original task.",
+  );
+  if (input.originalTask) {
+    lines.push([
+      "Best available rendered original task:",
+      "<original_task>",
+      input.originalTask,
+      "</original_task>",
+    ].join("\n"));
+  }
+  lines.push(
     "Before doing more work, briefly summarize what you completed in your last actions and what (if anything) was left undone. " +
     "Then, if it makes sense, finish the outstanding work. If you cannot tell what to do, ask me a clarifying question instead of guessing.",
   );
   return lines.join("\n\n");
+}
+
+function bestEffortRenderedOriginalTask(record: RunRecord, nodeId: string | undefined): string | undefined {
+  if (!nodeId) return undefined;
+  try {
+    const prepared = prepareCanvasRun(record.agentflowSnapshot, {
+      initialInput: record.initialInput,
+      variableValues: record.variableValues,
+    });
+    const node = prepared.doc.nodes.find((candidate) => candidate.id === nodeId);
+    return node?.kind === "step" ? node.prompt : undefined;
+  } catch {
+    const node = record.agentflowSnapshot.nodes.find((candidate) => candidate.id === nodeId);
+    return node?.kind === "step" ? node.prompt : undefined;
+  }
 }
 
 function upsertRunInvocation(record: RunRecord, input: {
@@ -408,6 +458,40 @@ function upsertRunInvocation(record: RunRecord, input: {
   }
 }
 
+function upsertRunInvocationPrompt(record: RunRecord, input: {
+  id: string;
+  runId: string;
+  nodeRunId?: string;
+  nodeId?: string;
+  edgeId?: string;
+  agentId: string;
+  agentServerId: string;
+  sessionId?: string;
+  prompt: string;
+  at: string;
+}): void {
+  const existing = record.agentInvocations.find((inv) => inv.id === input.id);
+  if (existing) {
+    existing.prompt = input.prompt;
+    existing.agentServerId ||= input.agentServerId;
+    existing.sessionId ||= input.sessionId;
+    return;
+  }
+  record.agentInvocations.push({
+    id: input.id,
+    runId: input.runId,
+    nodeRunId: input.nodeRunId,
+    nodeId: input.nodeId,
+    edgeId: input.edgeId,
+    agentId: input.agentId,
+    agentServerId: input.agentServerId,
+    sessionId: input.sessionId,
+    prompt: input.prompt,
+    status: "running",
+    startedAt: input.at,
+  });
+}
+
 // ── API handler factory ───────────────────────────────────────────────────────
 
 export function createApiHandler(bridge: SpecflowBridge, root: string) {
@@ -425,7 +509,14 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
   // or kill -9 — so the UI shows the real state instead of a stuck spinner.
   // The ACP session itself can still be resumed via the agent-session restore flow.
   void reconcileInterruptedRuns(root, "Server restart detected; run was interrupted before completion.")
-    .then((ids) => {
+    .then(async (ids) => {
+      for (const id of ids) {
+        try {
+          await upsertAgentSessionsFromRun(await loadRun(id, root), root);
+        } catch (error) {
+          console.error(`Failed to rebuild agent sessions for interrupted run ${id}`, error);
+        }
+      }
       if (ids.length > 0) {
         console.log(`[specflow] reconciled ${ids.length} interrupted run(s):`, ids.join(", "));
       }
@@ -778,6 +869,7 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
         e.status === "done" ? "success" :
         e.status === "failed" ? "error" :
         e.status === "paused" ? "paused" :
+        e.status === "cancelled" ? "cancelled" :
         e.status === "running" ? "running" : "pending";
 
       if (e.status === "running") {
@@ -890,6 +982,22 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
           agentServerId,
           lifecycle,
         });
+      },
+      onAgentPrompt: (event) => {
+        upsertRunInvocationPrompt(record, {
+          id: event.agentInvocationId,
+          runId: event.runId,
+          nodeRunId: event.nodeRunId,
+          nodeId: event.nodeId,
+          edgeId: event.edgeId,
+          agentId: event.agentId,
+          agentServerId: event.agentServerId,
+          sessionId: event.specflowSessionId,
+          prompt: event.prompt,
+          at: event.at,
+        });
+        void saveRun(record, root);
+        appendLog({ type: "agent_prompt", ...event });
       },
       onAgentSessionUpdate: (event) => {
         if (event.agentInvocationId && event.nodeId) {
@@ -1825,6 +1933,7 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
           invocationStatus: suggested.status,
           runStatus: record.status,
           errorMsg: record.errorMsg,
+          originalTask: bestEffortRenderedOriginalTask(record, suggested.nodeId),
         });
         return Response.json({
           agentSessionId: session.id,

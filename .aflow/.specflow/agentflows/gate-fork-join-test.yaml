@@ -6,14 +6,14 @@ sessions:
 nodes:
   route:
     kind: input
-    num: IN
+    alias: IN
     title: Requested branch
     variableName: specflow_route
     defaultValue: rework
     description: Use pass or rework to select the expected branch.
   source:
     kind: step
-    num: "01"
+    alias: "01"
     title: Publish route fact
     prompt: |-
       Do not use tools or edit files.
@@ -23,7 +23,7 @@ nodes:
     session: judge
   decide:
     kind: gate
-    num: G1
+    alias: G1
     title: Select requested route
     decisionCriteria: |-
       Choose pass only when the preceding output is exactly ROUTE=pass.
@@ -35,7 +35,7 @@ nodes:
         description: The published fact selected the rework path.
   pass-path:
     kind: step
-    num: 02A
+    alias: 02A
     title: Pass branch marker
     prompt: |-
       Do not use tools or edit files.
@@ -43,7 +43,7 @@ nodes:
     session: judge
   rework-path:
     kind: step
-    num: 02B
+    alias: 02B
     title: Rework branch marker
     prompt: |-
       Do not use tools or edit files.
@@ -51,7 +51,7 @@ nodes:
     session: judge
   joined:
     kind: step
-    num: "03"
+    alias: "03"
     title: Joined completion marker
     prompt: |-
       Do not use tools or edit files.
@@ -59,7 +59,7 @@ nodes:
     session: judge
   done:
     kind: end
-    num: END
+    alias: END
     title: Done
 edges:
   - from: route

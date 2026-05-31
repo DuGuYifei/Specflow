@@ -1326,6 +1326,22 @@ input, textarea, select { font-family: inherit; font-size: inherit; color: inher
   flex: 1;
   min-width: 0;
 }
+.input-target-list {
+  display: grid;
+  gap: 4px;
+}
+.input-target-row {
+  border: 1px solid var(--line-2);
+  border-radius: 6px;
+  padding: 6px 8px;
+  background: var(--bg);
+}
+.term-empty-session {
+  padding: 10px 12px;
+  color: var(--ink-3);
+  font-size: 11px;
+  font-family: var(--font-mono);
+}
 .term-resizer {
   width: 4px;
   flex-shrink: 0;
@@ -1765,14 +1781,14 @@ input, textarea, select { font-family: inherit; font-size: inherit; color: inher
 /* === LEFT RAIL — two columns === */
 .left.two-col {
   display: grid;
-  grid-template-columns: 220px 280px;
-  width: 500px;
+  grid-template-columns: 220px 6px 280px 6px;
+  width: var(--left-w, 512px);
 }
 .app.two-col-left {
-  grid-template-columns: 500px 1fr 380px;
+  grid-template-columns: var(--left-w, 512px) 1fr 380px;
 }
 .app.two-col-left.no-right {
-  grid-template-columns: 500px 1fr;
+  grid-template-columns: var(--left-w, 512px) 1fr;
 }
 .col {
   border-right: 1px solid var(--line-2);
@@ -1782,10 +1798,58 @@ input, textarea, select { font-family: inherit; font-size: inherit; color: inher
   min-height: 0;
 }
 .col:last-child { border-right: none; }
+.col.collapsed {
+  align-items: center;
+  justify-content: flex-start;
+  padding-top: 8px;
+}
 .col-head {
   display: flex; align-items: center; justify-content: space-between;
   padding: 10px 14px 8px;
   border-bottom: 1px solid var(--line-2);
+}
+.col-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.sidebar-resizer {
+  cursor: col-resize;
+  background: var(--bg-panel);
+  border-right: 1px solid var(--line-2);
+  position: relative;
+}
+.sidebar-resizer::after {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 10px;
+  bottom: 10px;
+  width: 2px;
+  border-radius: 2px;
+  background: transparent;
+}
+.sidebar-resizer:hover::after {
+  background: var(--accent);
+}
+.sidebar-resizer.edge {
+  border-right: none;
+}
+.sidebar-collapsed-tab {
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.sidebar-collapsed-tab:hover {
+  color: var(--ink);
+  background: var(--bg-elev);
 }
 .col-head .col-title {
   font-size: 10.5px;
@@ -1838,13 +1902,17 @@ input, textarea, select { font-family: inherit; font-size: inherit; color: inher
   white-space: nowrap;
 }
 .workflow-name-input { flex: 1; min-width: 0; height: 24px; }
-.workflow-rename {
+.workflow-rename,
+.workflow-delete {
   opacity: 0;
   flex-shrink: 0;
 }
 .wf-card:hover .workflow-rename,
+.wf-card:hover .workflow-delete,
 .wf-card.active .workflow-rename,
-.workflow-rename:focus-visible { opacity: 1; }
+.wf-card.active .workflow-delete,
+.workflow-rename:focus-visible,
+.workflow-delete:focus-visible { opacity: 1; }
 
 .run-card {
   padding: 10px 14px;

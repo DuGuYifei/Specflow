@@ -116,7 +116,7 @@ export interface Branch {
 export interface StepNode {
   kind: 'step';
   id: string;
-  num: string;
+  alias: string;
   x: number;
   y: number;
   w: number;
@@ -134,7 +134,7 @@ export interface StepNode {
 export interface GateNode {
   kind: 'gate';
   id: string;
-  num: string;
+  alias: string;
   x: number;
   y: number;
   w: number;
@@ -147,7 +147,7 @@ export interface GateNode {
 export interface EndNode {
   kind: 'end';
   id: string;
-  num: string;
+  alias: string;
   x: number;
   y: number;
   w: number;
@@ -158,7 +158,7 @@ export interface EndNode {
 export interface InputNode {
   kind: 'input';
   id: string;
-  num: string;
+  alias: string;
   x: number;
   y: number;
   w: number;

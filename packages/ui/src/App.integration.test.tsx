@@ -45,6 +45,7 @@ let restoredPrompts: string[] = [];
 let pausedPrompts: string[] = [];
 let createdCanvasBody: unknown;
 let savedCanvases: unknown[] = [];
+let deletedCanvases: string[] = [];
 let pausedContinues = 0;
 let interactionResponses = 0;
 
@@ -84,6 +85,7 @@ describe("App run integration", () => {
     pausedPrompts = [];
     createdCanvasBody = undefined;
     savedCanvases = [];
+    deletedCanvases = [];
     pausedContinues = 0;
     interactionResponses = 0;
     container = document.createElement("div");
@@ -482,6 +484,22 @@ describe("App run integration", () => {
     if (body.name !== "Custom workflow") throw new Error(`Expected custom workflow name, got ${body.name}`);
   });
 
+  test("opens the log panel for an empty workflow without crashing", async () => {
+    root = createRoot(container);
+    renderApp(root);
+
+    await waitForText("Start run");
+    const button = document.querySelector('button[title="New workflow"]');
+    if (!(button instanceof window.HTMLButtonElement)) throw new Error("New workflow button not found");
+    button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await waitFor(() => Boolean(document.querySelector(".workflow-create input")));
+    clickButton("Create");
+
+    await waitForText("Custom workflow");
+    clickBottomBarHandle();
+    await waitForText("No sessions yet.");
+  });
+
   test("renames the active workflow", async () => {
     root = createRoot(container);
     renderApp(root);
@@ -499,6 +517,19 @@ describe("App run integration", () => {
 
     await waitFor(() => savedCanvases.some((entry) => (entry as { name?: string }).name === "Renamed workflow"));
     await waitForText("Renamed workflow");
+  });
+
+  test("deletes a workflow after confirmation", async () => {
+    root = createRoot(container);
+    renderApp(root);
+    window.confirm = () => true;
+
+    await waitForText("Start run");
+    const button = document.querySelector('button[title="Delete workflow"]');
+    if (!(button instanceof window.HTMLButtonElement)) throw new Error("Delete workflow button not found");
+    button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+    await waitFor(() => deletedCanvases.includes("example-code-frontend-flow"));
   });
 });
 
@@ -523,6 +554,10 @@ function mockFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Respon
     const body = JSON.parse(String(init?.body ?? "{}"));
     savedCanvases.push(body);
     return json(body);
+  }
+  if (method === "DELETE" && /^\/api\/canvases\/[^/]+$/.test(url)) {
+    deletedCanvases.push(url.split("/").at(-1) ?? "");
+    return json({ ok: true });
   }
   if (method === "GET" && url.startsWith("/api/runs?")) {
     return json([]);
@@ -596,7 +631,7 @@ function sampleCanvas() {
     nodes: [{
       kind: "step",
       id: "node-1",
-      num: "1",
+      alias: "1",
       x: 120,
       y: 120,
       w: 240,

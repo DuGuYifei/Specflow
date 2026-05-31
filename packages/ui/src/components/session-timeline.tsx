@@ -51,7 +51,7 @@ export function SessionTimeline({ events, emptyMessage = 'No output yet.', nodeB
           return (
             <div key={index} className="timeline-tool">
               <span className="timeline-role">{t('timeline.tool')}</span>
-              {item.nodeId && nodeById?.get(item.nodeId) && <span className="node-ref">{nodeById.get(item.nodeId)!.num}</span>}
+              {item.nodeId && nodeById?.get(item.nodeId) && <span className="node-ref">{nodeById.get(item.nodeId)!.alias}</span>}
               <span className="timeline-tool-title">{item.title}</span>
               {item.status && <span className="timeline-tool-status">{item.status}</span>}
             </div>
@@ -77,7 +77,7 @@ export function SessionTimeline({ events, emptyMessage = 'No output yet.', nodeB
             <div key={index} className="timeline-gate">
               <div className="timeline-gate-head">
                 <span className="timeline-role">{t('timeline.gate')}</span>
-                {item.nodeId && nodeById?.get(item.nodeId) && <span className="node-ref">{nodeById.get(item.nodeId)!.num}</span>}
+                {item.nodeId && nodeById?.get(item.nodeId) && <span className="node-ref">{nodeById.get(item.nodeId)!.alias}</span>}
                 <span className="timeline-gate-choice">{item.branchId}</span>
               </div>
               {item.reason && <div className="timeline-gate-reason">{item.reason}</div>}
@@ -97,7 +97,7 @@ export function SessionTimeline({ events, emptyMessage = 'No output yet.', nodeB
         return (
           <div key={index} className={`timeline-message ${item.role}${item.stream ? ` ${item.stream}` : ''}${item.localContext ? ' local-context' : ''}`}>
             <span className="timeline-role">{item.role === 'terminal' && item.stream ? item.stream : item.role}</span>
-            {node && <span className="node-ref">{node.num}</span>}
+            {node && <span className="node-ref">{node.alias}</span>}
             <span className="timeline-text">{item.text}</span>
           </div>
         );
