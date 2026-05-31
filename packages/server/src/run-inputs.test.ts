@@ -39,6 +39,7 @@ describe("prepareCanvasRun", () => {
     expect(prepared.missingVariables).toHaveLength(0);
     expect(prepared.variables[0]).toMatchObject({
       name: "specflow_value",
+      required: true,
       value: "1",
       source: "override",
     });
@@ -48,6 +49,22 @@ describe("prepareCanvasRun", () => {
   it("treats empty overrides as missing", () => {
     const prepared = prepareCanvasRun(doc, { variableValues: { specflow_value: "" } });
     expect(prepared.missingVariables.map((v) => v.name)).toEqual(["specflow_value"]);
+  });
+
+  it("allows optional inputs to stay empty", () => {
+    const prepared = prepareCanvasRun({
+      ...doc,
+      nodes: doc.nodes.map((node) => (
+        node.kind === "input" ? { ...node, required: false } : node
+      )),
+    });
+    expect(prepared.missingVariables).toHaveLength(0);
+    expect(prepared.variables[0]).toMatchObject({
+      name: "specflow_value",
+      required: false,
+      value: "",
+      source: "default",
+    });
   });
 });
 

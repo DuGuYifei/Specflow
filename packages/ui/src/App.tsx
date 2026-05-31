@@ -146,12 +146,12 @@ export function App() {
   // Variables are derived from InputNodes — both in edit and run view.
   const variables = useMemo(
     () => nodes.filter((n): n is InputNode => n.kind === 'input')
-              .map((n) => ({ name: n.variableName, defaultValue: n.defaultValue, description: n.description })),
+              .map((n) => ({ name: n.variableName, required: n.required, defaultValue: n.defaultValue, description: n.description })),
     [nodes],
   );
   const displayVariables = useMemo(
     () => displayNodes.filter((n): n is InputNode => n.kind === 'input')
-                      .map((n) => ({ name: n.variableName, defaultValue: n.defaultValue, description: n.description })),
+                      .map((n) => ({ name: n.variableName, required: n.required, defaultValue: n.defaultValue, description: n.description })),
     [displayNodes],
   );
   const hasAgentUpdates = useMemo(

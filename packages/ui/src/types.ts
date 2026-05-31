@@ -3,6 +3,7 @@ export type Language = 'en' | 'zh-CN';
 
 export interface Variable {
   name: string;           // always prefixed: "specflow_branch"
+  required?: boolean;
   defaultValue?: string;
   description?: string;
 }
@@ -164,6 +165,7 @@ export interface InputNode {
   w: number;
   title: string;
   variableName: string;    // stored prefixed: "specflow_component_tree"
+  required?: boolean;
   defaultValue?: string;
   description?: string;
   sessionId: null;

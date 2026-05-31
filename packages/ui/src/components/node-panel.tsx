@@ -347,6 +347,17 @@ function InputPanelContent(props: NodePanelProps & { node: InputNode; readonly: 
         const value = event.target.value.replace(/[^A-Za-z0-9_]/g, '');
         if (value) props.onEditNode(node.id, { variableName: `specflow_${value}` });
       }} />
+      <div className="section-title">{t('node.inputRequired')}</div>
+      <label className="toggle-row">
+        <input
+          type="checkbox"
+          checked={node.required !== false}
+          disabled={readonly}
+          onChange={(event) => props.onEditNode(node.id, { required: event.target.checked ? undefined : false })}
+        />
+        {t('common.required')}
+      </label>
+      <div className="code-hint">{t('node.inputOptionalHint')}</div>
       <div className="section-title">{t('node.defaultValue')}</div>
       <input className="input" value={node.defaultValue ?? ''} disabled={readonly} onChange={(event) => props.onEditNode(node.id, { defaultValue: event.target.value || undefined })} />
       <div className="section-title">{t('node.description')}</div>

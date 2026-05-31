@@ -2,6 +2,7 @@ import type { AgentFlowDoc } from "./canvas-doc";
 
 export interface RunInputVariable {
   name: string;
+  required: boolean;
   defaultValue?: string;
   description?: string;
   value: string;
@@ -33,12 +34,14 @@ export function prepareCanvasRun(
     const hasOverride = Object.prototype.hasOwnProperty.call(overrides, n.variableName);
     const overrideValue = overrides[n.variableName];
     const value = hasOverride ? overrideValue : n.defaultValue ?? "";
-    const isMissing = value.trim() === "";
+    const required = n.required !== false;
+    const isMissing = required && value.trim() === "";
     const source = isMissing ? "missing" : hasOverride ? "override" : "default";
 
     effectiveValues[n.variableName] = value;
     variables.push({
       name: n.variableName,
+      required,
       defaultValue: n.defaultValue,
       description: n.description,
       value,
