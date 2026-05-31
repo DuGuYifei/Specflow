@@ -76,3 +76,5 @@
 - [ ] 运行中节点被选中，下方session应该自动切换到该节点所属session看日志。
 - [ ] session似乎在显示时候共享了session
 - [ ] 重新进入运行中的workflow，session不会更新，应该要主动发一次请求是不是？（好像解决了，但是不记得了）
+- [ ] UI: input value节点不能连线
+- [ ] UI: 新建workflow，会有一个默认的unconfigured session，应该默认不创建。
