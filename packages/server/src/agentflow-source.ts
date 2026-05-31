@@ -131,6 +131,7 @@ function parseNodes(raw: Record<string, unknown>, sessionIds: Set<string>): Agen
         alias: optionalString(node.alias) ?? "IN",
         title,
         variableName: requireString(node.variableName, `node "${id}".variableName`),
+        ...(node.required === false ? { required: false } : {}),
         defaultValue: optionalString(node.defaultValue),
         description: optionalString(node.description),
         sessionId: null,
@@ -252,6 +253,7 @@ function serializeNode(node: AgentFlowNode): Record<string, unknown> {
       alias: node.alias,
       title: node.title,
       variableName: node.variableName,
+      required: node.required,
       defaultValue: node.defaultValue,
       description: node.description,
     });

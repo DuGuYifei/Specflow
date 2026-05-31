@@ -22,7 +22,7 @@ export function RunConfigPanel({
   busy,
 }: RunConfigPanelProps) {
   const { t } = useI18n();
-  const missingVariables = variables.filter((v) => (values[v.name] ?? v.defaultValue ?? '').trim() === '');
+  const missingVariables = variables.filter((v) => v.required !== false && (values[v.name] ?? v.defaultValue ?? '').trim() === '');
   const canStart = !busy && missingVariables.length === 0;
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -58,11 +58,12 @@ export function RunConfigPanel({
               <div className="run-var-list">
                 {variables.map((v, index) => {
                   const effective = values[v.name] ?? v.defaultValue ?? '';
+                  const isRequired = v.required !== false;
                   const isDefault = effective === (v.defaultValue ?? '');
                   return (
                     <div key={v.name} className="run-var-row">
                       <label htmlFor={`run-var-${index}`}>{v.name}</label>
-                      {(values[v.name] ?? v.defaultValue ?? '').trim() === '' && (
+                      {isRequired && (values[v.name] ?? v.defaultValue ?? '').trim() === '' && (
                         <span className="run-var-required">{t('common.required')}</span>
                       )}
                       <div className="run-var-control">

@@ -64,6 +64,7 @@ export interface CanvasInputNode {
   w: number;
   title: string;
   variableName: string;
+  required?: boolean;
   defaultValue?: string;
   description?: string;
   sessionId: null;
