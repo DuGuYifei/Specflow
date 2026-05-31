@@ -1,6 +1,7 @@
 import { mkdir, readdir, readFile, writeFile, unlink } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { parse } from "yaml";
+import { SPECFLOW_WORKSPACE_PATH } from "@specflow/shared";
 import type { AgentFlowDoc, CanvasDoc, CanvasLayoutDoc } from "./canvas-doc";
 import { splitCanvasDoc } from "./canvas-store";
 import type { AgentInvocation } from "@specflow/workflow";
@@ -36,7 +37,7 @@ export interface RunRecord {
 }
 
 function runsDir(root: string) {
-  return join(root, ".specflow", "runs");
+  return join(root, SPECFLOW_WORKSPACE_PATH, "runs");
 }
 
 function runPath(id: string, root: string) {

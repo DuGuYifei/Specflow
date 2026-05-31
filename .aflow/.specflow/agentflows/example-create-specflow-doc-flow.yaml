@@ -25,7 +25,7 @@ nodes:
       architecture/design/RFC/decision records, CONTRIBUTING and governance
       files, and files under docs/, doc/, documentation/, adr/, decisions/, or
       equivalent directories. Include relevant package-level READMEs when they
-      explain a subsystem. Also inspect any existing .specflow documentation.
+      explain a subsystem. Also inspect any existing .aflow/.specflow documentation.
 
 
       Ignore dependency, build, coverage, generated, cache, and VCS directories
@@ -37,7 +37,7 @@ nodes:
     paths:
       - README.md
       - docs/
-      - .specflow/
+      - .aflow/.specflow/
   survey-code:
     kind: step
     num: "02"
@@ -78,7 +78,7 @@ nodes:
       when the repository is empty, placeholder-only, or too sparse. Then
       provide an evidence-backed brief for a writer: verified facts, existing
       documents to link, unknowns that must remain marked unknown, and
-      recommended optional .specflow files beyond the standard set.
+      recommended optional .aflow/.specflow files beyond the standard set.
     session: project-classifier
     locked: true
   documentation-basis:
@@ -99,34 +99,34 @@ nodes:
     title: Write grounded Specflow docs
     prompt: >-
       Use <specflow_project_assessment> and verify cited sources as needed.
-      Create or conservatively update project documentation under .specflow
+      Create or conservatively update project documentation under .aflow/.specflow
       without deleting authored content.
 
 
       Write the standard files:
 
-      - .specflow/product/product.md: purpose, users/use cases, capabilities and
+      - .aflow/.specflow/product/product.md: purpose, users/use cases, capabilities and
       current boundaries.
 
-      - .specflow/architecture.md: package/service map, runtime/data flow,
+      - .aflow/.specflow/architecture.md: package/service map, runtime/data flow,
       integrations and source links.
 
-      - .specflow/glossary.md: project terms and meanings supported by evidence.
+      - .aflow/.specflow/glossary.md: project terms and meanings supported by evidence.
 
-      - .specflow/conventions.md: evidenced engineering, file layout, testing
+      - .aflow/.specflow/conventions.md: evidenced engineering, file layout, testing
       and workflow conventions.
 
 
       Use Markdown links to existing repository documents instead of duplicating
       long source text. Attribute key claims with relative source paths. Where
-      useful, add narrowly named custom docs such as .specflow/source-index.md,
-      .specflow/product/open-questions.md, or a subsystem note, but only when
+      useful, add narrowly named custom docs such as .aflow/.specflow/source-index.md,
+      .aflow/.specflow/product/open-questions.md, or a subsystem note, but only when
       evidence warrants it. Clearly label inferences and unknowns. Do not invent
       product behavior or policy. Return the files changed and the source links
       represented in them.
     session: documentation-writer
     paths:
-      - .specflow/
+      - .aflow/.specflow/
   write-placeholder-docs:
     kind: step
     num: 04·b
@@ -138,30 +138,30 @@ nodes:
 
       Create or conservatively update these files:
 
-      - .specflow/product/product.md
+      - .aflow/.specflow/product/product.md
 
-      - .specflow/architecture.md
+      - .aflow/.specflow/architecture.md
 
-      - .specflow/glossary.md
+      - .aflow/.specflow/glossary.md
 
-      - .specflow/conventions.md
+      - .aflow/.specflow/conventions.md
 
 
       Each file must clearly say that the project is currently undetermined or
       has insufficient source material, list any minimal evidence found, and
       state what future evidence would allow the document to be filled in. Do
       not fabricate purpose, architecture, terminology, or conventions. Add
-      .specflow/source-index.md only if it helps record the scan evidence.
+      .aflow/.specflow/source-index.md only if it helps record the scan evidence.
       Return the files changed and the reason they remain placeholders.
     session: documentation-writer
     paths:
-      - .specflow/
+      - .aflow/.specflow/
   review-grounded-docs:
     kind: step
     num: 05·a
     title: Verify grounded docs
     prompt: Review the generated documentation using
-      <specflow_documentation_changes>. Check that the four standard .specflow
+      <specflow_documentation_changes>. Check that the four standard .aflow/.specflow
       files exist, links resolve to real repository files, important claims are
       traceable to source evidence, inferred statements are labeled, and no
       unsupported content was added. Fix small documentation defects directly
@@ -169,20 +169,20 @@ nodes:
       unknowns.
     session: documentation-reviewer
     paths:
-      - .specflow/
+      - .aflow/.specflow/
   review-placeholder-docs:
     kind: step
     num: 05·b
     title: Verify undetermined docs
     prompt: Review the placeholder documentation using
-      <specflow_placeholder_changes>. Confirm that the four standard .specflow
+      <specflow_placeholder_changes>. Confirm that the four standard .aflow/.specflow
       files exist, each explicitly records insufficient evidence rather than
       fabricated facts, and any cited paths actually exist. Fix small
       documentation defects directly when needed. Summarize what evidence is
       still required before substantive docs can be produced.
     session: documentation-reviewer
     paths:
-      - .specflow/
+      - .aflow/.specflow/
   docs-ready:
     kind: end
     num: END

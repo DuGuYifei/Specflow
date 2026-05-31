@@ -17,7 +17,7 @@ Registry openness does not mean every agent is guaranteed to run. Specflow repor
 
 Specflow uses ACP-native auth methods whenever the agent advertises them.
 
-- `env_var` methods read required variables from `.specflow/agent-servers.json` or `.specflow/agent-servers.local.json`.
+- `env_var` methods read required variables from `.aflow/.specflow/agent-servers.json` or `.aflow/.specflow/agent-servers.local.json`.
 - Terminal auth methods run in a browser-visible auth terminal backed by the local Bun server.
 - Zed-compatible `_meta["terminal-auth"]` methods are treated as terminal auth.
 

@@ -72,7 +72,7 @@ nodes:
 
 
       If it is accessible, begin with exactly "readiness: ready" and perform an
-      evidence-driven, read-only discovery pass. Inspect README files, .specflow
+      evidence-driven, read-only discovery pass. Inspect README files, .aflow/.specflow
       product/architecture/glossary/conventions notes, docs/ and ADRs,
       package/build manifests, primary entrypoints, visible UI
       components/styles/assets, screenshots or brand assets, and install/run
@@ -315,7 +315,7 @@ nodes:
 
       Inspect the output workspace and determine its delivery shape. If it
       already contains an intentional frontend scaffold, preserve its toolchain,
-      conventions and build path. If it is empty apart from .specflow files,
+      conventions and build path. If it is empty apart from .aflow/.specflow files,
       produce a dependency-free responsive static site using index.html,
       styles.css, optional main.js and an output README with preview
       instructions; do not require package installation merely to view the

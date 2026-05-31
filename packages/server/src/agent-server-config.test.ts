@@ -36,7 +36,7 @@ describe("agent server local config", () => {
 
   test("normalizes camelCase agentServers from existing files", async () => {
     const root = await mkdtemp(join(tmpdir(), "specflow-agent-servers-"));
-    await mkdir(join(root, ".specflow"), { recursive: true });
+    await mkdir(join(root, ".aflow/.specflow"), { recursive: true });
     await writeFile(agentServersLocalPath(root), JSON.stringify({
       agentServers: {
         codex: { type: "registry", registryId: "codex-acp" },

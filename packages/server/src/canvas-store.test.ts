@@ -276,11 +276,11 @@ edges:
     const root = await tempProject();
     await initWorkspace(root);
 
-    const gitignore = await readFile(join(root, ".specflow", ".gitignore"), "utf8");
+    const gitignore = await readFile(join(root, ".aflow/.specflow", ".gitignore"), "utf8");
     expect(gitignore).toContain("runs/");
     expect(gitignore).toContain("canvas/");
 
-    const agentflowRaw = await readFile(join(root, ".specflow", "agentflows", "example-code-frontend-flow.yaml"), "utf8");
+    const agentflowRaw = await readFile(join(root, ".aflow/.specflow", "agentflows", "example-code-frontend-flow.yaml"), "utf8");
     const agentflow = parseAgentFlowSource(agentflowRaw, "example-code-frontend-flow");
     expect(agentflow.nodes.some((node) => node.kind === "end")).toBe(true);
     expect("x" in agentflow.nodes[0]!).toBe(false);
@@ -290,18 +290,18 @@ edges:
     expect(agentflowRaw).not.toContain("sessionId:");
     expect(agentflowRaw).not.toContain("color:");
 
-    const canvas = JSON.parse(await readFile(join(root, ".specflow", "canvas", "example-code-frontend-flow.json"), "utf8"));
+    const canvas = JSON.parse(await readFile(join(root, ".aflow/.specflow", "canvas", "example-code-frontend-flow.json"), "utf8"));
     expect(canvas.workflowId).toBe("example-code-frontend-flow");
     expect(canvas.nodes[0]).toHaveProperty("nodeId");
 
-    const docsFlowRaw = await readFile(join(root, ".specflow", "agentflows", "example-create-specflow-doc-flow.yaml"), "utf8");
+    const docsFlowRaw = await readFile(join(root, ".aflow/.specflow", "agentflows", "example-create-specflow-doc-flow.yaml"), "utf8");
     const docsFlow = parseAgentFlowSource(docsFlowRaw, "example-create-specflow-doc-flow");
     expect(docsFlow.nodes.find((node) => node.id === "discover-docs")?.kind).toBe("step");
     expect(docsFlow.nodes.find((node) => node.id === "documentation-basis")?.kind).toBe("gate");
-    expect(docsFlowRaw).toContain(".specflow/product/product.md");
+    expect(docsFlowRaw).toContain(".aflow/.specflow/product/product.md");
     expect(docsFlowRaw).toContain("classification: undetermined");
 
-    const docsCanvas = JSON.parse(await readFile(join(root, ".specflow", "canvas", "example-create-specflow-doc-flow.json"), "utf8"));
+    const docsCanvas = JSON.parse(await readFile(join(root, ".aflow/.specflow", "canvas", "example-create-specflow-doc-flow.json"), "utf8"));
     expect(docsCanvas.workflowId).toBe("example-create-specflow-doc-flow");
   });
 
@@ -311,7 +311,7 @@ edges:
 
     for (const workflowId of ["example-code-frontend-flow", "example-create-specflow-doc-flow"]) {
       const agentflow = parseAgentFlowSource(
-        await readFile(join(root, ".specflow", "agentflows", `${workflowId}.yaml`), "utf8"),
+        await readFile(join(root, ".aflow/.specflow", "agentflows", `${workflowId}.yaml`), "utf8"),
         workflowId,
       );
       expect(agentflow.sessions.map((session) => session.agentServerId)).toEqual([
@@ -326,7 +326,7 @@ edges:
 
   it("splits legacy canvas yaml into agentflow yaml and canvas json", async () => {
     const root = await tempProject();
-    const specflow = join(root, ".specflow");
+    const specflow = join(root, ".aflow/.specflow");
     const canvasDir = join(specflow, "canvas");
     await mkdir(canvasDir, { recursive: true });
     await writeFile(join(canvasDir, "legacy.yaml"), legacyCanvasYaml(), "utf8");
@@ -362,7 +362,7 @@ edges:
     };
     await saveCanvas(doc.id, doc, root);
     await writeFile(
-      join(root, ".specflow", "canvas", "regen.json"),
+      join(root, ".aflow/.specflow", "canvas", "regen.json"),
       `${JSON.stringify({ workflowId: "other", version: 1, nodes: [] })}\n`,
       "utf8",
     );
@@ -418,7 +418,7 @@ edges:
 
 async function tempProject(): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "specflow-store-"));
-  await mkdir(join(root, ".specflow"), { recursive: true });
+  await mkdir(join(root, ".aflow/.specflow"), { recursive: true });
   return root;
 }
 

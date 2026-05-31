@@ -20,7 +20,7 @@ nodes:
     session: parser
     locked: true
     images:
-      - path: .specflow/assets/example-code-frontend-flow/images/ticket.png
+      - path: .aflow/.specflow/assets/example-code-frontend-flow/images/ticket.png
         label: ticket.png
         mimeType: image/png
     paths:

@@ -17,7 +17,7 @@ export const SEED_CANVAS_DOCS: CanvasDoc[] = [
       { kind: "step", id: "n1",  num: "01",   x: 60,   y: 240, w: 230,
         title: "Ticket",
         prompt: "Capture the incoming ticket — title, description, attached screenshots.",
-        images: [{ path: ".specflow/assets/example-code-frontend-flow/images/ticket.png", label: "ticket.png", mimeType: "image/png" }], paths: ["/issues/PROD-2841"],
+        images: [{ path: ".aflow/.specflow/assets/example-code-frontend-flow/images/ticket.png", label: "ticket.png", mimeType: "image/png" }], paths: ["/issues/PROD-2841"],
         sessionId: "parser", locked: true },
 
       { kind: "step", id: "n2a", num: "02·a", x: 340,  y: 80,  w: 220,
@@ -120,10 +120,10 @@ export const SEED_CANVAS_DOCS: CanvasDoc[] = [
         title: "Discover project documents",
         prompt: `Inventory existing project-level documentation before making changes.
 
-Scan the entire repository for documentation sources, including README/README.* files, ADR or adr-*.md files, architecture/design/RFC/decision records, CONTRIBUTING and governance files, and files under docs/, doc/, documentation/, adr/, decisions/, or equivalent directories. Include relevant package-level READMEs when they explain a subsystem. Also inspect any existing .specflow documentation.
+Scan the entire repository for documentation sources, including README/README.* files, ADR or adr-*.md files, architecture/design/RFC/decision records, CONTRIBUTING and governance files, and files under docs/, doc/, documentation/, adr/, decisions/, or equivalent directories. Include relevant package-level READMEs when they explain a subsystem. Also inspect any existing .aflow/.specflow documentation.
 
 Ignore dependency, build, coverage, generated, cache, and VCS directories unless a file is intentionally authored documentation. Do not edit files in this step. Return a compact source inventory grouped by purpose, with relative paths, useful facts, conflicts, and documentation gaps.`,
-        paths: ["README.md", "docs/", ".specflow/"],
+        paths: ["README.md", "docs/", ".aflow/.specflow/"],
         sessionId: "document-researcher", locked: true },
 
       { kind: "step", id: "survey-code", num: "02", x: 380, y: 260, w: 270,
@@ -139,7 +139,7 @@ Explicitly assess whether the project contains substantive first-party implement
         title: "Classify documentation basis",
         prompt: `Review <specflow_repository_survey> and decide whether grounded project documentation can be authored.
 
-Return exactly one leading classification line: "classification: substantive" when there is enough first-party code or documentation to describe the project without invention, or "classification: undetermined" when the repository is empty, placeholder-only, or too sparse. Then provide an evidence-backed brief for a writer: verified facts, existing documents to link, unknowns that must remain marked unknown, and recommended optional .specflow files beyond the standard set.`,
+Return exactly one leading classification line: "classification: substantive" when there is enough first-party code or documentation to describe the project without invention, or "classification: undetermined" when the repository is empty, placeholder-only, or too sparse. Then provide an evidence-backed brief for a writer: verified facts, existing documents to link, unknowns that must remain marked unknown, and recommended optional .aflow/.specflow files beyond the standard set.`,
         sessionId: "project-classifier", locked: true },
 
       { kind: "gate", id: "documentation-basis", num: "G1", x: 1050, y: 270, w: 230,
@@ -152,16 +152,16 @@ Return exactly one leading classification line: "classification: substantive" wh
 
       { kind: "step", id: "write-grounded-docs", num: "04·a", x: 1360, y: 100, w: 300,
         title: "Write grounded Specflow docs",
-        prompt: `Use <specflow_project_assessment> and verify cited sources as needed. Create or conservatively update project documentation under .specflow without deleting authored content.
+        prompt: `Use <specflow_project_assessment> and verify cited sources as needed. Create or conservatively update project documentation under .aflow/.specflow without deleting authored content.
 
 Write the standard files:
-- .specflow/product/product.md: purpose, users/use cases, capabilities and current boundaries.
-- .specflow/architecture.md: package/service map, runtime/data flow, integrations and source links.
-- .specflow/glossary.md: project terms and meanings supported by evidence.
-- .specflow/conventions.md: evidenced engineering, file layout, testing and workflow conventions.
+- .aflow/.specflow/product/product.md: purpose, users/use cases, capabilities and current boundaries.
+- .aflow/.specflow/architecture.md: package/service map, runtime/data flow, integrations and source links.
+- .aflow/.specflow/glossary.md: project terms and meanings supported by evidence.
+- .aflow/.specflow/conventions.md: evidenced engineering, file layout, testing and workflow conventions.
 
-Use Markdown links to existing repository documents instead of duplicating long source text. Attribute key claims with relative source paths. Where useful, add narrowly named custom docs such as .specflow/source-index.md, .specflow/product/open-questions.md, or a subsystem note, but only when evidence warrants it. Clearly label inferences and unknowns. Do not invent product behavior or policy. Return the files changed and the source links represented in them.`,
-        paths: [".specflow/"],
+Use Markdown links to existing repository documents instead of duplicating long source text. Attribute key claims with relative source paths. Where useful, add narrowly named custom docs such as .aflow/.specflow/source-index.md, .aflow/.specflow/product/open-questions.md, or a subsystem note, but only when evidence warrants it. Clearly label inferences and unknowns. Do not invent product behavior or policy. Return the files changed and the source links represented in them.`,
+        paths: [".aflow/.specflow/"],
         sessionId: "documentation-writer" },
 
       { kind: "step", id: "write-placeholder-docs", num: "04·b", x: 1360, y: 440, w: 300,
@@ -169,25 +169,25 @@ Use Markdown links to existing repository documents instead of duplicating long 
         prompt: `Use <specflow_project_assessment>. The repository lacks enough substantive evidence for descriptive documentation.
 
 Create or conservatively update these files:
-- .specflow/product/product.md
-- .specflow/architecture.md
-- .specflow/glossary.md
-- .specflow/conventions.md
+- .aflow/.specflow/product/product.md
+- .aflow/.specflow/architecture.md
+- .aflow/.specflow/glossary.md
+- .aflow/.specflow/conventions.md
 
-Each file must clearly say that the project is currently undetermined or has insufficient source material, list any minimal evidence found, and state what future evidence would allow the document to be filled in. Do not fabricate purpose, architecture, terminology, or conventions. Add .specflow/source-index.md only if it helps record the scan evidence. Return the files changed and the reason they remain placeholders.`,
-        paths: [".specflow/"],
+Each file must clearly say that the project is currently undetermined or has insufficient source material, list any minimal evidence found, and state what future evidence would allow the document to be filled in. Do not fabricate purpose, architecture, terminology, or conventions. Add .aflow/.specflow/source-index.md only if it helps record the scan evidence. Return the files changed and the reason they remain placeholders.`,
+        paths: [".aflow/.specflow/"],
         sessionId: "documentation-writer" },
 
       { kind: "step", id: "review-grounded-docs", num: "05·a", x: 1720, y: 100, w: 280,
         title: "Verify grounded docs",
-        prompt: `Review the generated documentation using <specflow_documentation_changes>. Check that the four standard .specflow files exist, links resolve to real repository files, important claims are traceable to source evidence, inferred statements are labeled, and no unsupported content was added. Fix small documentation defects directly when needed. Summarize coverage, custom files, fixes, and remaining unknowns.`,
-        paths: [".specflow/"],
+        prompt: `Review the generated documentation using <specflow_documentation_changes>. Check that the four standard .aflow/.specflow files exist, links resolve to real repository files, important claims are traceable to source evidence, inferred statements are labeled, and no unsupported content was added. Fix small documentation defects directly when needed. Summarize coverage, custom files, fixes, and remaining unknowns.`,
+        paths: [".aflow/.specflow/"],
         sessionId: "documentation-reviewer" },
 
       { kind: "step", id: "review-placeholder-docs", num: "05·b", x: 1720, y: 440, w: 280,
         title: "Verify undetermined docs",
-        prompt: `Review the placeholder documentation using <specflow_placeholder_changes>. Confirm that the four standard .specflow files exist, each explicitly records insufficient evidence rather than fabricated facts, and any cited paths actually exist. Fix small documentation defects directly when needed. Summarize what evidence is still required before substantive docs can be produced.`,
-        paths: [".specflow/"],
+        prompt: `Review the placeholder documentation using <specflow_placeholder_changes>. Confirm that the four standard .aflow/.specflow files exist, each explicitly records insufficient evidence rather than fabricated facts, and any cited paths actually exist. Fix small documentation defects directly when needed. Summarize what evidence is still required before substantive docs can be produced.`,
+        paths: [".aflow/.specflow/"],
         sessionId: "documentation-reviewer" },
 
       { kind: "end", id: "docs-ready", num: "END", x: 2070, y: 270, w: 160,

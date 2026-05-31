@@ -214,7 +214,7 @@ methods for UI display.
 
 Non-terminal methods call ACP `authenticate(methodId)`. Env-var methods are
 shown as configuration requirements: users add secrets to
-`.specflow/agent-servers.json` or `.specflow/agent-servers.local.json`, and the
+`.aflow/.specflow/agent-servers.json` or `.aflow/.specflow/agent-servers.local.json`, and the
 next auth inspection reads those files again.
 
 Terminal methods create a server-side PTY session. The UI opens an auth modal
@@ -236,8 +236,8 @@ Agent server config is limited to process launch boundaries:
 Mode, model, reasoning, and ACP config options are node-level settings. They
 are not server defaults.
 
-`.specflow/agent-servers.local.json` deep-merges with
-`.specflow/agent-servers.json` by agent id. Nested `env` maps also merge, with
+`.aflow/.specflow/agent-servers.local.json` deep-merges with
+`.aflow/.specflow/agent-servers.json` by agent id. Nested `env` maps also merge, with
 local values overriding shared values. This lets shared config define the
 agent command while local config provides only secrets or machine-specific
 paths.

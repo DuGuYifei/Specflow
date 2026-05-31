@@ -7,8 +7,8 @@ import { AgentServerStore } from "./agent-server-store";
 describe("AgentServerStore", () => {
   test("normalizes registry settings without adding Specflow auth defaults", async () => {
     const root = await mkdtemp(join(tmpdir(), "specflow-agent-store-"));
-    await mkdir(join(root, ".specflow"), { recursive: true });
-    await writeFile(join(root, ".specflow", "agent-servers.json"), JSON.stringify({
+    await mkdir(join(root, ".aflow/.specflow"), { recursive: true });
+    await writeFile(join(root, ".aflow/.specflow", "agent-servers.json"), JSON.stringify({
       agent_servers: {
         "claude-acp": {
           type: "registry",
@@ -30,8 +30,8 @@ describe("AgentServerStore", () => {
 
   test("deep merges local agent settings over base settings", async () => {
     const root = await mkdtemp(join(tmpdir(), "specflow-agent-store-"));
-    await mkdir(join(root, ".specflow"), { recursive: true });
-    await writeFile(join(root, ".specflow", "agent-servers.json"), JSON.stringify({
+    await mkdir(join(root, ".aflow/.specflow"), { recursive: true });
+    await writeFile(join(root, ".aflow/.specflow", "agent-servers.json"), JSON.stringify({
       agent_servers: {
         fake: {
           type: "custom",
@@ -42,7 +42,7 @@ describe("AgentServerStore", () => {
         },
       },
     }), "utf8");
-    await writeFile(join(root, ".specflow", "agent-servers.local.json"), JSON.stringify({
+    await writeFile(join(root, ".aflow/.specflow", "agent-servers.local.json"), JSON.stringify({
       agent_servers: {
         fake: {
           env: { SHARED: "local", SECRET: "token" },
@@ -63,8 +63,8 @@ describe("AgentServerStore", () => {
 
   test("resolves arbitrary registry agents from the registry index", async () => {
     const root = await mkdtemp(join(tmpdir(), "specflow-agent-store-"));
-    await mkdir(join(root, ".specflow"), { recursive: true });
-    await writeFile(join(root, ".specflow", "agent-servers.json"), JSON.stringify({
+    await mkdir(join(root, ".aflow/.specflow"), { recursive: true });
+    await writeFile(join(root, ".aflow/.specflow", "agent-servers.json"), JSON.stringify({
       agent_servers: {
         other: {
           type: "registry",
@@ -97,8 +97,8 @@ describe("AgentServerStore", () => {
 
   test("rejects registry agents missing from the registry index", async () => {
     const root = await mkdtemp(join(tmpdir(), "specflow-agent-store-"));
-    await mkdir(join(root, ".specflow"), { recursive: true });
-    await writeFile(join(root, ".specflow", "agent-servers.json"), JSON.stringify({
+    await mkdir(join(root, ".aflow/.specflow"), { recursive: true });
+    await writeFile(join(root, ".aflow/.specflow", "agent-servers.json"), JSON.stringify({
       agent_servers: {
         other: {
           type: "registry",
@@ -118,8 +118,8 @@ describe("AgentServerStore", () => {
 
   test("rejects registry agents with unsupported distributions", async () => {
     const root = await mkdtemp(join(tmpdir(), "specflow-agent-store-"));
-    await mkdir(join(root, ".specflow"), { recursive: true });
-    await writeFile(join(root, ".specflow", "agent-servers.json"), JSON.stringify({
+    await mkdir(join(root, ".aflow/.specflow"), { recursive: true });
+    await writeFile(join(root, ".aflow/.specflow", "agent-servers.json"), JSON.stringify({
       agent_servers: {
         other: {
           type: "registry",

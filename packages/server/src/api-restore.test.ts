@@ -155,10 +155,10 @@ describe("agent session restore API", () => {
 
 async function setupProject(restoreCapabilities: string, extraEnv: Record<string, string> = {}): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "specflow-restore-"));
-  await mkdir(join(root, ".specflow"), { recursive: true });
+  await mkdir(join(root, ".aflow/.specflow"), { recursive: true });
   await writeFile(join(root, "input.txt"), "restore prompt input", "utf8");
   const fakeAgentPath = fileURLToPath(new URL("../../agent-proxy/src/runtimes/acp/test-fixtures/fake-agent.ts", import.meta.url));
-  await writeFile(join(root, ".specflow", "agent-servers.json"), JSON.stringify({
+  await writeFile(join(root, ".aflow/.specflow", "agent-servers.json"), JSON.stringify({
     agent_servers: {
       fake: {
         type: "custom",

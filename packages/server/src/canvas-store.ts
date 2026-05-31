@@ -1,5 +1,6 @@
 import { mkdir, readdir, readFile, writeFile, unlink } from "node:fs/promises";
 import { basename, join } from "node:path";
+import { SPECFLOW_WORKSPACE_PATH } from "@specflow/shared";
 import type {
   AgentFlowDoc,
   AgentFlowNode,
@@ -11,11 +12,11 @@ import type {
 import { parseAgentFlowSource, stringifyAgentFlowSource } from "./agentflow-source";
 
 function agentflowsDir(root: string) {
-  return join(root, ".specflow", "agentflows");
+  return join(root, SPECFLOW_WORKSPACE_PATH, "agentflows");
 }
 
 function canvasDir(root: string) {
-  return join(root, ".specflow", "canvas");
+  return join(root, SPECFLOW_WORKSPACE_PATH, "canvas");
 }
 
 function agentflowPath(id: string, root: string) {

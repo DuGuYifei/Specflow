@@ -9,7 +9,7 @@ import { AgentProxySessionPool } from "./session-pool";
 describe("AgentProxySessionPool", () => {
   it("uses one ACP process for multiple sessions and forks a parent session", async () => {
     const cwd = await mkdtemp(join(tmpdir(), "specflow-acp-pool-"));
-    const specflowDir = join(cwd, ".specflow");
+    const specflowDir = join(cwd, ".aflow/.specflow");
     const fakeAgentPath = fileURLToPath(new URL("./runtimes/acp/test-fixtures/fake-agent.ts", import.meta.url));
     await mkdir(specflowDir, { recursive: true });
     await writeFile(join(cwd, "input.txt"), "file-content", "utf8");

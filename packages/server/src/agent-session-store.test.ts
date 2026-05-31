@@ -112,7 +112,7 @@ describe("agent session store", () => {
 
 async function tempProject(): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "specflow-agent-sessions-"));
-  await mkdir(join(root, ".specflow"), { recursive: true });
+  await mkdir(join(root, ".aflow/.specflow"), { recursive: true });
   return root;
 }
 

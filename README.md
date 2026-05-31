@@ -13,18 +13,14 @@
 </p>
 
 <p align="center">
-  Specflow turns agent work into visible workflows. Aflow Agent is built on top of it.
-</p>
-
-<p align="center">
-  <a href="docs/acp-compatibility.md">ACP Compatibility</a>
+  <strong>Specflow</strong> turns agent work into visible workflows. <strong>Aflow Agent</strong>, an agentic workflow agent, is built on top of it.
 </p>
 
 ## What It Is
 
-Specflow is a workflow foundation for agentic work. It lets you describe a process as editable workflow-as-code, connect one or more agents to that process, run the workflow, inspect decisions and outputs, and continue work across sessions with traceable context.
+**Specflow** is a workflow foundation for agentic work. It lets you describe a process as editable workflow-as-code, connect one or more agents to that process, run the workflow, inspect decisions and outputs, and continue work across sessions with traceable context.
 
-Aflow Agent is an agent built with Specflow to help you design and operate those workflows. It can assist while you assemble a workflow, or use a workflow to complete a complex task through planned steps, review gates, and follow-up paths instead of relying on one long, unstructured chat.
+**Aflow Agent** is an agentic workflow agent built with Specflow to help you design and operate those workflows. It can assist while you assemble a workflow, or use a workflow to complete a complex task through planned steps, review gates, and follow-up paths instead of relying on one long, unstructured chat.
 
 Specflow is not limited to coding. It can connect to arbitrary custom agents for business operations, research, review, automation, or domain-specific processes. In development scenarios, it can also generate and maintain spec documents that support SDD, Spec-Driven Development, so implementation work starts from explicit intent, constraints, and expected outcomes.
 
@@ -40,11 +36,11 @@ Specflow is not limited to coding. It can connect to arbitrary custom agents for
 
 ## Workspace Files
 
-Workflow-as-code files live in `.specflow/agentflows/*.yaml`.
+Workflow-as-code files live in `.aflow/.specflow/agentflows/*.yaml`.
 
-Browser canvas layout is generated into `.specflow/canvas/*.json` and is ignored by default, so workflows can be authored and reviewed without hand-writing UI coordinates.
+Browser canvas layout is generated into `.aflow/.specflow/canvas/*.json` and is ignored by default, so workflows can be authored and reviewed without hand-writing UI coordinates.
 
-Agent servers are configured under `.specflow/agent-servers.json`. Local secrets and machine-specific overrides should go in `.specflow/agent-servers.local.json`, which deep-merges with the shared file by agent id.
+Agent servers are configured under `.aflow/.specflow/agent-servers.json`. Local secrets and machine-specific overrides should go in `.aflow/.specflow/agent-servers.local.json`, which deep-merges with the shared file by agent id.
 
 Example local secret override:
 
@@ -114,7 +110,7 @@ source ~/.zshrc
 Then enter this repository and trust the local mise config:
 
 ```sh
-cd specflow-code
+cd Aflow
 mise trust
 bun --version
 ```

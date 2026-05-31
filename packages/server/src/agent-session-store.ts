@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { join } from "node:path";
+import { SPECFLOW_WORKSPACE_PATH } from "@specflow/shared";
 import type { AgentInvocation } from "@specflow/workflow";
 import { listRuns, saveRun, type RunRecord } from "./run-store";
 
@@ -53,7 +54,7 @@ export interface AgentSessionRestoreAttempt {
 }
 
 export function agentSessionsPath(root: string): string {
-  return join(root, ".specflow", "agent-sessions.json");
+  return join(root, SPECFLOW_WORKSPACE_PATH, "agent-sessions.json");
 }
 
 export async function loadAgentSessionIndex(root: string): Promise<AgentSessionIndex> {

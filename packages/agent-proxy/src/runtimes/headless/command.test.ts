@@ -83,8 +83,8 @@ async function projectWithHeadless(settings: {
   timeoutMs?: number;
 }): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "specflow-headless-"));
-  await mkdir(join(root, ".specflow"), { recursive: true });
-  await writeFile(join(root, ".specflow", "agent-servers.json"), JSON.stringify({
+  await mkdir(join(root, ".aflow/.specflow"), { recursive: true });
+  await writeFile(join(root, ".aflow/.specflow", "agent-servers.json"), JSON.stringify({
     agent_servers: {
       headless: {
         type: "headless",

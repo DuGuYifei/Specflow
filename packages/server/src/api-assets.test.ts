@@ -21,7 +21,7 @@ describe("canvas asset API", () => {
 
     expect(response?.status).toBe(200);
     expect(body.images[0]).toMatchObject({ label: "pasted.png", mimeType: "image/png" });
-    expect(body.images[0]!.path).toContain(".specflow/assets/wf/images/");
+    expect(body.images[0]!.path).toContain(".aflow/.specflow/assets/wf/images/");
     expect(new Uint8Array(await readFile(join(root, body.images[0]!.path)))).toEqual(new Uint8Array([1, 2, 3]));
   });
 
@@ -41,8 +41,8 @@ describe("canvas asset API", () => {
     const body = await response!.json() as { paths: string[] };
 
     expect(response?.status).toBe(200);
-    expect(body.paths).toEqual([".specflow/assets/wf/resources/components/"]);
-    expect(await readFile(join(root, ".specflow/assets/wf/resources/components/button.ts"), "utf8")).toBe("button");
-    expect(await readFile(join(root, ".specflow/assets/wf/resources/components/cards/card.ts"), "utf8")).toBe("card");
+    expect(body.paths).toEqual([".aflow/.specflow/assets/wf/resources/components/"]);
+    expect(await readFile(join(root, ".aflow/.specflow/assets/wf/resources/components/button.ts"), "utf8")).toBe("button");
+    expect(await readFile(join(root, ".aflow/.specflow/assets/wf/resources/components/cards/card.ts"), "utf8")).toBe("card");
   });
 });

@@ -2,7 +2,7 @@ import { AgentServerStore, probeAcpAgentCapabilities } from "@specflow/agent-pro
 import { WorkflowExecutor } from "@specflow/bridge";
 import type { SpecflowBridge, WorkflowResumeState } from "@specflow/bridge";
 import type { AgentAuthenticationStatus, AgentConversation, AgentRestoreMode, AgentRestorePrimitive, AgentServerEntry, AgentServerSettings, NodeStatusEvent, RunInteraction, RunInteractionContext, RunStatusEvent } from "@specflow/bridge";
-import { uuidv7 } from "@specflow/shared";
+import { SPECFLOW_WORKSPACE_PATH, uuidv7 } from "@specflow/shared";
 import { SkillStore } from "./skills";
 import { AuthTerminalSessionStore } from "./auth-terminal-sessions";
 import { canvasToWorkflow } from "./canvas-to-workflow";
@@ -1458,7 +1458,7 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
       const files = form.getAll("files").filter((value): value is File => value instanceof File);
       const relativePaths = form.getAll("relativePaths").filter((value): value is string => typeof value === "string");
       if (files.length === 0) return Response.json({ error: "No files supplied" }, { status: 400 });
-      const base = join(root, ".specflow", "assets", workflowId, kind === "image" ? "images" : "resources");
+      const base = join(root, SPECFLOW_WORKSPACE_PATH, "assets", workflowId, kind === "image" ? "images" : "resources");
       await mkdir(base, { recursive: true });
       if (kind === "image") {
         const images: Array<{ path: string; label: string; mimeType?: string }> = [];
@@ -1468,7 +1468,7 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
           const filename = `${uuidv7()}${extension}`;
           await writeFile(join(base, filename), new Uint8Array(await file.arrayBuffer()));
           images.push({
-            path: `.specflow/assets/${workflowId}/images/${filename}`,
+            path: `${SPECFLOW_WORKSPACE_PATH}/assets/${workflowId}/images/${filename}`,
             label: basename(file.name) || filename,
             ...(file.type ? { mimeType: file.type } : {}),
           });
@@ -1482,8 +1482,8 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
         await mkdir(dirname(output), { recursive: true });
         await writeFile(output, new Uint8Array(await file.arrayBuffer()));
         importedPaths.add(directory
-          ? `.specflow/assets/${workflowId}/resources/${safePath.split("/")[0]}/`
-          : `.specflow/assets/${workflowId}/resources/${safePath}`);
+          ? `${SPECFLOW_WORKSPACE_PATH}/assets/${workflowId}/resources/${safePath.split("/")[0]}/`
+          : `${SPECFLOW_WORKSPACE_PATH}/assets/${workflowId}/resources/${safePath}`);
       }
       return Response.json({ paths: [...importedPaths] });
     }

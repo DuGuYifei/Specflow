@@ -2,7 +2,7 @@
 
 **Ticket** — the starting input for a workflow run. Can be a user-typed description, a GitHub issue, a bug report, a refactor task, or a UI implementation task.
 
-**Spec** — repository-level knowledge that persists across workflow runs. Stored in `.specflow/`. Tells the system and AI what rules and facts apply to this codebase, so AI is not reasoning only from the current ticket.
+**Spec** — repository-level knowledge that persists across workflow runs. Stored in `.aflow/.specflow/`. Tells the system and AI what rules and facts apply to this codebase, so AI is not reasoning only from the current ticket.
 
 **Workflow** — the structured process that transforms a ticket into an implementation result. Represented as a directed graph of nodes and edges. Not a linear pipeline.
 

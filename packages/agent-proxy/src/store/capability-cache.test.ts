@@ -7,8 +7,8 @@ import type { AgentServerCapabilitiesCache } from "../types";
 
 async function workspaceWith(servers: Record<string, unknown>): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "specflow-cap-"));
-  await mkdir(join(root, ".specflow"), { recursive: true });
-  await writeFile(join(root, ".specflow", "agent-servers.json"), JSON.stringify({ agentServers: servers }));
+  await mkdir(join(root, ".aflow/.specflow"), { recursive: true });
+  await writeFile(join(root, ".aflow/.specflow", "agent-servers.json"), JSON.stringify({ agentServers: servers }));
   return root;
 }
 
@@ -45,7 +45,7 @@ describe("AgentServerStore capability cache", () => {
 
     // Simulate an upgrade by rewriting the config with a new version.
     await writeFile(
-      join(root, ".specflow", "agent-servers.json"),
+      join(root, ".aflow/.specflow", "agent-servers.json"),
       JSON.stringify({ agentServers: { "claude-acp": { type: "registry", registryId: "claude-code", installedVersion: "2.0.0" } } }),
     );
 
@@ -73,7 +73,7 @@ describe("AgentServerStore capability cache", () => {
     expect(entriesValid.find((e) => e.id === "claude-acp")?.capabilities).toBeDefined();
 
     await writeFile(
-      join(root, ".specflow", "agent-servers.json"),
+      join(root, ".aflow/.specflow", "agent-servers.json"),
       JSON.stringify({ agentServers: { "claude-acp": { type: "registry", registryId: "claude-code", installedVersion: "9.9.9" } } }),
     );
     const entriesStale = await new AgentServerStore({ root }).listAgentServers();

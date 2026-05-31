@@ -1,6 +1,7 @@
 import { mkdir, writeFile, access, readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parse } from "yaml";
+import { SPECFLOW_WORKSPACE_PATH } from "@specflow/shared";
 import { SEED_CANVAS_DOCS } from "./seed";
 import {
   saveAgentFlowAndLayout,
@@ -28,7 +29,7 @@ export async function initWorkspace(
   cwd: string = process.cwd(),
   options: InitWorkspaceOptions = {},
 ): Promise<void> {
-  const root = join(cwd, ".specflow");
+  const root = join(cwd, SPECFLOW_WORKSPACE_PATH);
 
   if (!await pathExists(root)) {
     if (!options.createIfMissing) return;

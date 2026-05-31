@@ -1,13 +1,14 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { AgentServerSettings } from "@specflow/bridge";
+import { SPECFLOW_WORKSPACE_PATH } from "@specflow/shared";
 
 export interface AgentServerLocalConfig {
   agent_servers: Record<string, AgentServerSettings>;
 }
 
 export function agentServersLocalPath(root: string): string {
-  return join(root, ".specflow", "agent-servers.local.json");
+  return join(root, SPECFLOW_WORKSPACE_PATH, "agent-servers.local.json");
 }
 
 export async function loadLocalAgentServerConfig(root: string): Promise<AgentServerLocalConfig> {

@@ -1,5 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { SPECFLOW_WORKSPACE_PATH } from "@specflow/shared";
 import type {
   AgentAvailableCommand,
   AgentServerCapabilitiesCache,
@@ -31,7 +32,7 @@ export class AgentServerStore {
 
   constructor(options: AgentServerStoreOptions) {
     this.#root = options.root;
-    this.#cacheDir = options.cacheDir ?? process.env.SPECFLOW_AGENT_CACHE_DIR ?? join(options.root, ".specflow", "cache", "agents");
+    this.#cacheDir = options.cacheDir ?? process.env.SPECFLOW_AGENT_CACHE_DIR ?? join(options.root, SPECFLOW_WORKSPACE_PATH, "cache", "agents");
     this.#capabilitiesFile = join(this.#cacheDir, "capabilities.json");
   }
 
@@ -105,8 +106,8 @@ export class AgentServerStore {
 
   async #load(): Promise<void> {
     if (this.#settings) return;
-    const base = await readConfig(join(this.#root, ".specflow", "agent-servers.json"));
-    const local = await readConfig(join(this.#root, ".specflow", "agent-servers.local.json"));
+    const base = await readConfig(join(this.#root, SPECFLOW_WORKSPACE_PATH, "agent-servers.json"));
+    const local = await readConfig(join(this.#root, SPECFLOW_WORKSPACE_PATH, "agent-servers.local.json"));
     const merged = mergeConfigEntries(configEntries(base), configEntries(local));
     this.#settings = new Map(
       [...merged.entries()]

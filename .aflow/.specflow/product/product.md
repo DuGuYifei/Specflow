@@ -38,7 +38,7 @@ Specflow 关注的是编码过程如何在本地被系统性收敛。
 
 **Ticket** 是一次 workflow run 的起点，可以来自用户输入、issue、产品需求、bug 描述、refactor 任务或 UI 实现任务。
 
-**Spec** 是仓库级知识，不是 ticket 级文档。Specflow 当前把这类知识放在 `.specflow` 目录下，让 AI 不只理解当前 ticket，也理解当前仓库。
+**Spec** 是仓库级知识，不是 ticket 级文档。Specflow 当前把这类知识放在 `.aflow/.specflow` 目录下，让 AI 不只理解当前 ticket，也理解当前仓库。
 
 **Workflow** 是把 ticket 转化为实现结果的结构化流程。它不是简单线性步骤，而是由节点和边组成的图。
 
@@ -69,16 +69,16 @@ ticket input
 
 **Session Director** 是基础流程中的第一个 director 节点。它用可观察 artifact 记录哪些节点共享 session、哪些节点应该开启新 session。当前实现是 deterministic mock，未来可以替换为真实 AI 决策。
 
-## `.specflow` 目录
+## `.aflow/.specflow` 目录
 
-`.specflow` 是仓库级长期知识层。它记录当前仓库应该被系统和 AI 遵守的事实与规则。
+`.aflow/.specflow` 是仓库级长期知识层。它记录当前仓库应该被系统和 AI 遵守的事实与规则。
 
-仓库本身可能已经存在一些文档，`.specflow` 可以通过自行扫描发现它们，比如：
+仓库本身可能已经存在一些文档，`.aflow/.specflow` 可以通过自行扫描发现它们，比如：
 
 - 已有的 `docs/` 文档层（产品愿景、架构说明、设计背景、技术选型原因、ADR、AI 阅读路径等）
 - README.md、AGENT.md、CONTRIBUTING.md 等面向用户和贡献者的文档
 
-初次构建 `.specflow` 可以引用已有文档，通过写明相关文档在仓库的 relevant path 来建立索引。
+初次构建 `.aflow/.specflow` 可以引用已有文档，通过写明相关文档在仓库的 relevant path 来建立索引。
 
 ## 产品边界
 
@@ -103,4 +103,4 @@ Specflow 的第一个真正 MVP 不需要很多功能，但必须证明：
 
 - 如果只能生成代码但不能审查和修复，就不是 Specflow。
 - 如果只能画图但不能表达真实 workflow，也不是 Specflow。
-- 如果只能聊天但不能沉淀 `.specflow`，也不是 Specflow。
+- 如果只能聊天但不能沉淀 `.aflow/.specflow`，也不是 Specflow。

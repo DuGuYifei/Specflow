@@ -69,11 +69,11 @@ agentInvocations:
     acpSupportsResumeSession: true
 ```
 
-The server persists `agentInvocations` in each run record under `.specflow/runs/*.yaml`.
+The server persists `agentInvocations` in each run record under `.aflow/.specflow/runs/*.yaml`.
 
 Run records are the right place for auditability: they answer which external ACP session was used for a specific node or edge handoff during a specific run. They should not be the only storage for long-term resume UX.
 
-The server also maintains a separate session index at `.specflow/agent-sessions.json`, keyed by:
+The server also maintains a separate session index at `.aflow/.specflow/agent-sessions.json`, keyed by:
 
 ```text
 workflowId + specflowSessionId + agentServerId + acpSessionId
@@ -147,7 +147,7 @@ The server cancels pending permission and elicitation interactions before aborti
 The server persists workflow-side runtime logs under:
 
 ```text
-.specflow/run-logs/<runId>.jsonl
+.aflow/.specflow/run-logs/<runId>.jsonl
 ```
 
 Persisted events include:
@@ -179,7 +179,7 @@ For continuing work without replaying history, `session/resume` is the stable pr
 
 The agent-proxy boundary now exposes this as a restore operation for an existing `agentServerId` and ACP `sessionId`. `inspect` prefers `session/load`; `continue` prefers `session/resume`; both modes fall back to the other primitive when it is the only advertised option.
 
-The server exposes that boundary through `POST /api/agent-sessions/:id/restore`. It records a restore attempt in `.specflow/agent-sessions.json` and `.specflow/run-logs/<runId>.jsonl`, starts the ACP CLI, and streams restored ACP `session/update` notifications plus terminal output through `GET /api/agent-session-restores/:restoreId/events`. The streamed ACP updates are live restore-view data, not a durable Specflow transcript copy.
+The server exposes that boundary through `POST /api/agent-sessions/:id/restore`. It records a restore attempt in `.aflow/.specflow/agent-sessions.json` and `.aflow/.specflow/run-logs/<runId>.jsonl`, starts the ACP CLI, and streams restored ACP `session/update` notifications plus terminal output through `GET /api/agent-session-restores/:restoreId/events`. The streamed ACP updates are live restore-view data, not a durable Specflow transcript copy.
 
 The UI flow is:
 

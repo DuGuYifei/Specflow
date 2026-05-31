@@ -1,6 +1,6 @@
 # Node 与 Edge 当前实现说明
 
-本文描述当前代码已经实现的节点、连线、资源、session 与执行行为。流程定义保存在 `.specflow/agentflows/<workflow-id>.yaml`，画布位置单独保存在 `.specflow/canvas/<workflow-id>.json`。
+本文描述当前代码已经实现的节点、连线、资源、session 与执行行为。流程定义保存在 `.aflow/.specflow/agentflows/<workflow-id>.yaml`，画布位置单独保存在 `.aflow/.specflow/canvas/<workflow-id>.json`。
 
 ## 1. 模型分层
 
@@ -221,13 +221,13 @@ Runtime `TaggedOutputEdge.outputTag` 字段：
 ### 图片
 
 - Step 面板允许选择图片文件，也允许将剪贴板图片直接粘贴进面板。
-- 服务端将图片复制到 `.specflow/assets/<workflow-id>/images/`，节点保存稳定相对路径和 MIME type。
+- 服务端将图片复制到 `.aflow/.specflow/assets/<workflow-id>/images/`，节点保存稳定相对路径和 MIME type。
 - 执行时优先将图片作为 ACP image content block 发送；agent 未声明二进制 prompt 支持时降级为资源链接，而不是将二进制内容拼入 prompt 文本。
 
 ### 路径
 
 - Step 面板允许手写路径；手写内容可为项目相对路径或全局绝对路径。
-- 也可选择文件或文件夹；选择的浏览器文件会复制到 `.specflow/assets/<workflow-id>/resources/`。
+- 也可选择文件或文件夹；选择的浏览器文件会复制到 `.aflow/.specflow/assets/<workflow-id>/resources/`。
 - 文件夹导入保留文件夹内相对目录结构，节点引用导入后的资源目录。
 
 ## 7. ACP Session 与运行记录

@@ -30,7 +30,7 @@ describe("run store snapshots", () => {
     };
 
     await saveRun(record, root);
-    const raw = JSON.parse(await readFile(join(root, ".specflow", "runs", "run1.json"), "utf8")) as RunRecord;
+    const raw = JSON.parse(await readFile(join(root, ".aflow/.specflow", "runs", "run1.json"), "utf8")) as RunRecord;
     expect(raw.agentflowSnapshot.nodes[0]).not.toHaveProperty("x");
     expect(raw.canvasSnapshot.nodes[0]).toHaveProperty("nodeId");
     expect(raw.agentSessions).toEqual([]);
@@ -51,7 +51,7 @@ describe("run store snapshots", () => {
       initialInput: "",
       variableValues: {},
     };
-    await writeFile(join(root, ".specflow", "runs", "legacy-run.yaml"), stringify(legacy), "utf8");
+    await writeFile(join(root, ".aflow/.specflow", "runs", "legacy-run.yaml"), stringify(legacy), "utf8");
 
     const loaded = await loadRun("legacy-run", root);
     expect(loaded.agentInvocations).toEqual([]);
@@ -64,7 +64,7 @@ describe("run store snapshots", () => {
 
 async function tempProject(): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "specflow-runs-"));
-  await mkdir(join(root, ".specflow", "runs"), { recursive: true });
+  await mkdir(join(root, ".aflow/.specflow", "runs"), { recursive: true });
   return root;
 }
 

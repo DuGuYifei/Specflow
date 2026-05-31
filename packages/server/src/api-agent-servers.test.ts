@@ -151,7 +151,7 @@ describe("agent server API", () => {
           { id: "other-acp", version: "1.0.0" },
         ],
       });
-      await expect(access(join(root, ".specflow", "cache", "agents"))).rejects.toThrow();
+      await expect(access(join(root, ".aflow/.specflow", "cache", "agents"))).rejects.toThrow();
     } finally {
       globalThis.fetch = fetchBeforeTest;
     }

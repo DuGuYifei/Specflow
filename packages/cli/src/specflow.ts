@@ -264,5 +264,5 @@ function printAuthRequired(statuses: AgentAuthenticationStatus[]): void {
       }
     }
   }
-  console.log("\nEdit .specflow/agent-servers.local.json for env vars, or start Specflow and authenticate from the UI.");
+  console.log("\nEdit .aflow/.specflow/agent-servers.local.json for env vars, or start Specflow and authenticate from the UI.");
 }

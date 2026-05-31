@@ -31,19 +31,19 @@ The architecture must support:
 ## Runtime Flow
 
 1. UI calls `POST /api/canvases/:id/run`.
-2. Server loads the agentflow and canvas layout, validates required run inputs, converts the canvas to a workflow, creates the persisted run id, and saves `.specflow/runs/<runId>.yaml`.
+2. Server loads the agentflow and canvas layout, validates required run inputs, converts the canvas to a workflow, creates the persisted run id, and saves `.aflow/.specflow/runs/<runId>.yaml`.
 3. Server calls `WorkflowExecutor.run(workflow, initialInput, { runId })`.
 4. Bridge walks the workflow graph.
 5. For each agent node, bridge renders the node prompt and creates an `AgentInvocation`.
 6. For each tagged edge with a handoff, bridge renders the handoff prompt and creates an `AgentInvocation` with `edgeId`.
 7. Bridge calls `AgentProxySessionPool.run`.
-8. The pool resolves the configured agent server from `.specflow/agent-servers.json`, `.specflow/agent-servers.local.json`, or built-in defaults.
+8. The pool resolves the configured agent server from `.aflow/.specflow/agent-servers.json`, `.aflow/.specflow/agent-servers.local.json`, or built-in defaults.
 9. For ACP servers, agent-proxy starts an ACP CLI subprocess over stdio through the official `@agentclientprotocol/sdk`.
 10. Agent-proxy sends ACP `initialize`, creates or reuses an ACP session, applies configured defaults, and sends `session/prompt`.
 11. Agent output, terminal output, session updates, permission requests, and elicitation requests flow through ACP client handlers.
 12. Bridge records terminal chunks in `TerminalEventStore`.
 13. Server streams live events to `/api/runs/:id/events`.
-14. After the run resolves, server writes the final `agentInvocations` back to the run record and updates `.specflow/agent-sessions.json`.
+14. After the run resolves, server writes the final `agentInvocations` back to the run record and updates `.aflow/.specflow/agent-sessions.json`.
 
 ## Agent Server Sources
 
@@ -56,8 +56,8 @@ Agent server configuration is represented by `AgentServerSettings`:
 Configuration load order:
 
 1. Built-in defaults from `AgentServerStore`.
-2. Project config `.specflow/agent-servers.json`.
-3. Local/user override `.specflow/agent-servers.local.json`.
+2. Project config `.aflow/.specflow/agent-servers.json`.
+3. Local/user override `.aflow/.specflow/agent-servers.local.json`.
 
 Later entries override earlier entries by agent server id.
 
@@ -102,7 +102,7 @@ Default behavior without UI hooks:
 - Permission requests return cancelled.
 - Elicitation requests return cancel.
 - Filesystem requests are allowed only inside the workflow `cwd` and configured `additionalDirectories`.
-- `additionalDirectories` can be set on an agent server entry in `.specflow/agent-servers.json` or `.specflow/agent-servers.local.json`; relative paths resolve from the workflow `cwd`, and `~` is expanded.
+- `additionalDirectories` can be set on an agent server entry in `.aflow/.specflow/agent-servers.json` or `.aflow/.specflow/agent-servers.local.json`; relative paths resolve from the workflow `cwd`, and `~` is expanded.
 - ACP terminal creation is enabled by default but constrained to the same allowed roots for terminal `cwd`.
 - ACP terminal auth is not advertised by default. It is advertised only when the agent server config sets `terminal.auth: true`.
 - Agent server configs can disable terminal creation with `terminal.enabled: false`.
@@ -136,7 +136,7 @@ Specflow is not the authoritative store for ACP conversation history. The ACP ag
 
 ### Run Records
 
-`.specflow/runs/<runId>.yaml` is the immutable execution/audit record. It stores:
+`.aflow/.specflow/runs/<runId>.yaml` is the immutable execution/audit record. It stores:
 
 - run status, timing, node states, node outputs
 - agentflow and canvas snapshots
@@ -157,7 +157,7 @@ Each `AgentInvocation` records:
 
 ### ACP Session Index
 
-`.specflow/agent-sessions.json` is the cross-run browse/resume index. It is keyed by:
+`.aflow/.specflow/agent-sessions.json` is the cross-run browse/resume index. It is keyed by:
 
 ```text
 workflowId + specflowSessionId + agentServerId + acpSessionId
@@ -196,7 +196,7 @@ Durable runtime logs are workflow-side event logs, not a duplicate ACP transcrip
 Recommended path:
 
 ```text
-.specflow/run-logs/<runId>.jsonl
+.aflow/.specflow/run-logs/<runId>.jsonl
 ```
 
 These logs persist:
@@ -225,7 +225,7 @@ Implemented:
 
 - UI can start a workflow run.
 - Server streams run/node/terminal events over SSE.
-- Server persists terminal logs, workflow-side status logs, ACP lifecycle events, interaction audit events, and restore attempt audit events under `.specflow/run-logs/<runId>.jsonl`.
+- Server persists terminal logs, workflow-side status logs, ACP lifecycle events, interaction audit events, and restore attempt audit events under `.aflow/.specflow/run-logs/<runId>.jsonl`.
 - `GET /api/runs/:id/logs` returns historical run log events.
 - New SSE connections replay persisted terminal chunks before live events.
 - UI can show live terminal logs in the log panel.
@@ -241,7 +241,7 @@ Implemented:
 - Agent-proxy can start an ACP CLI for an existing ACP session id and call `session/load` or `session/resume` based on advertised capabilities.
 - Restore mode selection is capability-driven: `inspect` prefers `load`, `continue` prefers `resume`, and each mode falls back to the other primitive when only one is available.
 - Server can start a restore attempt for an indexed ACP session and stream restored `session/update` notifications and terminal output over a restore SSE channel.
-- Server records restore attempts and results in both `.specflow/run-logs/<runId>.jsonl` and `.specflow/agent-sessions.json`.
+- Server records restore attempts and results in both `.aflow/.specflow/run-logs/<runId>.jsonl` and `.aflow/.specflow/agent-sessions.json`.
 - UI can cancel an active run from the run view.
 - Server exposes `POST /api/runs/:id/cancel`.
 - Cancellation aborts the run's `AbortSignal`, releases pending permission/elicitation interactions as cancelled, propagates to agent-proxy, and persists the final run status as `cancelled`.
@@ -267,7 +267,7 @@ If an agent supports only resume and cannot replay history, Specflow can still s
 ## Required Invariants
 
 - Server-created run id must be passed into bridge. Bridge must not create a different id for server-backed runs.
-- `AgentInvocation.runId` must match `.specflow/runs/<runId>.yaml`.
+- `AgentInvocation.runId` must match `.aflow/.specflow/runs/<runId>.yaml`.
 - Terminal events must use the persisted run id so SSE and log filtering work.
 - `AgentInvocation.agentServerId` and `AgentInvocation.acpSessionId` must be recorded whenever an ACP prompt starts successfully.
 - The ACP session index must be derived from run records, not replace them.
