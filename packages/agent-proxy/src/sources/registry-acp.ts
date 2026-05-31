@@ -8,13 +8,11 @@ import {
 } from "./registry-client";
 import { resolveBinaryTarget } from "./registry-download";
 import { expandHome, normalizeEnv } from "../util";
-import { assertSupportedRegistryAgent } from "../supported-agents";
 
 export async function resolveRegistryAcpCommand(input: {
   settings: RegistryAcpAgentServerSettings;
   cacheDir: string;
 }): Promise<AgentServerCommand> {
-  assertSupportedRegistryAgent(input.settings.registryId);
   const cacheDir = await ensureCacheDir(input.cacheDir);
   const index = await loadRegistryIndex(cacheDir);
   const agent = index.agents.find((candidate) => candidate.id === input.settings.registryId);

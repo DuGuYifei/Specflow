@@ -2,7 +2,6 @@ import { AgentServerStore, probeAcpAgentCapabilities } from "@specflow/agent-pro
 import { WorkflowExecutor } from "@specflow/bridge";
 import type { SpecflowBridge, WorkflowResumeState } from "@specflow/bridge";
 import type { AgentAuthenticationStatus, AgentConversation, AgentRestoreMode, AgentRestorePrimitive, AgentServerEntry, AgentServerSettings, NodeStatusEvent, RunInteraction, RunInteractionContext, RunStatusEvent } from "@specflow/bridge";
-import { supportedRegistryAgentProfile } from "@specflow/bridge";
 import { uuidv7 } from "@specflow/shared";
 import { SkillStore } from "./skills";
 import { AuthTerminalSessionStore } from "./auth-terminal-sessions";
@@ -124,7 +123,6 @@ function parseAgentServerSettings(input: unknown): AgentServerSettings | undefin
   const additionalDirectories = arrayOfStrings(raw.additionalDirectories ?? raw.additional_directories);
 
   if (raw.type === "registry" && typeof raw.registryId === "string" && raw.registryId.trim()) {
-    if (!supportedRegistryAgentProfile(raw.registryId.trim())) return undefined;
     return {
       type: "registry",
       registryId: raw.registryId.trim(),

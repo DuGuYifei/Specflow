@@ -4,7 +4,6 @@ import type {
   ResolvedAgentServer,
   TerminalAuthTask,
 } from "../../types";
-import { supportedRegistryAgentProfile } from "../../supported-agents";
 
 export const GEMINI_TERMINAL_AUTH_METHOD_ID = "spawn-gemini-cli";
 
@@ -106,8 +105,7 @@ export function resolveTerminalAuthTaskFromMethod(
 function shouldUseGeminiTerminalAuthShim(resolved: ResolvedAgentServer): boolean {
   const registryId = resolved.settings.type === "registry" ? resolved.settings.registryId : resolved.id;
   return resolved.id === "gemini"
-    || registryId === "gemini"
-    || Boolean(supportedRegistryAgentProfile(registryId)?.geminiTerminalAuthShim);
+    || registryId === "gemini";
 }
 
 function geminiTerminalAuthMethod(resolved: ResolvedAgentServer): acp.AuthMethod {

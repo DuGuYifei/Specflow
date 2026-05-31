@@ -16,6 +16,10 @@
   Specflow 将 Agent 工作组织为可见工作流，Aflow Agent 基于它构建。
 </p>
 
+<p align="center">
+  <a href="docs/acp-compatibility.md">ACP Compatibility</a>
+</p>
+
 ## 它是什么
 
 Specflow 是面向 Agent 工作的工作流基础设施。它让你把流程描述为可编辑的 workflow-as-code，接入一个或多个 Agent 执行流程，观察决策与产出，并在跨 session 的上下文中持续推进复杂任务。

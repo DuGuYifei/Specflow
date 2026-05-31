@@ -16,6 +16,10 @@
   Specflow turns agent work into visible workflows. Aflow Agent is built on top of it.
 </p>
 
+<p align="center">
+  <a href="docs/acp-compatibility.md">ACP Compatibility</a>
+</p>
+
 ## What It Is
 
 Specflow is a workflow foundation for agentic work. It lets you describe a process as editable workflow-as-code, connect one or more agents to that process, run the workflow, inspect decisions and outputs, and continue work across sessions with traceable context.

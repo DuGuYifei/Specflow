@@ -123,7 +123,7 @@ describe("agent server API", () => {
     expect(ensured).toEqual(["codex-acp"]);
   });
 
-  test("fetches the registry browser index without creating the agent cache", async () => {
+  test("fetches the full registry browser index without creating the agent cache", async () => {
     const root = await mkdtemp(join(tmpdir(), "specflow-agent-server-registry-api-"));
     const handle = createApiHandler(createSpecflowBridge(), root);
     const fetchBeforeTest = globalThis.fetch;
@@ -146,7 +146,10 @@ describe("agent server API", () => {
       const response = await handle(new Request("http://specflow.test/api/agent-servers/registry"));
       expect(response?.status).toBe(200);
       expect(await response!.json()).toMatchObject({
-        agents: [{ id: "codex-acp", version: "1.0.0" }],
+        agents: [
+          { id: "codex-acp", version: "1.0.0" },
+          { id: "other-acp", version: "1.0.0" },
+        ],
       });
       await expect(access(join(root, ".specflow", "cache", "agents"))).rejects.toThrow();
     } finally {
@@ -154,9 +157,16 @@ describe("agent server API", () => {
     }
   });
 
-  test("rejects unsupported registry agent server settings", async () => {
+  test("accepts arbitrary registry agent server settings", async () => {
     const root = await mkdtemp(join(tmpdir(), "specflow-agent-server-api-"));
-    const handle = createApiHandler(createSpecflowBridge(), root);
+    const ensured: string[] = [];
+    const bridge = {
+      ...createSpecflowBridge(),
+      ensureAgentServerInstalled: async (_root: string, id: string) => {
+        ensured.push(id);
+      },
+    };
+    const handle = createApiHandler(bridge, root);
 
     const response = await handle(new Request("http://specflow.test/api/agent-servers/other", {
       method: "PUT",
@@ -167,7 +177,16 @@ describe("agent server API", () => {
       }),
     }));
 
-    expect(response?.status).toBe(400);
+    expect(response?.status).toBe(200);
+    expect(ensured).toEqual(["other"]);
+    expect(await loadLocalAgentServerConfig(root)).toMatchObject({
+      agent_servers: {
+        other: {
+          type: "registry",
+          registryId: "other-acp",
+        },
+      },
+    });
   });
 
   test("probes auth methods without storing env auth values", async () => {

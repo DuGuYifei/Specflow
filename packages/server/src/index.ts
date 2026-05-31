@@ -11,7 +11,3 @@ export * from "./agent-server-config";
 export * from "./agent-server-runtime";
 export * from "./workspace";
 export * from "./skills";
-export {
-  supportedRegistryAgentIds,
-  supportedRegistryAgentProfile,
-} from "@specflow/bridge";
