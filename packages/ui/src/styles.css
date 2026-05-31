@@ -19,8 +19,8 @@
   --err-soft: oklch(0.94 0.05 25);
   --running: oklch(0.55 0.12 200);
   --running-soft: oklch(0.94 0.05 200);
-  --brand-mark-bg: #0b0f0c;
-  --brand-mark-border: #232a25;
+  --brand-mark-bg: #f8fbff;
+  --brand-mark-border: color-mix(in oklch, var(--accent) 26%, var(--line));
 
   --radius-sm: 6px;
   --radius: 10px;
@@ -96,10 +96,17 @@ input, textarea, select { font-family: inherit; font-size: inherit; color: inher
   background: var(--brand-mark-bg);
   border: 1px solid var(--brand-mark-border);
   border-radius: 7px;
-  object-fit: contain;
-  padding: 3px;
-  display: block;
+  padding: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   flex: 0 0 auto;
+}
+.brand-mark img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 .crumbs { display: flex; align-items: center; gap: 8px; color: var(--ink-3); font-size: 12px; }
@@ -2505,6 +2512,8 @@ input, textarea, select { font-family: inherit; font-size: inherit; color: inher
   --err-soft: oklch(0.30 0.06 25);
   --running: oklch(0.72 0.14 200);
   --running-soft: oklch(0.30 0.06 200);
+  --brand-mark-bg: #050806;
+  --brand-mark-border: #2b342d;
 }
 [data-theme="dark"] .canvas-wrap {
   background:
