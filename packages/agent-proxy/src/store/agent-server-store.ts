@@ -3,7 +3,6 @@ import { dirname, join } from "node:path";
 import type {
   AgentAvailableCommand,
   AgentServerCapabilitiesCache,
-  AgentServerConfigFile,
   AgentServerCommand,
   AgentServerEntry,
   AgentServerId,
@@ -12,7 +11,6 @@ import type {
 } from "../types";
 import { resolveCustomAcpCommand } from "../sources/custom-acp";
 import { resolveRegistryAcpCommand } from "../sources/registry-acp";
-import { applySupportedRegistryAgentDefaults } from "../supported-agents";
 import { expandHome } from "../util";
 
 export interface AgentServerStoreOptions {
@@ -109,10 +107,12 @@ export class AgentServerStore {
     if (this.#settings) return;
     const base = await readConfig(join(this.#root, ".specflow", "agent-servers.json"));
     const local = await readConfig(join(this.#root, ".specflow", "agent-servers.local.json"));
-    this.#settings = new Map([
-      ...Object.entries(base.agentServers ?? base.agent_servers ?? {}),
-      ...Object.entries(local.agentServers ?? local.agent_servers ?? {}),
-    ].map(([id, settings]) => [id, applySupportedRegistryAgentDefaults(settings)]));
+    const merged = mergeConfigEntries(configEntries(base), configEntries(local));
+    this.#settings = new Map(
+      [...merged.entries()]
+        .map(([id, settings]) => [id, normalizeSettings(settings)] as const)
+        .filter((entry): entry is readonly [string, AgentServerSettings] => Boolean(entry[1])),
+    );
   }
 
   async #loadCapabilities(): Promise<void> {
@@ -163,122 +163,140 @@ async function resolveCommand(settings: AgentServerSettings, cacheDir: string): 
   return {
     command: expandHome(settings.command),
     args: settings.argsTemplate,
+    cwd: settings.cwd ? expandHome(settings.cwd) : undefined,
     env: settings.env,
   };
 }
 
-async function readConfig(path: string): Promise<AgentServerConfigFile> {
+async function readConfig(path: string): Promise<Record<string, unknown>> {
   try {
-    return normalizeConfig(JSON.parse(await readFile(path, "utf8")) as AgentServerConfigFile);
+    const parsed = JSON.parse(await readFile(path, "utf8")) as Record<string, unknown>;
+    return parsed && typeof parsed === "object" ? parsed : {};
   } catch (error) {
     if ((error as { code?: string }).code === "ENOENT") return {};
     throw error;
   }
 }
 
-function normalizeConfig(config: AgentServerConfigFile): AgentServerConfigFile {
-  const normalize = (settings: Record<string, AgentServerSettings> | undefined) => {
-    if (!settings) return undefined;
-    return Object.fromEntries(
-      Object.entries(settings).map(([id, value]) => {
-        if (value.type === "registry") {
-          const raw = value as RegistryRawSettings;
-          return [id, {
-            ...value,
-            registryId: raw.registryId ?? raw.registry_id ?? id,
-            installedVersion: raw.installedVersion ?? raw.installed_version,
-            defaultMode: raw.defaultMode ?? raw.default_mode,
-            defaultModel: raw.defaultModel ?? raw.default_model,
-            defaultConfigOptions: raw.defaultConfigOptions ?? raw.default_config_options,
-            additionalDirectories: raw.additionalDirectories ?? raw.additional_directories,
-            terminal: normalizeTerminalPolicy(raw.terminal),
-            permissionPolicy: normalizePermissionPolicy(raw.permissionPolicy ?? raw.permission_policy),
-          } satisfies AgentServerSettings];
-        }
-        if (value.type === "headless") {
-          const raw = value as HeadlessRawSettings;
-          return [id, {
-            ...value,
-            argsTemplate: raw.argsTemplate ?? raw.args_template ?? [],
-            timeoutMs: raw.timeoutMs ?? raw.timeout_ms,
-            defaultMode: raw.defaultMode ?? raw.default_mode,
-            defaultModel: raw.defaultModel ?? raw.default_model,
-            defaultConfigOptions: raw.defaultConfigOptions ?? raw.default_config_options,
-            additionalDirectories: raw.additionalDirectories ?? raw.additional_directories,
-            terminal: normalizeTerminalPolicy(raw.terminal),
-            permissionPolicy: normalizePermissionPolicy(raw.permissionPolicy ?? raw.permission_policy),
-          } satisfies AgentServerSettings];
-        }
-        const raw = value as AgentServerSettings & CommonRawSettings;
-        return [id, {
-          ...value,
-          defaultMode: raw.defaultMode ?? raw.default_mode,
-          defaultModel: raw.defaultModel ?? raw.default_model,
-          defaultConfigOptions: raw.defaultConfigOptions ?? raw.default_config_options,
-          additionalDirectories: raw.additionalDirectories ?? raw.additional_directories,
-          terminal: normalizeTerminalPolicy(raw.terminal),
-          permissionPolicy: normalizePermissionPolicy(raw.permissionPolicy ?? raw.permission_policy),
-        } as AgentServerSettings];
-      }),
-    );
-  };
-  return {
-    agentServers: normalize(config.agentServers ?? config.agent_servers),
-  };
+function configEntries(config: Record<string, unknown>): Record<string, unknown> {
+  const raw = config.agentServers ?? config.agent_servers;
+  return raw && typeof raw === "object" && !Array.isArray(raw) ? raw as Record<string, unknown> : {};
 }
 
-function normalizeTerminalPolicy(value: unknown): AgentServerSettings["terminal"] {
-  if (!value || typeof value !== "object") return undefined;
-  const raw = value as { enabled?: unknown; auth?: unknown };
-  return {
-    ...(typeof raw.enabled === "boolean" ? { enabled: raw.enabled } : {}),
-    ...(typeof raw.auth === "boolean" ? { auth: raw.auth } : {}),
-  };
+function mergeConfigEntries(
+  base: Record<string, unknown>,
+  local: Record<string, unknown>,
+): Map<string, unknown> {
+  const merged = new Map(Object.entries(base));
+  for (const [id, localSettings] of Object.entries(local)) {
+    const baseSettings = merged.get(id);
+    merged.set(id, mergeSettings(baseSettings, localSettings));
+  }
+  return merged;
 }
 
-function normalizePermissionPolicy(value: unknown): AgentServerSettings["permissionPolicy"] {
-  if (!value || typeof value !== "object") return undefined;
-  const raw = value as {
-    mode?: unknown;
-    promptTimeoutMs?: unknown;
-    prompt_timeout_ms?: unknown;
-    onTimeout?: unknown;
-    on_timeout?: unknown;
-  };
-  const mode = raw.mode === "auto_accept" || raw.mode === "auto_deny" || raw.mode === "prompt"
-    ? raw.mode
-    : "prompt";
-  const timeoutRaw = typeof raw.promptTimeoutMs === "number" ? raw.promptTimeoutMs
-    : typeof raw.prompt_timeout_ms === "number" ? raw.prompt_timeout_ms
-    : undefined;
-  const onTimeout = raw.onTimeout === "accept" || raw.onTimeout === "deny" ? raw.onTimeout
-    : raw.on_timeout === "accept" || raw.on_timeout === "deny" ? raw.on_timeout
-    : undefined;
-  return {
-    mode,
-    ...(typeof timeoutRaw === "number" && timeoutRaw > 0 ? { promptTimeoutMs: timeoutRaw } : {}),
-    ...(onTimeout ? { onTimeout } : {}),
-  };
+function mergeSettings(base: unknown, local: unknown): unknown {
+  if (!isPlainObject(base) || !isPlainObject(local)) return local;
+  const merged: Record<string, unknown> = { ...base };
+  for (const [key, value] of Object.entries(local)) {
+    if (isPlainObject(value) && isPlainObject(merged[key])) {
+      merged[key] = mergeSettings(merged[key], value);
+    } else {
+      merged[key] = value;
+    }
+  }
+  return merged;
 }
 
-type CommonRawSettings = {
-  default_mode?: string;
-  default_model?: string;
-  default_config_options?: Record<string, string | boolean>;
-  additional_directories?: string[];
-  permission_policy?: unknown;
-  permissionPolicy?: unknown;
+function normalizeSettings(value: unknown): AgentServerSettings | undefined {
+  if (!isPlainObject(value)) return undefined;
+  const raw = value as CommonRawSettings;
+  const env = recordOfStrings(raw.env);
+  const cwd = stringValue(raw.cwd);
+  const additionalDirectories = arrayOfStrings(raw.additionalDirectories ?? raw.additional_directories);
+
+  if (raw.type === "registry") {
+    const registryId = stringValue(raw.registryId ?? raw.registry_id);
+    if (!registryId) return undefined;
+    return {
+      type: "registry",
+      registryId,
+      installedVersion: stringValue(raw.installedVersion ?? raw.installed_version),
+      cwd,
+      env,
+      additionalDirectories,
+    };
+  }
+
+  if (raw.type === "custom") {
+    const command = stringValue(raw.command);
+    if (!command) return undefined;
+    return {
+      type: "custom",
+      command,
+      args: arrayOfStrings(raw.args),
+      cwd,
+      env,
+      additionalDirectories,
+    };
+  }
+
+  if (raw.type === "headless") {
+    const command = stringValue(raw.command);
+    if (!command) return undefined;
+    return {
+      type: "headless",
+      command,
+      argsTemplate: arrayOfStrings(raw.argsTemplate ?? raw.args_template),
+      timeoutMs: numberValue(raw.timeoutMs ?? raw.timeout_ms),
+      cwd,
+      env,
+      additionalDirectories,
+    };
+  }
+
+  return undefined;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function stringValue(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function numberValue(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function arrayOfStrings(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
+function recordOfStrings(value: unknown): Record<string, string> | undefined {
+  if (!isPlainObject(value)) return undefined;
+  const entries = Object.entries(value)
+    .filter((entry): entry is [string, string] => typeof entry[1] === "string");
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+}
+
+type CommonRawSettings = Record<string, unknown> & {
+  type?: unknown;
+  registryId?: unknown;
+  registry_id?: unknown;
+  installedVersion?: unknown;
+  installed_version?: unknown;
+  command?: unknown;
+  args?: unknown;
+  argsTemplate?: unknown;
+  args_template?: unknown;
+  timeoutMs?: unknown;
+  timeout_ms?: unknown;
+  cwd?: unknown;
+  env?: unknown;
+  additionalDirectories?: unknown;
+  additional_directories?: unknown;
 };
 
-type RegistryRawSettings = Extract<AgentServerSettings, { type: "registry" }> & {
-  registry_id?: string;
-  installed_version?: string;
-} & CommonRawSettings;
-
-type HeadlessRawSettings = Extract<AgentServerSettings, { type: "headless" }> & {
-  args_template?: string[];
-  timeout_ms?: number;
-} & CommonRawSettings;
-
-// Re-export for backwards-compat in case downstream code referenced via deep import.
 export type { AgentAvailableCommand, AgentServerCapabilitiesCache };

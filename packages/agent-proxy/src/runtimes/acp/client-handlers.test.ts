@@ -70,19 +70,23 @@ describe("AcpClientHandlers", () => {
     })).rejects.toThrow("Path escapes allowed workspace roots");
   });
 
-  it("can disable ACP terminal creation by policy", async () => {
+  it("always supports ACP terminal creation", async () => {
     const cwd = await mkdtemp(join(tmpdir(), "specflow-acp-handlers-"));
     const handler = new AcpClientHandlers({
       cwd,
-      terminalEnabled: false,
       appendOutput() {},
     });
 
-    await expect(handler.createTerminal({
+    const terminal = await handler.createTerminal({
       sessionId: "s1",
       command: process.execPath,
       args: ["-e", "process.exit(0)"],
-    })).rejects.toThrow("terminal/create");
+    });
+    const exit = await handler.waitForTerminalExit({
+      sessionId: "s1",
+      terminalId: terminal.terminalId,
+    });
+    expect(exit.exitCode).toBe(0);
   });
 
   it("supports extension request and notification hooks", async () => {

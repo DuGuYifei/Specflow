@@ -10,7 +10,11 @@ import { loadLocalAgentServerConfig } from "./agent-server-config";
 describe("agent server API", () => {
   test("lists configured servers and writes local custom/registry overrides", async () => {
     const root = await mkdtemp(join(tmpdir(), "specflow-agent-server-api-"));
-    const handle = createApiHandler(createSpecflowBridge(), root);
+    const bridge = {
+      ...createSpecflowBridge(),
+      ensureAgentServerInstalled: async () => {},
+    };
+    const handle = createApiHandler(bridge, root);
 
     const initial = await handle(new Request("http://specflow.test/api/agent-servers"));
     expect(initial?.status).toBe(200);
@@ -26,7 +30,6 @@ describe("agent server API", () => {
         args: ["agent.js", "--acp"],
         env: { A: "B", API_KEY: "secret" },
         additionalDirectories: ["../shared"],
-        terminal: { enabled: false, auth: false },
       }),
     }));
     expect(putCustom?.status).toBe(200);
@@ -43,7 +46,6 @@ describe("agent server API", () => {
           args: ["agent.js", "--acp"],
           env: { API_KEY: "secret" },
           additionalDirectories: ["../shared"],
-          terminal: { enabled: false, auth: false },
         },
       },
     });
@@ -69,7 +71,6 @@ describe("agent server API", () => {
       body: JSON.stringify({
         type: "registry",
         registryId: "codex-acp",
-        defaultMode: "auto",
       }),
     }));
     expect(putRegistry?.status).toBe(200);
@@ -78,7 +79,6 @@ describe("agent server API", () => {
         "codex-acp": {
           type: "registry",
           registryId: "codex-acp",
-          defaultMode: "auto",
         },
       },
     });
@@ -88,7 +88,7 @@ describe("agent server API", () => {
     expect((await loadLocalAgentServerConfig(root)).agent_servers["my-custom"]).toBeUndefined();
   });
 
-  test("ensures configured registry servers on startup listing without using the browser registry endpoint", async () => {
+  test("installs registry servers only when explicitly saved", async () => {
     const root = await mkdtemp(join(tmpdir(), "specflow-agent-server-api-"));
     let registryReads = 0;
     const ensured: string[] = [];
@@ -170,7 +170,7 @@ describe("agent server API", () => {
     expect(response?.status).toBe(400);
   });
 
-  test("probes auth methods and stores env auth values locally", async () => {
+  test("probes auth methods without storing env auth values", async () => {
     const root = await mkdtemp(join(tmpdir(), "specflow-agent-server-auth-api-"));
     const authStatus = {
       agentServerId: "fake",
@@ -187,6 +187,7 @@ describe("agent server API", () => {
       ...createSpecflowBridge(),
       inspectAgentAuthentication: async () => authStatus,
       authenticateAgentServer: async () => authStatus,
+      resolveAgentTerminalAuthTask: async () => undefined,
     };
     const handle = createApiHandler(bridge, root);
 
@@ -205,9 +206,7 @@ describe("agent server API", () => {
       body: JSON.stringify({ env: { FAKE_API_KEY: "secret" } }),
     }));
     expect(authenticated?.status).toBe(200);
-    expect((await loadLocalAgentServerConfig(root)).agent_servers.fake?.env).toEqual({
-      FAKE_API_KEY: "secret",
-    });
+    expect((await loadLocalAgentServerConfig(root)).agent_servers.fake?.env).toBeUndefined();
   });
 
   test("preflights every workflow ACP server before starting a run", async () => {

@@ -11,10 +11,10 @@ import type {
   AgentConversationPromptResult,
   AgentRunRequest,
   AgentRunResult,
-  AgentAuthenticationMethod,
   AgentAuthenticationStatus,
   AgentTerminalEvent,
   ResolvedAgentServer,
+  TerminalAuthTask,
 } from "../../types";
 
 /**
@@ -30,8 +30,14 @@ export interface AcpProbedCapabilities {
 }
 
 export type AcpCapabilityWriter = (probe: AcpProbedCapabilities) => void | Promise<void>;
-import { supportedRegistryAgentProfile } from "../../supported-agents";
 import { AcpClientHandlers } from "./client-handlers";
+import {
+  advertisedAuthMethods,
+  authMethodInfos,
+  isEnvAuthMethod,
+  missingEnvVars,
+  resolveTerminalAuthTaskFromMethod,
+} from "./auth";
 
 export interface AcpAgentClientOptions {
   resolved: ResolvedAgentServer;
@@ -53,15 +59,13 @@ export interface AcpAgentClientOptions {
 export class AcpAgentClient {
   readonly connection: acp.ClientSideConnection;
   readonly process: ChildProcessWithoutNullStreams;
-  readonly #settings: ResolvedAgentServer["settings"];
   #stderr = "";
 
   constructor(options: AcpAgentClientOptions) {
-    this.#settings = options.resolved.settings;
     const { command } = options.resolved.command;
     const args = options.resolved.command.args;
     this.process = spawn(command, args, {
-      cwd: options.cwd,
+      cwd: options.resolved.command.cwd ?? options.cwd,
       env: { ...process.env, ...(options.resolved.command.env ?? {}) },
       stdio: ["pipe", "pipe", "pipe"],
     });
@@ -75,8 +79,6 @@ export class AcpAgentClient {
     const handlers = new AcpClientHandlers({
       cwd: options.cwd,
       additionalDirectories: options.additionalDirectories,
-      terminalEnabled: options.resolved.settings.terminal?.enabled ?? true,
-      permissionPolicy: options.resolved.settings.permissionPolicy,
       appendOutput: options.appendOutput,
       onTerminalEvent: options.onTerminalEvent,
       onPermissionRequest: options.request.onPermissionRequest,
@@ -94,19 +96,17 @@ export class AcpAgentClient {
   }
 
   async initialize(): Promise<acp.InitializeResponse> {
-    const terminalEnabled = this.#terminalEnabled();
-    const terminalAuthEnabled = terminalEnabled && (this.#terminalAuthEnabled());
     return this.connection.initialize({
       protocolVersion: acp.PROTOCOL_VERSION,
       clientCapabilities: {
         fs: { readTextFile: true, writeTextFile: true },
-        terminal: terminalEnabled,
-        auth: { terminal: terminalAuthEnabled },
+        terminal: true,
+        auth: { terminal: true },
         elicitation: { form: {}, url: {} },
         positionEncodings: ["utf-8", "utf-16", "utf-32"],
         _meta: {
-          terminal_output: terminalEnabled,
-          "terminal-auth": terminalAuthEnabled,
+          terminal_output: true,
+          "terminal-auth": true,
         },
       },
       clientInfo: {
@@ -119,14 +119,6 @@ export class AcpAgentClient {
 
   kill(): void {
     this.process.kill();
-  }
-
-  #terminalEnabled(): boolean {
-    return this.#settings.terminal?.enabled ?? true;
-  }
-
-  #terminalAuthEnabled(): boolean {
-    return this.#settings.terminal?.auth ?? false;
   }
 
   async close(): Promise<void> {
@@ -468,7 +460,6 @@ export class AcpAgentConnection {
       at: new Date().toISOString(),
     });
     this.#sessionCaps.set(session.sessionId, snapshotSession(session));
-    await applySessionDefaults(this.#client.connection, session.sessionId, session, this.#resolved);
     // Push initial capabilities even before any available_commands_update
     // arrives, so the UI has something to render after the first session
     // creation completes. The update handler will rewrite once commands ship.
@@ -610,7 +601,6 @@ export async function runAcpAgent(
         // Best-effort capability persistence.
       }
     }
-    await applySessionDefaults(client.connection, sessionId, session, resolved);
     await applyPerRequestOverrides({
       connection: client.connection,
       sessionId,
@@ -948,15 +938,18 @@ export async function authenticateAcpAgent(
   resolved: ResolvedAgentServer,
   cwd: string,
   methodId: string,
-  onTerminalEvent?: (event: AgentTerminalEvent) => void,
 ): Promise<AgentAuthenticationStatus> {
-  const client = createAuthClient(resolved, cwd, onTerminalEvent);
+  const client = createAuthClient(resolved, cwd);
   try {
     const initializeResponse = await client.initialize();
     assertProtocolVersion(initializeResponse);
-    const method = (initializeResponse.authMethods ?? []).find((candidate) => candidate.id === methodId);
+    const methods = advertisedAuthMethods(initializeResponse.authMethods, resolved);
+    const method = methods.find((candidate) => candidate.id === methodId);
     if (!method) {
       throw new Error(`ACP agent "${resolved.id}" does not advertise auth method "${methodId}".`);
+    }
+    if (resolveTerminalAuthTaskFromMethod(resolved, cwd, method)) {
+      throw new Error(`ACP agent "${resolved.id}" requires terminal authentication for "${methodId}".`);
     }
     if (isEnvAuthMethod(method)) {
       const missing = missingEnvVars(method, resolved);
@@ -964,17 +957,28 @@ export async function authenticateAcpAgent(
         throw new Error(`ACP agent "${resolved.id}" requires authentication env vars: ${missing.join(", ")}`);
       }
     }
-    if (isTerminalAuthMethod(method)) {
-      if (!resolved.settings.terminal?.auth) {
-        throw new Error(
-          `ACP agent "${resolved.id}" requires terminal authentication, but terminal auth is disabled. Set terminal.auth=true on the agent server.`,
-        );
-      }
-      await runTerminalAuthMethod(resolved, cwd, method, onTerminalEvent);
-      return await inspectInitializedAuthentication(client.connection, initializeResponse, resolved, cwd);
-    }
     await client.connection.authenticate({ methodId: method.id });
     return await inspectInitializedAuthentication(client.connection, initializeResponse, resolved, cwd);
+  } finally {
+    await client.close().catch(() => {});
+  }
+}
+
+export async function resolveAcpTerminalAuthTask(
+  resolved: ResolvedAgentServer,
+  cwd: string,
+  methodId: string,
+): Promise<TerminalAuthTask | undefined> {
+  const client = createAuthClient(resolved, cwd);
+  try {
+    const initializeResponse = await client.initialize();
+    assertProtocolVersion(initializeResponse);
+    const method = advertisedAuthMethods(initializeResponse.authMethods, resolved)
+      .find((candidate) => candidate.id === methodId);
+    if (!method) {
+      throw new Error(`ACP agent "${resolved.id}" does not advertise auth method "${methodId}".`);
+    }
+    return resolveTerminalAuthTaskFromMethod(resolved, cwd, method);
   } finally {
     await client.close().catch(() => {});
   }
@@ -1018,8 +1022,8 @@ async function inspectInitializedAuthentication(
   resolved: ResolvedAgentServer,
   cwd: string,
 ): Promise<AgentAuthenticationStatus> {
-  const methods = initializeResponse.authMethods ?? [];
-  let needsAuth = !(await isAgentAuthenticated(connection, resolved, cwd));
+  const methods = advertisedAuthMethods(initializeResponse.authMethods, resolved);
+  let needsAuth = !(await isAgentAuthenticated(connection, cwd));
 
   if (needsAuth) {
     const configuredEnvMethod = methods.find((method) =>
@@ -1028,7 +1032,7 @@ async function inspectInitializedAuthentication(
     if (configuredEnvMethod) {
       try {
         await connection.authenticate({ methodId: configuredEnvMethod.id });
-        needsAuth = !(await isAgentAuthenticated(connection, resolved, cwd));
+        needsAuth = !(await isAgentAuthenticated(connection, cwd));
       } catch {
         // Keep the auth prompt available when a stored credential is rejected.
       }
@@ -1038,23 +1042,15 @@ async function inspectInitializedAuthentication(
   return {
     agentServerId: resolved.id,
     needsAuth,
-    methods: authMethodInfos(methods, resolved),
+    methods: authMethodInfos(methods, resolved, cwd),
   };
 }
 
 async function isAgentAuthenticated(
   connection: acp.ClientSideConnection,
-  resolved: ResolvedAgentServer,
   cwd: string,
 ): Promise<boolean> {
-  const profile = resolved.settings.type === "registry"
-    ? supportedRegistryAgentProfile(resolved.settings.registryId)
-    : undefined;
-  const probe = profile?.authenticationProbe;
-  if (!probe || probe.type === "acp_session") {
-    return canCreateSessionWithoutAuth(connection, cwd);
-  }
-  return commandJsonReportsAuthenticated(resolved, cwd, probe.args, probe.authenticatedField);
+  return canCreateSessionWithoutAuth(connection, cwd);
 }
 
 async function canCreateSessionWithoutAuth(
@@ -1070,178 +1066,12 @@ async function canCreateSessionWithoutAuth(
   }
 }
 
-async function commandJsonReportsAuthenticated(
-  resolved: ResolvedAgentServer,
-  cwd: string,
-  args: string[],
-  authenticatedField: string,
-): Promise<boolean> {
-  const child = spawn(resolved.command.command, [...resolved.command.args, ...args], {
-    cwd,
-    env: { ...process.env, ...(resolved.command.env ?? {}) },
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  let stdout = "";
-  let stderr = "";
-  child.stdout.on("data", (chunk) => {
-    stdout += chunk.toString();
-  });
-  child.stderr.on("data", (chunk) => {
-    stderr += chunk.toString();
-  });
-  await onceExit(child);
-
-  let status: Record<string, unknown>;
-  try {
-    status = JSON.parse(stdout.trim()) as Record<string, unknown>;
-  } catch {
-    throw new Error(
-      `ACP authentication status command failed for "${resolved.id}": ${stderr.trim() || stdout.trim() || `exit code ${child.exitCode ?? "unknown"}`}`,
-    );
-  }
-  const authenticated = status[authenticatedField];
-  if (typeof authenticated !== "boolean") {
-    throw new Error(`ACP authentication status command for "${resolved.id}" did not return boolean field "${authenticatedField}".`);
-  }
-  return authenticated;
-}
-
 function isAuthRequiredError(error: unknown): boolean {
   if (error instanceof acp.RequestError && error.code === -32000) return true;
   const message = error instanceof Error ? error.message : String(error);
   return /auth(?:entication)?[_ -]?required/i.test(message);
 }
 
-function authMethodInfos(
-  methods: acp.AuthMethod[],
-  resolved: ResolvedAgentServer,
-): AgentAuthenticationMethod[] {
-  return methods.map((method) => {
-    const common = {
-      id: method.id,
-      name: method.name,
-      ...("description" in method && method.description ? { description: method.description } : {}),
-    };
-    if (isEnvAuthMethod(method)) {
-      return {
-        ...common,
-        type: "env_var",
-        ...("link" in method && method.link ? { link: method.link } : {}),
-        vars: method.vars.map((entry) => ({
-          name: entry.name,
-          ...(entry.label ? { label: entry.label } : {}),
-          secret: entry.secret ?? true,
-          optional: entry.optional ?? false,
-        })),
-        missingVars: missingEnvVars(method, resolved),
-      };
-    }
-    if (isTerminalAuthMethod(method)) {
-      return {
-        ...common,
-        type: "terminal",
-        terminalEnabled: resolved.settings.terminal?.auth ?? false,
-      };
-    }
-    return {
-      ...common,
-      type: "agent",
-    };
-  });
-}
-
-function isEnvAuthMethod(method: acp.AuthMethod): method is Extract<acp.AuthMethod, { type: "env_var" }> {
-  return "type" in method && method.type === "env_var";
-}
-
-function isTerminalAuthMethod(method: acp.AuthMethod): method is Extract<acp.AuthMethod, { type: "terminal" }> {
-  return "type" in method && method.type === "terminal";
-}
-
-function missingEnvVars(method: Extract<acp.AuthMethod, { type: "env_var" }>, resolved: ResolvedAgentServer): string[] {
-  const env = { ...process.env, ...(resolved.command.env ?? {}) };
-  return method.vars
-    .filter((entry) => !entry.optional && !env[entry.name])
-    .map((entry) => entry.name);
-}
-
-async function runTerminalAuthMethod(
-  resolved: ResolvedAgentServer,
-  cwd: string,
-  method: Extract<acp.AuthMethod, { type: "terminal" }>,
-  onTerminalEvent?: (event: AgentTerminalEvent) => void,
-): Promise<void> {
-  if (!onTerminalEvent) {
-    const child = spawn(resolved.command.command, [...resolved.command.args, ...(method.args ?? [])], {
-      cwd,
-      env: { ...process.env, ...(resolved.command.env ?? {}), ...(method.env ?? {}) },
-      stdio: "inherit",
-    });
-    await onceExit(child);
-    if (child.exitCode !== 0) {
-      throw new Error(`ACP terminal auth failed for "${resolved.id}" with exit code ${child.exitCode ?? "unknown"}.`);
-    }
-    return;
-  }
-
-  const child = spawn(resolved.command.command, [...resolved.command.args, ...(method.args ?? [])], {
-    cwd,
-    env: { ...process.env, ...(resolved.command.env ?? {}), ...(method.env ?? {}) },
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-
-  child.stdout.on("data", (chunk) => onTerminalEvent?.({ stream: "stdout", chunk: chunk.toString() }));
-  child.stderr.on("data", (chunk) => onTerminalEvent?.({ stream: "stderr", chunk: chunk.toString() }));
-  await onceExit(child);
-  if (child.exitCode !== 0) {
-    throw new Error(`ACP terminal auth failed for "${resolved.id}" with exit code ${child.exitCode ?? "unknown"}.`);
-  }
-}
-
-async function applySessionDefaults(
-  connection: acp.ClientSideConnection,
-  sessionId: string,
-  session: acp.NewSessionResponse,
-  resolved: ResolvedAgentServer,
-): Promise<void> {
-  const mode = resolved.settings.defaultMode;
-  if (mode) {
-    const availableModes = session.modes?.availableModes ?? [];
-    if (!availableModes.some((candidate) => candidate.id === mode)) {
-      throw new Error(`Configured ACP mode "${mode}" is not advertised by ${resolved.id}.`);
-    }
-    await connection.setSessionMode({ sessionId, modeId: mode });
-  }
-
-  const model = resolved.settings.defaultModel;
-  if (model) {
-    const availableModels = session.models?.availableModels ?? [];
-    if (!availableModels.some((candidate) => candidate.modelId === model)) {
-      throw new Error(`Configured ACP model "${model}" is not advertised by ${resolved.id}.`);
-    }
-    await connection.unstable_setSessionModel({ sessionId, modelId: model });
-  }
-
-  for (const [configId, value] of Object.entries(resolved.settings.defaultConfigOptions ?? {})) {
-    const option = session.configOptions?.find((candidate) => candidate.id === configId);
-    if (!option) {
-      throw new Error(`Configured ACP config option "${configId}" is not advertised by ${resolved.id}.`);
-    }
-    if (option.type === "boolean") {
-      if (typeof value !== "boolean") {
-        throw new Error(`Configured ACP config option "${configId}" expects a boolean value.`);
-      }
-      await connection.setSessionConfigOption({ sessionId, configId, type: "boolean", value });
-      continue;
-    }
-
-    const stringValue = String(value);
-    if (!selectOptionValues(option).has(stringValue)) {
-      throw new Error(`Configured ACP config option "${configId}" value "${stringValue}" is not advertised by ${resolved.id}.`);
-    }
-    await connection.setSessionConfigOption({ sessionId, configId, value: stringValue });
-  }
-}
 
 /**
  * Per-prompt override of mode / configOptions / model. Runs every turn, on

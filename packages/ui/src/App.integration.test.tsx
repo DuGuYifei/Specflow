@@ -1,6 +1,7 @@
 import { Window } from "happy-dom";
 import { createRoot, type Root } from "react-dom/client";
 import { App } from "./App";
+import { I18nProvider } from "./i18n";
 
 declare function describe(name: string, fn: () => void): void;
 declare function beforeEach(fn: () => void): void;
@@ -44,6 +45,14 @@ let restoredPrompts: string[] = [];
 let pausedContinues = 0;
 let interactionResponses = 0;
 
+function renderApp(root: Root): void {
+  root.render(
+    <I18nProvider>
+      <App />
+    </I18nProvider>,
+  );
+}
+
 describe("App run integration", () => {
   let root: Root | undefined;
   let container: HTMLElement;
@@ -83,7 +92,7 @@ describe("App run integration", () => {
 
   test("starts a run and renders live terminal output in the log panel", async () => {
     root = createRoot(container);
-    root.render(<App />);
+    renderApp(root);
 
     await waitForText("Start run");
     clickButton("Start run");
@@ -101,7 +110,7 @@ describe("App run integration", () => {
 
   test("renders streamed ACP message chunks as one growing timeline message", async () => {
     root = createRoot(container);
-    root.render(<App />);
+    renderApp(root);
 
     await waitForText("Start run");
     clickButton("Start run");
@@ -146,7 +155,7 @@ describe("App run integration", () => {
 
   test("renders gate decisions with exhausted branch traversal budgets", async () => {
     root = createRoot(container);
-    root.render(<App />);
+    renderApp(root);
 
     await waitForText("Start run");
     clickButton("Start run");
@@ -189,7 +198,7 @@ describe("App run integration", () => {
     };
 
     root = createRoot(container);
-    root.render(<App />);
+    renderApp(root);
 
     await waitForText("Existing workflow");
     await waitForText("Start run");
@@ -197,7 +206,7 @@ describe("App run integration", () => {
 
   test("adds a session and renders it immediately", async () => {
     root = createRoot(container);
-    root.render(<App />);
+    renderApp(root);
 
     await waitForText("Start run");
     clickBottomBarHandle();
@@ -232,7 +241,7 @@ describe("App run integration", () => {
     };
 
     root = createRoot(container);
-    root.render(<App />);
+    renderApp(root);
 
     await waitForText("Start run");
     const step = document.querySelector(".node");
@@ -255,7 +264,7 @@ describe("App run integration", () => {
       sampleAgentSession("codex-acp", "implementation", "codex-runtime"),
     ];
     root = createRoot(container);
-    root.render(<App />);
+    renderApp(root);
 
     await waitForText("Start run");
     clickBottomBarHandle();
@@ -276,7 +285,7 @@ describe("App run integration", () => {
   test("opens the auth modal when run preflight requires agent authentication", async () => {
     runAuthRequired = true;
     root = createRoot(container);
-    root.render(<App />);
+    renderApp(root);
 
     await waitForText("Start run");
     clickButton("Start run");
@@ -291,7 +300,7 @@ describe("App run integration", () => {
   test("keeps a run launch status visible while agent checks are pending", async () => {
     holdRunStart = true;
     root = createRoot(container);
-    root.render(<App />);
+    renderApp(root);
 
     await waitForText("Start run");
     clickButton("Start run");
@@ -306,7 +315,7 @@ describe("App run integration", () => {
   test("shows Inspect output in its own conversation window rather than the run Logs tab", async () => {
     agentSessionHistory = [sampleAgentSession("echo-headless", "main", "historical")];
     root = createRoot(container);
-    root.render(<App />);
+    renderApp(root);
 
     await waitForText("Start run");
     clickBottomBarHandle();
@@ -339,7 +348,7 @@ describe("App run integration", () => {
   test("uses the Resume conversation window to send a follow-up ACP prompt", async () => {
     agentSessionHistory = [sampleAgentSession("echo-headless", "main", "historical")];
     root = createRoot(container);
-    root.render(<App />);
+    renderApp(root);
 
     await waitForText("Start run");
     clickBottomBarHandle();
@@ -400,7 +409,7 @@ describe("App run integration", () => {
       at: "2026-05-19T10:00:00.000Z",
     }];
     root = createRoot(container);
-    root.render(<App />);
+    renderApp(root);
 
     await waitForText("Start run");
     clickBottomBarHandle();
@@ -415,7 +424,7 @@ describe("App run integration", () => {
 
   test("shows a paused node composer for its session and continues from the node card", async () => {
     root = createRoot(container);
-    root.render(<App />);
+    renderApp(root);
 
     await waitForText("Start run");
     clickButton("Start run");

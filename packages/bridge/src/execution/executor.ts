@@ -3,7 +3,6 @@ import {
   type AgentCommandRequest,
   type AgentCommandResult,
   type AgentLifecycleEvent,
-  type AgentServerSettings,
   type AgentSessionUpdateEvent,
   type AgentTerminalEvent,
 } from "@specflow/agent-proxy";
@@ -90,7 +89,6 @@ export interface WorkflowExecutorOptions {
   interactions?: RunInteractionStore;
   pauses?: RunPauseStore;
   agentRunner?: AgentRunner;
-  agentServerSettingsResolver?: AgentServerSettingsResolver;
   onNodeStatus?: (event: NodeStatusEvent) => void;
   onRunStatus?: (event: RunStatusEvent) => void;
   onAgentLifecycle?: (event: AgentLifecycleStatusEvent) => void;
@@ -113,10 +111,6 @@ export interface PromptTransformContext {
 }
 
 export type PromptTransformer = (prompt: string, context: PromptTransformContext) => Promise<string> | string;
-
-export type AgentServerSettingsResolver = (
-  agentServerId: string,
-) => Promise<AgentServerSettings | undefined>;
 
 export type AgentRunner = (request: AgentCommandRequest) => Promise<AgentCommandResult>;
 
@@ -183,7 +177,6 @@ export class WorkflowExecutor {
   readonly #interactions: RunInteractionStore;
   readonly #pauses: RunPauseStore | undefined;
   readonly #agentRunnerOverride: AgentRunner | undefined;
-  readonly #settingsResolver: AgentServerSettingsResolver | undefined;
   readonly #onNodeStatus: ((event: NodeStatusEvent) => void) | undefined;
   readonly #onRunStatus: ((event: RunStatusEvent) => void) | undefined;
   readonly #onAgentLifecycle: ((event: AgentLifecycleStatusEvent) => void) | undefined;
@@ -197,7 +190,6 @@ export class WorkflowExecutor {
     this.#interactions = options.interactions ?? new RunInteractionStore();
     this.#pauses = options.pauses;
     this.#agentRunnerOverride = options.agentRunner;
-    this.#settingsResolver = options.agentServerSettingsResolver;
     this.#onNodeStatus = options.onNodeStatus;
     this.#onRunStatus = options.onRunStatus;
     this.#onAgentLifecycle = options.onAgentLifecycle;
@@ -797,11 +789,9 @@ export class WorkflowExecutor {
       }),
       onPermissionRequest: async (request) => {
         const agentServerId = resolveAgentServerId(agent);
-        const settings = await this.#settingsResolver?.(agentServerId);
         return this.#interactions.requestPermission(
           this.#interactionContext(input, agentServerId),
           request,
-          settings?.permissionPolicy,
         );
       },
       onElicitationRequest: (request) => this.#interactions.requestElicitation(

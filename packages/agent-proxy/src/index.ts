@@ -17,4 +17,3 @@ export type {
 export * from "./session-pool";
 export * from "./supported-agents";
 export * from "./runtimes/acp/connection";
-export { resolveByTimeout as resolvePermissionByTimeout, pickAllowOption, pickDenyOption } from "./runtimes/acp/permission-policy";

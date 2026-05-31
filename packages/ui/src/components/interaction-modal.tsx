@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { RunInteraction } from '../api';
 import { useI18n } from '../i18n';
 
@@ -29,7 +29,6 @@ function PermissionModal({ interaction, onRespond }: InteractionModalProps) {
   const command = extractCommandSummary(toolCall);
   const justification = stringValue((asRecord(toolCall.rawInput) ?? {}).justification)
     || stringValue(toolCall.justification);
-  const remaining = useTimeoutCountdown(interaction.timeoutAt);
 
   return (
     <div className="run-modal-overlay">
@@ -66,11 +65,6 @@ function PermissionModal({ interaction, onRespond }: InteractionModalProps) {
             <p className="interaction-muted" style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5 }}>
               {t('interaction.node', { id: interaction.nodeId })}
               {interaction.acpSessionId && <> · {t('interaction.session', { id: `${interaction.acpSessionId.slice(0, 8)}…` })}</>}
-            </p>
-          )}
-          {remaining && (
-            <p className="interaction-muted" style={{ color: 'var(--accent, #f0a020)' }}>
-              {t('interaction.autoAction', { action: interaction.timeoutAction ?? 'accept', remaining })}
             </p>
           )}
           {otherOptions.length > 0 && (
@@ -155,22 +149,6 @@ function extractCommandSummary(toolCall: Record<string, unknown>): string {
     }
   }
   return '';
-}
-
-function useTimeoutCountdown(timeoutAt?: string): string | undefined {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (!timeoutAt) return;
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, [timeoutAt]);
-  if (!timeoutAt) return undefined;
-  const remainingMs = new Date(timeoutAt).getTime() - now;
-  if (remainingMs <= 0) return '0s';
-  const totalSeconds = Math.floor(remainingMs / 1000);
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
 }
 
 function ElicitationModal({ interaction, onRespond }: InteractionModalProps) {

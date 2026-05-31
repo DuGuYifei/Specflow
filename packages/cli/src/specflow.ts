@@ -1,26 +1,19 @@
 #!/usr/bin/env bun
 
-import { access } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { resolve } from "node:path";
 import {
   executeAgentFlowDoc,
-  authenticateAgentServer,
-  ensureAgentServerInstalled,
-  initWorkspace,
   inspectAgentServerAuthentication,
   listAgentServers,
   loadAgentFlowFile,
   prepareCanvasRun,
   startSpecflowServer,
-  upsertLocalAgentServer,
-  choosePreferredAuthMethod,
   type AgentFlowDoc,
   type RunInputVariable,
 } from "@specflow/server";
 import { StdinLineReader } from "./stdin-lines";
 
 type AgentAuthenticationStatus = Awaited<ReturnType<typeof inspectAgentServerAuthentication>>;
-type AgentAuthenticationMethod = AgentAuthenticationStatus["methods"][number];
 
 interface RunCliOptions {
   file: string;
@@ -44,8 +37,6 @@ try {
 }
 
 async function serveCommand(): Promise<void> {
-  const initializedAgentServerId = await initializeFirstWorkspace();
-  await ensureConfiguredAgentServersForTui(new Set(initializedAgentServerId ? [initializedAgentServerId] : []));
   const server = await startSpecflowServer();
   let stopping = false;
 
@@ -87,6 +78,14 @@ async function runWorkflowCommand(args: string[]): Promise<void> {
       console.log(`  - ${v.name}${v.description ? ` (${v.description})` : ""}`);
     }
     console.log("\nPass them with -Dname=value, for example: -Dvalue=1 or -Dspecflow_value=1");
+    process.exitCode = 2;
+    return;
+  }
+
+  const authStatuses = await inspectWorkflowAuthentication(prepared.doc);
+  const requiredAuth = authStatuses.filter((status) => status.needsAuth);
+  if (requiredAuth.length > 0) {
+    printAuthRequired(requiredAuth);
     process.exitCode = 2;
     return;
   }
@@ -240,174 +239,30 @@ function printRunUsage(): void {
   console.error("Usage: specflow run <agentflow.yaml> [-Dname=value ...] [--input text] [--yes]");
 }
 
-interface RegistryAgentChoice {
-  id: string;
-  name: string;
-  version: string;
-  description?: string;
+async function inspectWorkflowAuthentication(doc: AgentFlowDoc): Promise<AgentAuthenticationStatus[]> {
+  const servers = new Map((await listAgentServers(process.cwd())).map((entry) => [entry.id, entry]));
+  const agentServerIds = [...new Set(doc.sessions
+    .map((session) => session.agentServerId ?? session.agent)
+    .filter((id): id is string => Boolean(id) && id !== "unconfigured"))];
+  return Promise.all(agentServerIds
+    .filter((id) => servers.get(id)?.settings.type !== "headless")
+    .map((id) => inspectAgentServerAuthentication(process.cwd(), id)));
 }
 
-async function initializeFirstWorkspace(): Promise<string | undefined> {
-  if (await pathExists(join(process.cwd(), ".specflow"))) return undefined;
-
-  if (!process.stdin.isTTY) {
-    await initWorkspace(process.cwd(), { createIfMissing: true });
-    console.log("Initialized .specflow in generic mode.");
-    return undefined;
-  }
-
-  const mode = await selectWorkspaceMode();
-  if (mode === "generic") {
-    await initWorkspace(process.cwd(), { createIfMissing: true });
-    console.log("Initialized .specflow in generic mode.");
-    return undefined;
-  }
-
-  const agent = await selectCodeAgent();
-  if (!agent) {
-    await initWorkspace(process.cwd(), { createIfMissing: true });
-    console.log("Initialized .specflow in generic mode.");
-    return undefined;
-  }
-
-  await initWorkspace(process.cwd(), {
-    createIfMissing: true,
-    seedAgentServerId: agent.id,
-  });
-  const settings = {
-    type: "registry",
-    registryId: agent.id,
-    installedVersion: agent.version,
-    terminal: { enabled: true, auth: true },
-  } as const;
-  await upsertLocalAgentServer(process.cwd(), agent.id, settings);
-  console.log(`Installing ${agent.name || agent.id}...`);
-  await ensureAgentServerInstalled(process.cwd(), agent.id);
-  console.log(`Checking ${agent.name || agent.id} authentication...`);
-  await authenticateInitialAgentServer(agent.id, settings);
-  console.log(`Initialized .specflow with code ACP ${agent.name || agent.id}.`);
-  return agent.id;
-}
-
-async function selectWorkspaceMode(): Promise<"code" | "generic"> {
-  while (true) {
-    console.log("\nSpecflow first-run setup");
-    console.log("  1. Code agent mode");
-    console.log("  2. Generic mode");
-    process.stdout.write("Choose a mode [1]: ");
-    const answer = (await readStdinLine()).trim().toLowerCase();
-    if (!answer || answer === "1" || answer === "code") return "code";
-    if (answer === "2" || answer === "generic") return "generic";
-  }
-}
-
-async function selectCodeAgent(): Promise<RegistryAgentChoice | undefined> {
-  const response = await fetch("https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json");
-  if (!response.ok) {
-    throw new Error(`Failed to fetch ACP registry: ${response.status} ${response.statusText}`);
-  }
-  const registry = await response.json() as { agents?: RegistryAgentChoice[] };
-  const agents = (registry.agents ?? []).filter(isCodeAgent);
-  if (agents.length === 0) {
-    throw new Error("ACP registry returned no code agents.");
-  }
-
-  console.log("\nCode ACP agents");
-  for (let index = 0; index < agents.length; index += 1) {
-    const agent = agents[index]!;
-    const summary = agent.description ? ` - ${agent.description}` : "";
-    console.log(`  ${index + 1}. ${agent.name || agent.id} (${agent.id}@${agent.version})${summary}`);
-  }
-  console.log("  0. Skip for now");
-
-  while (true) {
-    process.stdout.write("Choose an agent [1]: ");
-    const raw = (await readStdinLine()).trim();
-    if (raw === "0") return undefined;
-    const index = raw ? Number(raw) - 1 : 0;
-    if (Number.isInteger(index) && agents[index]) return agents[index];
-  }
-}
-
-function isCodeAgent(agent: RegistryAgentChoice): boolean {
-  const text = `${agent.id} ${agent.name} ${agent.description ?? ""}`.toLowerCase();
-  return /\b(code|coding|developer|software engineer|programmer)\b/.test(text)
-    || text.includes("codex");
-}
-
-async function authenticateInitialAgentServer(
-  agentServerId: string,
-  settings: {
-    type: "registry";
-    registryId: string;
-    installedVersion?: string;
-    terminal: { enabled: boolean; auth: boolean };
-  },
-): Promise<void> {
-  let status = await inspectAgentServerAuthentication(process.cwd(), agentServerId);
-  if (!status.needsAuth) {
-    console.log(`${agentServerId} is ready.`);
-    return;
-  }
-
-  console.log(`${agentServerId} requires authentication.`);
-  const method = selectCliAuthMethod(agentServerId, status.methods);
-  if (!method) {
-    throw new Error(`ACP agent "${agentServerId}" requires authentication but advertised no supported method.`);
-  }
-
-  if (method.type === "env_var") {
-    const env: Record<string, string> = {};
-    for (const variable of method.vars.filter((entry) => !entry.optional || method.missingVars.includes(entry.name))) {
-      const label = variable.label || variable.name;
-      process.stdout.write(`${label}${variable.secret ? " (secret)" : ""}: `);
-      const value = (await readStdinLine()).trim();
-      if (value) env[variable.name] = value;
+function printAuthRequired(statuses: AgentAuthenticationStatus[]): void {
+  console.log("\nAgent authentication required:");
+  for (const status of statuses) {
+    console.log(`  - ${status.agentServerId}`);
+    if (status.methods.length === 0) {
+      console.log("    No ACP auth methods advertised.");
+      continue;
     }
-    await upsertLocalAgentServer(process.cwd(), agentServerId, {
-      ...settings,
-      env,
-    });
-  } else if (method.type === "terminal") {
-    console.log(`Starting terminal authentication for ${agentServerId}...`);
-  } else {
-    console.log(`Starting ${method.name} authentication for ${agentServerId}...`);
+    for (const method of status.methods) {
+      console.log(`    * ${method.name} [${method.type}]`);
+      if (method.type === "env_var" && method.missingVars.length > 0) {
+        console.log(`      Missing env: ${method.missingVars.join(", ")}`);
+      }
+    }
   }
-
-  status = await authenticateAgentServer(process.cwd(), agentServerId, method.id);
-  if (status.needsAuth) {
-    throw new Error(`ACP agent "${agentServerId}" still requires authentication after ${method.name}.`);
-  }
-  console.log(`${agentServerId} authentication complete.`);
-}
-
-async function ensureConfiguredAgentServersForTui(skipIds: Set<string>): Promise<void> {
-  const servers = await listAgentServers(process.cwd());
-  for (const server of servers) {
-    if (server.settings.type !== "registry") continue;
-    if (skipIds.has(server.id)) continue;
-    console.log(`Installing ${server.id}...`);
-    await ensureAgentServerInstalled(process.cwd(), server.id);
-    console.log(`Checking ${server.id} authentication...`);
-    await authenticateInitialAgentServer(server.id, {
-      ...server.settings,
-      terminal: {
-        enabled: server.settings.terminal?.enabled ?? true,
-        auth: server.settings.terminal?.auth ?? true,
-      },
-    });
-  }
-}
-
-function selectCliAuthMethod(agentServerId: string, methods: AgentAuthenticationMethod[]): AgentAuthenticationMethod | undefined {
-  return choosePreferredAuthMethod(agentServerId, methods);
-}
-
-async function pathExists(path: string): Promise<boolean> {
-  try {
-    await access(path);
-    return true;
-  } catch {
-    return false;
-  }
+  console.log("\nEdit .specflow/agent-servers.local.json for env vars, or start Specflow and authenticate from the UI.");
 }

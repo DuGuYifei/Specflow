@@ -1,10 +1,7 @@
 import type {
   AgentPermissionRequest,
   AgentPermissionResult,
-  PermissionPolicy,
-  PermissionTimeoutAction,
 } from "@specflow/agent-proxy";
-import { resolvePermissionByTimeout } from "@specflow/agent-proxy";
 import { uuidv7 } from "@specflow/shared";
 
 export type RunInteractionStatus = "pending" | "resolved" | "cancelled";
@@ -38,8 +35,6 @@ export interface PermissionRunInteraction extends RunInteractionBase {
   kind: "permission";
   toolCall: unknown;
   options: Array<{ optionId: string; name?: string; kind?: string }>;
-  timeoutAt?: string;
-  timeoutAction?: PermissionTimeoutAction;
 }
 
 export interface ElicitationRunInteraction extends RunInteractionBase {
@@ -52,13 +47,11 @@ export type RunInteraction = PermissionRunInteraction | ElicitationRunInteractio
 interface PendingPermissionRecord {
   interaction: PermissionRunInteraction;
   resolve: (result: AgentPermissionResult) => void;
-  timeoutHandle?: ReturnType<typeof setTimeout>;
 }
 
 interface PendingElicitationRecord {
   interaction: ElicitationRunInteraction;
   resolve: (result: ElicitationResponse) => void;
-  timeoutHandle?: ReturnType<typeof setTimeout>;
 }
 
 type PendingRecord = PendingPermissionRecord | PendingElicitationRecord;
@@ -94,10 +87,7 @@ export class RunInteractionStore {
   requestPermission(
     context: RunInteractionContext,
     request: AgentPermissionRequest,
-    policy?: PermissionPolicy,
   ): Promise<AgentPermissionResult> {
-    const timeoutMs = policy?.promptTimeoutMs;
-    const timeoutAction: PermissionTimeoutAction = policy?.onTimeout ?? "accept";
     const interaction: PermissionRunInteraction = {
       ...context,
       id: uuidv7(),
@@ -107,25 +97,10 @@ export class RunInteractionStore {
       acpSessionId: context.acpSessionId ?? request.sessionId,
       toolCall: request.toolCall,
       options: request.options,
-      ...(typeof timeoutMs === "number" && timeoutMs > 0
-        ? {
-            timeoutAt: new Date(Date.now() + timeoutMs).toISOString(),
-            timeoutAction,
-          }
-        : {}),
     };
 
     return new Promise((resolve) => {
       const record: PendingPermissionRecord = { interaction, resolve };
-      if (typeof timeoutMs === "number" && timeoutMs > 0) {
-        record.timeoutHandle = setTimeout(() => {
-          if (!this.#pending.has(interaction.id)) return;
-          const auto = resolvePermissionByTimeout(interaction.options, timeoutAction);
-          this.resolve(interaction.id, auto.outcome === "selected"
-            ? { outcome: "selected", optionId: auto.optionId, autoResolvedBy: "timeout" }
-            : { outcome: "cancelled", autoResolvedBy: "timeout" });
-        }, timeoutMs);
-      }
       this.#storePending(record);
     });
   }
@@ -173,7 +148,6 @@ export class RunInteractionStore {
     interaction.status = "resolved";
     interaction.resolvedAt = new Date().toISOString();
     interaction.resolution = resolution;
-    if (pending.timeoutHandle) clearTimeout(pending.timeoutHandle);
     this.#pending.delete(interactionId);
 
     if (isPendingPermission(pending)) {
@@ -198,7 +172,6 @@ export class RunInteractionStore {
     interaction.status = "cancelled";
     interaction.resolvedAt = new Date().toISOString();
     interaction.resolution = { reason };
-    if (pending.timeoutHandle) clearTimeout(pending.timeoutHandle);
     this.#pending.delete(interactionId);
 
     if (isPendingPermission(pending)) {

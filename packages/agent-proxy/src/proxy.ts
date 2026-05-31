@@ -6,12 +6,13 @@ import type {
   AgentRestoreResult,
   AgentRunRequest,
   AgentRunResult,
-  AgentTerminalEvent,
+  TerminalAuthTask,
 } from "./types";
 import {
   authenticateAcpAgent,
   inspectAcpAgentAuthentication,
   probeAcpAgentCapabilities,
+  resolveAcpTerminalAuthTask,
   restoreAcpAgentSession,
   AcpRestoredConversation,
   runAcpAgent,
@@ -39,6 +40,7 @@ export type {
   AgentSessionUpdateEvent,
   AgentTerminalEvent,
   AgentTerminalStream,
+  TerminalAuthTask,
 } from "./types";
 export { AgentServerStore };
 export { probeAcpAgentCapabilities };
@@ -87,11 +89,22 @@ export async function authenticateAgentServer(
   root: string,
   agentServerId: string,
   methodId: string,
-  onTerminalEvent?: (event: AgentTerminalEvent) => void,
 ): Promise<AgentAuthenticationStatus> {
   const resolved = await new AgentServerStore({ root }).resolve(agentServerId);
   if (resolved.source === "headless") {
     throw new Error(`Headless agent runtime does not advertise ACP authentication: ${agentServerId}`);
   }
-  return authenticateAcpAgent(resolved, root, methodId, onTerminalEvent);
+  return authenticateAcpAgent(resolved, root, methodId);
+}
+
+export async function resolveAgentTerminalAuthTask(
+  root: string,
+  agentServerId: string,
+  methodId: string,
+): Promise<TerminalAuthTask | undefined> {
+  const resolved = await new AgentServerStore({ root }).resolve(agentServerId);
+  if (resolved.source === "headless") {
+    throw new Error(`Headless agent runtime does not advertise ACP authentication: ${agentServerId}`);
+  }
+  return resolveAcpTerminalAuthTask(resolved, root, methodId);
 }

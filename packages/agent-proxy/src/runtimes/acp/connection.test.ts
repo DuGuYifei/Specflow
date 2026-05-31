@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import {
   authenticateAcpAgent,
   inspectAcpAgentAuthentication,
+  resolveAcpTerminalAuthTask,
   restoreAcpAgentSession,
   runAcpAgent,
 } from "./connection";
@@ -45,39 +46,6 @@ describe("runAcpAgent", () => {
       "prompt_stopped",
       "session_closed",
     ]);
-  });
-
-  it("fails when the configured default mode is not advertised by the agent", async () => {
-    const result = await runAcpAgent(resolved({ settings: { defaultMode: "missing-mode" } }), {
-      agentServerId: "fake-acp",
-      cwd: await mkdtemp(join(tmpdir(), "specflow-acp-")),
-      prompt: "hello",
-    });
-
-    expect(result.exitCode).toBe(1);
-    expect(result.output).toContain('mode "missing-mode"');
-  });
-
-  it("fails when the configured default model is not advertised by the agent", async () => {
-    const result = await runAcpAgent(resolved({ settings: { defaultModel: "missing-model" } }), {
-      agentServerId: "fake-acp",
-      cwd: await mkdtemp(join(tmpdir(), "specflow-acp-")),
-      prompt: "hello",
-    });
-
-    expect(result.exitCode).toBe(1);
-    expect(result.output).toContain('model "missing-model"');
-  });
-
-  it("fails when a configured default config option value is not advertised by the agent", async () => {
-    const result = await runAcpAgent(resolved({ settings: { defaultConfigOptions: { reasoning: "low" } } }), {
-      agentServerId: "fake-acp",
-      cwd: await mkdtemp(join(tmpdir(), "specflow-acp-")),
-      prompt: "hello",
-    });
-
-    expect(result.exitCode).toBe(1);
-    expect(result.output).toContain('config option "reasoning" value "low"');
   });
 
   it("does not start authentication merely because the agent advertises a method", async () => {
@@ -293,7 +261,7 @@ describe("ACP auth inspection", () => {
     expect(authenticated.methods[0]?.id).toBe("env");
   });
 
-  it("uses a command status probe for Claude because newSession is not an auth check", async () => {
+  it("uses ACP-native session probing for authentication status", async () => {
     const cwd = await mkdtemp(join(tmpdir(), "specflow-acp-auth-claude-"));
 
     const missing = await inspectAcpAgentAuthentication(resolvedClaude({ authMethods: "terminal" }), cwd);
@@ -306,15 +274,37 @@ describe("ACP auth inspection", () => {
     expect(ready.needsAuth).toBe(false);
   });
 
-  it("runs terminal authentication without calling the agent authenticate method", async () => {
-    const status = await authenticateAcpAgent(
-      resolvedClaude({ authMethods: "terminal", preauthorized: true }),
-      await mkdtemp(join(tmpdir(), "specflow-acp-auth-terminal-")),
+  it("resolves terminal authentication as a reusable terminal task", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "specflow-acp-auth-terminal-"));
+    const task = await resolveAcpTerminalAuthTask(
+      resolvedClaude({
+        authMethods: "terminal",
+        preauthorized: true,
+        commandCwd: cwd,
+      }),
+      await mkdtemp(join(tmpdir(), "specflow-acp-auth-terminal-root-")),
       "terminal",
-      () => {},
     );
 
-    expect(status.needsAuth).toBe(false);
+    expect(task?.command).toBe("bun");
+    expect(task?.args).toEqual([fakeAgentPath, "--fake-auth"]);
+    expect(task?.cwd).toBe(cwd);
+  });
+
+  it("only applies the Gemini terminal shim when official auth methods are absent", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "specflow-acp-auth-gemini-"));
+    const official = await inspectAcpAgentAuthentication(
+      resolvedGemini({ authMethods: "env_var" }),
+      cwd,
+    );
+    const shim = await resolveAcpTerminalAuthTask(
+      resolvedGemini(),
+      cwd,
+      "spawn-gemini-cli",
+    );
+
+    expect(official.methods[0]?.id).toBe("env");
+    expect(shim?.command).toBe("bun");
   });
 });
 
@@ -324,6 +314,7 @@ function resolved(options: {
   authMethods?: string;
   preauthorized?: boolean;
   env?: Record<string, string>;
+  commandCwd?: string;
   settings?: Partial<Extract<ResolvedAgentServer["settings"], { type: "custom" }>>;
 } = {}): ResolvedAgentServer {
   return {
@@ -333,14 +324,12 @@ function resolved(options: {
       type: "custom",
       command: "bun",
       args: [],
-      defaultMode: "auto",
-      defaultModel: "test-model",
-      defaultConfigOptions: { reasoning: "high" },
       ...options.settings,
     },
     command: {
       command: "bun",
       args: [fakeAgentPath],
+      cwd: options.commandCwd,
       env: {
         ...(options.env ?? {}),
         ...(options.restoreCapabilities ? { SPECFLOW_FAKE_ACP_RESTORE: options.restoreCapabilities } : {}),
@@ -361,7 +350,19 @@ function resolvedClaude(options: Parameters<typeof resolved>[0] = {}): ResolvedA
     settings: {
       type: "registry",
       registryId: "claude-acp",
-      terminal: { enabled: true, auth: true },
+    },
+  };
+}
+
+function resolvedGemini(options: Parameters<typeof resolved>[0] = {}): ResolvedAgentServer {
+  const fake = resolved(options);
+  return {
+    ...fake,
+    id: "gemini",
+    source: "registry",
+    settings: {
+      type: "registry",
+      registryId: "gemini",
     },
   };
 }

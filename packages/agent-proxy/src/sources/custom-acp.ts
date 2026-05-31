@@ -5,6 +5,7 @@ export function resolveCustomAcpCommand(settings: CustomAcpAgentServerSettings):
   return {
     command: expandHome(settings.command),
     args: settings.args ?? [],
+    cwd: settings.cwd ? expandHome(settings.cwd) : undefined,
     env: normalizeEnv(settings.env),
   };
 }

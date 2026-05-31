@@ -7,11 +7,9 @@ import type {
   AgentPermissionResult,
   AgentSessionUpdateEvent,
   AgentTerminalEvent,
-  PermissionPolicy,
 } from "../../types";
 import { assertInsideAllowedRoots } from "../../util";
 import { handleSessionUpdate } from "./events";
-import { resolveByPolicy } from "./permission-policy";
 
 interface TerminalRecord {
   proc: Bun.Subprocess<"ignore", "pipe", "pipe">;
@@ -25,8 +23,6 @@ interface TerminalRecord {
 export class AcpClientHandlers implements acp.Client {
   readonly #cwd: string;
   readonly #allowedRoots: string[];
-  readonly #terminalEnabled: boolean;
-  readonly #permissionPolicy: PermissionPolicy | undefined;
   readonly #terminals = new Map<string, TerminalRecord>();
   readonly #appendOutput: (text: string) => void;
   readonly #onTerminalEvent: ((event: AgentTerminalEvent) => void) | undefined;
@@ -40,8 +36,6 @@ export class AcpClientHandlers implements acp.Client {
   constructor(input: {
     cwd: string;
     additionalDirectories?: string[];
-    terminalEnabled?: boolean;
-    permissionPolicy?: PermissionPolicy;
     appendOutput: (text: string) => void;
     onTerminalEvent?: (event: AgentTerminalEvent) => void;
     onPermissionRequest?: (request: AgentPermissionRequest) => Promise<AgentPermissionResult>;
@@ -53,8 +47,6 @@ export class AcpClientHandlers implements acp.Client {
   }) {
     this.#cwd = input.cwd;
     this.#allowedRoots = [input.cwd, ...(input.additionalDirectories ?? [])];
-    this.#terminalEnabled = input.terminalEnabled ?? true;
-    this.#permissionPolicy = input.permissionPolicy;
     this.#appendOutput = input.appendOutput;
     this.#onTerminalEvent = input.onTerminalEvent;
     this.#onPermissionRequest = input.onPermissionRequest;
@@ -76,11 +68,9 @@ export class AcpClientHandlers implements acp.Client {
       })),
       raw: params,
     };
-    const policyShortCircuit = resolveByPolicy(request.options, this.#permissionPolicy);
-    const result = policyShortCircuit
-      ?? (this.#onPermissionRequest
-        ? await this.#onPermissionRequest(request)
-        : { outcome: "cancelled" } satisfies AgentPermissionResult);
+    const result = this.#onPermissionRequest
+      ? await this.#onPermissionRequest(request)
+      : { outcome: "cancelled" } satisfies AgentPermissionResult;
     if (result.outcome === "cancelled") {
       this.#onTerminalEvent?.({ stream: "system", chunk: "ACP permission request cancelled.\n" });
       return { outcome: { outcome: "cancelled" } };
@@ -111,9 +101,6 @@ export class AcpClientHandlers implements acp.Client {
   }
 
   async createTerminal(params: acp.CreateTerminalRequest): Promise<acp.CreateTerminalResponse> {
-    if (!this.#terminalEnabled) {
-      throw acp.RequestError.methodNotFound("terminal/create");
-    }
     const terminalId = uuidv7();
     const cwd = params.cwd ? assertInsideAllowedRoots(this.#allowedRoots, params.cwd) : this.#cwd;
     const proc = Bun.spawn([params.command, ...(params.args ?? [])], {

@@ -1,35 +1,22 @@
-import type { AgentAuthenticationMethod, AgentServerSettings } from "./types";
 import type { RegistryIndex } from "./sources/registry-client";
 
-export type SupportedRegistryAgentId = "codex-acp" | "claude-acp";
-
-export type AgentAuthenticationProbe =
-  | { type: "acp_session" }
-  | { type: "command_json"; args: string[]; authenticatedField: string };
+export type SupportedRegistryAgentId = "codex-acp" | "claude-acp" | "gemini";
 
 export interface SupportedRegistryAgentProfile {
   id: SupportedRegistryAgentId;
-  authMethodPreference: string[];
-  authenticationProbe: AgentAuthenticationProbe;
-  defaultSettings: Pick<AgentServerSettings, "terminal">;
+  geminiTerminalAuthShim?: boolean;
 }
 
 const SUPPORTED_REGISTRY_AGENT_PROFILES: Record<SupportedRegistryAgentId, SupportedRegistryAgentProfile> = {
   "codex-acp": {
     id: "codex-acp",
-    authMethodPreference: ["chatgpt", "codex-api-key", "openai-api-key"],
-    authenticationProbe: { type: "acp_session" },
-    defaultSettings: { terminal: { enabled: true, auth: true } },
   },
   "claude-acp": {
     id: "claude-acp",
-    authMethodPreference: ["claude-ai-login", "console-login", "claude-login", "gateway", "gateway-bedrock"],
-    authenticationProbe: {
-      type: "command_json",
-      args: ["--cli", "auth", "status"],
-      authenticatedField: "loggedIn",
-    },
-    defaultSettings: { terminal: { enabled: true, auth: true } },
+  },
+  "gemini": {
+    id: "gemini",
+    geminiTerminalAuthShim: true,
   },
 };
 
@@ -47,39 +34,10 @@ export function assertSupportedRegistryAgent(id: string): void {
   }
 }
 
-export function applySupportedRegistryAgentDefaults(settings: AgentServerSettings): AgentServerSettings {
-  if (settings.type !== "registry") return settings;
-  const profile = supportedRegistryAgentProfile(settings.registryId);
-  if (!profile) return settings;
-  return {
-    ...settings,
-    terminal: {
-      ...profile.defaultSettings.terminal,
-      ...(settings.terminal ?? {}),
-    },
-  };
-}
-
 export function filterSupportedRegistryIndex(index: RegistryIndex): RegistryIndex {
   const supported = new Set(supportedRegistryAgentIds());
   return {
     ...index,
     agents: index.agents.filter((agent) => supported.has(agent.id as SupportedRegistryAgentId)),
   };
-}
-
-export function choosePreferredAuthMethod(
-  agentServerId: string,
-  methods: AgentAuthenticationMethod[],
-): AgentAuthenticationMethod | undefined {
-  const profile = supportedRegistryAgentProfile(agentServerId);
-  for (const id of profile?.authMethodPreference ?? []) {
-    const method = methods.find((candidate) => candidate.id === id);
-    if (method && method.type !== "terminal") return method;
-    if (method?.type === "terminal" && method.terminalEnabled) return method;
-  }
-  return methods.find((method) => method.type === "agent")
-    ?? methods.find((method) => method.type === "env_var")
-    ?? methods.find((method) => method.type === "terminal" && method.terminalEnabled)
-    ?? methods[0];
 }

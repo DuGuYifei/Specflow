@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   authenticateAgentServer,
   type AgentAuthenticationMethod,
@@ -6,6 +6,7 @@ import {
 } from '../api';
 import { useI18n } from '../i18n';
 import { Icon } from './icon';
+import { AuthTerminalModal } from './auth-terminal-modal';
 
 interface AgentAuthModalProps {
   statuses: AgentAuthenticationStatus[];
@@ -17,9 +18,9 @@ interface AgentAuthModalProps {
 export function AgentAuthModal({ statuses: initialStatuses, onClose, onReady, onChanged }: AgentAuthModalProps) {
   const { t } = useI18n();
   const [statuses, setStatuses] = useState(initialStatuses);
-  const [values, setValues] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
+  const [terminalSession, setTerminalSession] = useState<{ id: string; agentServerId: string } | undefined>();
 
   useEffect(() => {
     setStatuses(initialStatuses);
@@ -28,24 +29,13 @@ export function AgentAuthModal({ statuses: initialStatuses, onClose, onReady, on
   async function runAuth(status: AgentAuthenticationStatus, method: AgentAuthenticationMethod) {
     setBusy(`${status.agentServerId}:${method.id}`);
     try {
-      const env = method.type === 'env_var'
-        ? Object.fromEntries(method.vars
-            .map((variable) => [
-              variable.name,
-              values[authValueKey(status.agentServerId, method.id, variable.name)]?.trim() ?? '',
-            ])
-            .filter(([name, value]) => Boolean(name) && Boolean(value)))
-        : {};
-      const updated = await authenticateAgentServer(status.agentServerId, method.id, env);
-      const nextStatuses = statuses.map((candidate) =>
-        candidate.agentServerId === updated.agentServerId ? updated : candidate,
-      );
-      setStatuses(nextStatuses);
-      onChanged?.();
-      setError('');
-      if (nextStatuses.every((candidate) => !candidate.needsAuth)) {
-        await onReady();
+      const result = await authenticateAgentServer(status.agentServerId, method.id);
+      if (isTerminalAuthStart(result)) {
+        setTerminalSession({ id: result.terminalSessionId, agentServerId: status.agentServerId });
+        return;
       }
+      await applyAuthStatus(result);
+      setError('');
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -53,12 +43,17 @@ export function AgentAuthModal({ statuses: initialStatuses, onClose, onReady, on
     }
   }
 
-  function updateValue(status: AgentAuthenticationStatus, method: AgentAuthenticationMethod, name: string, value: string) {
-    setValues((current) => ({
-      ...current,
-      [authValueKey(status.agentServerId, method.id, name)]: value,
-    }));
-  }
+  const applyAuthStatus = useCallback(async (updated: AgentAuthenticationStatus) => {
+    const nextStatuses = statuses.map((candidate) =>
+      candidate.agentServerId === updated.agentServerId ? updated : candidate,
+    );
+    setStatuses(nextStatuses);
+    onChanged?.();
+    if (nextStatuses.every((candidate) => !candidate.needsAuth)) {
+      setTerminalSession(undefined);
+      await onReady();
+    }
+  }, [onChanged, onReady, statuses]);
 
   return (
     <div className="run-modal-overlay agent-auth-overlay" onMouseDown={onClose}>
@@ -104,47 +99,52 @@ export function AgentAuthModal({ statuses: initialStatuses, onClose, onReady, on
                   {method.type === 'env_var' && (
                     <div className="agent-auth-env">
                       {method.vars.map((variable) => (
-                        <label key={variable.name}>
+                        <div className="agent-auth-env-row" key={variable.name}>
                           <span>{variable.label || variable.name}</span>
-                          <input
-                            className="input sm"
-                            type={variable.secret ? 'password' : 'text'}
-                            value={values[authValueKey(status.agentServerId, method.id, variable.name)] ?? ''}
-                            placeholder={variable.optional ? t('auth.optionalVarPlaceholder', { name: variable.name }) : variable.name}
-                            onChange={(event) => updateValue(status, method, variable.name, event.target.value)}
-                          />
-                        </label>
+                          <span className="mono-id">{variable.name}</span>
+                          {variable.optional && <span className="cap-badge">{t('common.optional')}</span>}
+                        </div>
                       ))}
                       {method.missingVars.length > 0 && (
                         <div className="agent-auth-missing">{t('auth.missing', { names: method.missingVars.join(', ') })}</div>
                       )}
+                      <div className="agent-server-desc">{t('auth.envConfigHint')}</div>
                     </div>
-                  )}
-
-                  {method.type === 'terminal' && !method.terminalEnabled && (
-                    <div className="agent-auth-missing">{t('auth.terminalDisabled')}</div>
                   )}
 
                   <button
                     className="btn sm primary"
-                    disabled={busy === `${status.agentServerId}:${method.id}` || (method.type === 'terminal' && !method.terminalEnabled)}
+                    disabled={busy === `${status.agentServerId}:${method.id}`}
                     onClick={() => runAuth(status, method)}
                   >
                     <Icon name={method.type === 'env_var' ? 'check' : 'external'} size={10} />
                     {busy === `${status.agentServerId}:${method.id}`
                       ? t('auth.checking')
-                      : method.type === 'env_var' ? t('auth.saveAndAuth') : t('auth.authenticate')}
+                      : method.type === 'env_var' ? t('auth.checkEnv') : t('auth.authenticate')}
                   </button>
                 </div>
               ))}
             </section>
           ))}
         </div>
+        {terminalSession && (
+          <AuthTerminalModal
+            sessionId={terminalSession.id}
+            agentServerId={terminalSession.agentServerId}
+            onClose={() => setTerminalSession(undefined)}
+            onAuthStatus={applyAuthStatus}
+          />
+        )}
       </div>
     </div>
   );
 }
 
-function authValueKey(id: string, methodId: string, name: string): string {
-  return `${id}:${methodId}:${name}`;
+function isTerminalAuthStart(
+  value: Awaited<ReturnType<typeof authenticateAgentServer>>,
+): value is { status: 'terminal_started'; terminalSessionId: string } {
+  return typeof value === 'object'
+    && value !== null
+    && 'status' in value
+    && value.status === 'terminal_started';
 }

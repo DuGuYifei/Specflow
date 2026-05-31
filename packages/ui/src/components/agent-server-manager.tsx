@@ -30,13 +30,9 @@ export function AgentServerManager({ onClose, onChanged, onAuthRequired }: Agent
   const [customId, setCustomId] = useState('');
   const [customCommand, setCustomCommand] = useState('');
   const [customArgs, setCustomArgs] = useState('');
+  const [customCwd, setCustomCwd] = useState('');
   const [customEnv, setCustomEnv] = useState('');
   const [customAdditionalDirs, setCustomAdditionalDirs] = useState('');
-  const [customTerminalEnabled, setCustomTerminalEnabled] = useState(true);
-  const [customTerminalAuth, setCustomTerminalAuth] = useState(false);
-  const [customDefaultMode, setCustomDefaultMode] = useState('');
-  const [customDefaultModel, setCustomDefaultModel] = useState('');
-  const [customConfigOptions, setCustomConfigOptions] = useState('');
 
   const installed = useMemo(() => new Map(servers.map((server) => [server.id, server])), [servers]);
   const installedRegistry = useMemo(() => {
@@ -133,23 +129,16 @@ export function AgentServerManager({ onClose, onChanged, onAuthRequired }: Agent
         type: 'custom',
         command,
         args: splitArgs(customArgs),
+        cwd: customCwd.trim() || undefined,
         env: parseEnv(customEnv),
         additionalDirectories: splitLines(customAdditionalDirs),
-        terminal: { enabled: customTerminalEnabled, auth: customTerminalAuth },
-        defaultMode: customDefaultMode.trim() || undefined,
-        defaultModel: customDefaultModel.trim() || undefined,
-        defaultConfigOptions: parseConfigOptions(customConfigOptions),
       }));
       setCustomId('');
       setCustomCommand('');
       setCustomArgs('');
+      setCustomCwd('');
       setCustomEnv('');
       setCustomAdditionalDirs('');
-      setCustomTerminalEnabled(true);
-      setCustomTerminalAuth(false);
-      setCustomDefaultMode('');
-      setCustomDefaultModel('');
-      setCustomConfigOptions('');
       await inspectAuthIfNeeded(id);
       onChanged?.();
       setError('');
@@ -254,18 +243,8 @@ export function AgentServerManager({ onClose, onChanged, onAuthRequired }: Agent
               <input className="input" value={customId} onChange={(e) => setCustomId(e.target.value)} placeholder={t('agentServers.customId')} />
               <input className="input" value={customCommand} onChange={(e) => setCustomCommand(e.target.value)} placeholder={t('agentServers.customCommand')} />
               <input className="input" value={customArgs} onChange={(e) => setCustomArgs(e.target.value)} placeholder={t('agentServers.customArgs')} />
-              <input className="input" value={customDefaultMode} onChange={(e) => setCustomDefaultMode(e.target.value)} placeholder={t('agentServers.customMode')} />
-              <input className="input" value={customDefaultModel} onChange={(e) => setCustomDefaultModel(e.target.value)} placeholder={t('agentServers.customModel')} />
-              <textarea className="textarea code" value={customConfigOptions} onChange={(e) => setCustomConfigOptions(e.target.value)} placeholder={t('agentServers.customConfig')} rows={3} />
+              <input className="input" value={customCwd} onChange={(e) => setCustomCwd(e.target.value)} placeholder={t('agentServers.customCwd')} />
               <textarea className="textarea code" value={customAdditionalDirs} onChange={(e) => setCustomAdditionalDirs(e.target.value)} placeholder={t('agentServers.customDirs')} rows={3} />
-              <label className="agent-server-toggle">
-                <input type="checkbox" checked={customTerminalEnabled} onChange={(e) => setCustomTerminalEnabled(e.target.checked)} />
-                <span>{t('agentServers.terminalEnabled')}</span>
-              </label>
-              <label className="agent-server-toggle">
-                <input type="checkbox" checked={customTerminalAuth} onChange={(e) => setCustomTerminalAuth(e.target.checked)} disabled={!customTerminalEnabled} />
-                <span>{t('agentServers.terminalAuth')}</span>
-              </label>
               <textarea className="textarea code" value={customEnv} onChange={(e) => setCustomEnv(e.target.value)} placeholder={t('agentServers.customEnv')} rows={4} />
               <button className="btn primary" disabled={!customId.trim() || !customCommand.trim() || Boolean(busy)} onClick={saveCustom}>
                 <Icon name="check" size={12} />{t('agentServers.saveCustom')}
@@ -283,6 +262,9 @@ export function AgentServerManager({ onClose, onChanged, onAuthRequired }: Agent
                         <span className="mono-id">{server.settings.command}</span>
                       </div>
                       <div className="agent-server-desc">{server.settings.args?.join(' ') || t('agentServers.noArgs')}</div>
+                      {server.settings.cwd && (
+                        <div className="agent-server-desc mono-id">{server.settings.cwd}</div>
+                      )}
                     </div>
                     <div className="agent-server-actions">
                       <button className="btn sm" disabled={busy === server.id} onClick={() => remove(server.id)}>
@@ -316,19 +298,5 @@ function parseEnv(input: string): Record<string, string> {
     .map((line) => {
       const index = line.indexOf('=');
       return index >= 0 ? [line.slice(0, index), line.slice(index + 1)] : [line, ''];
-    }));
-}
-
-function parseConfigOptions(input: string): Record<string, string | boolean> {
-  return Object.fromEntries(input
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => {
-      const index = line.indexOf('=');
-      const key = index >= 0 ? line.slice(0, index) : line;
-      const raw = index >= 0 ? line.slice(index + 1) : 'true';
-      const value = raw === 'true' ? true : raw === 'false' ? false : raw;
-      return [key, value];
     }));
 }

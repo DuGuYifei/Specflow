@@ -3,8 +3,8 @@
 
 import asset0 from "../../ui/dist/aflow.png" with { type: "file" };
 import asset1 from "../../ui/dist/apple-touch-icon.png" with { type: "file" };
-import asset2 from "../../ui/dist/assets/index-Dw6dfDhr.css" with { type: "file" };
-import asset3 from "../../ui/dist/assets/index-gAOUSWrK.js" with { type: "file" };
+import asset2 from "../../ui/dist/assets/index-BCDsUVTz.js" with { type: "file" };
+import asset3 from "../../ui/dist/assets/index-CmJXhHew.css" with { type: "file" };
 import asset4 from "../../ui/dist/favicon-96x96.png" with { type: "file" };
 import asset5 from "../../ui/dist/favicon.ico" with { type: "file" };
 import asset6 from "../../ui/dist/favicon.svg" with { type: "file" };
@@ -16,8 +16,8 @@ import asset10 from "../../ui/dist/web-app-manifest-512x512.png" with { type: "f
 export const staticUiAssets: Record<string, string> = {
   "/aflow.png": asset0,
   "/apple-touch-icon.png": asset1,
-  "/assets/index-Dw6dfDhr.css": asset2,
-  "/assets/index-gAOUSWrK.js": asset3,
+  "/assets/index-BCDsUVTz.js": asset2,
+  "/assets/index-CmJXhHew.css": asset3,
   "/favicon-96x96.png": asset4,
   "/favicon.ico": asset5,
   "/favicon.svg": asset6,

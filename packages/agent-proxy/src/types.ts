@@ -21,29 +21,14 @@ export type AgentServerSource = "custom" | "registry" | "headless";
 export interface AgentServerCommand {
   command: string;
   args: string[];
+  cwd?: string;
   env?: Record<string, string>;
-}
-
-export type PermissionPolicyMode = "prompt" | "auto_accept" | "auto_deny";
-export type PermissionTimeoutAction = "accept" | "deny";
-
-export interface PermissionPolicy {
-  mode: PermissionPolicyMode;
-  promptTimeoutMs?: number;
-  onTimeout?: PermissionTimeoutAction;
 }
 
 interface BaseAgentServerSettings {
-  defaultMode?: string | null;
-  defaultModel?: string | null;
-  defaultConfigOptions?: Record<string, string | boolean>;
+  cwd?: string;
   env?: Record<string, string>;
   additionalDirectories?: string[];
-  terminal?: {
-    enabled?: boolean;
-    auth?: boolean;
-  };
-  permissionPolicy?: PermissionPolicy;
 }
 
 export interface CustomAcpAgentServerSettings extends BaseAgentServerSettings {
@@ -125,12 +110,9 @@ export interface AgentRunRequest {
   additionalDirectories?: string[];
   mcpServers?: McpServer[];
   /**
-   * Per-request override for ACP `setSessionMode`. Falls back to the agent
-   * server's `defaultMode` when omitted. Important: if omitted on a session
+   * Per-request override for ACP `setSessionMode`. If omitted on a session
    * that was previously placed into a non-default mode by an earlier node,
-   * the existing mode is preserved (the proxy does NOT re-issue `setSessionMode`
-   * with the default). That matches the per-node "stickiness" semantics the
-   * UI describes.
+   * the existing mode is preserved.
    */
   modeId?: string;
   /**
@@ -302,11 +284,21 @@ export type AgentAuthenticationMethod =
       id: string;
       name: string;
       description?: string;
-      terminalEnabled: boolean;
     };
 
 export interface AgentAuthenticationStatus {
   agentServerId: AgentServerId;
   needsAuth: boolean;
   methods: AgentAuthenticationMethod[];
+}
+
+export interface TerminalAuthTask {
+  agentServerId: AgentServerId;
+  methodId: string;
+  label: string;
+  command: string;
+  args: string[];
+  cwd: string;
+  env: Record<string, string>;
+  successPatterns: string[];
 }

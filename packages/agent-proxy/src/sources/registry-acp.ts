@@ -7,7 +7,7 @@ import {
   type RegistryAgent,
 } from "./registry-client";
 import { resolveBinaryTarget } from "./registry-download";
-import { normalizeEnv } from "../util";
+import { expandHome, normalizeEnv } from "../util";
 import { assertSupportedRegistryAgent } from "../supported-agents";
 
 export async function resolveRegistryAcpCommand(input: {
@@ -21,7 +21,11 @@ export async function resolveRegistryAcpCommand(input: {
   if (!agent) {
     throw new Error(`ACP registry agent not found: ${input.settings.registryId}`);
   }
-  return resolveRegistryDistribution(agent, cacheDir, normalizeEnv(input.settings.env));
+  const command = await resolveRegistryDistribution(agent, cacheDir, normalizeEnv(input.settings.env));
+  return {
+    ...command,
+    cwd: input.settings.cwd ? expandHome(input.settings.cwd) : command.cwd,
+  };
 }
 
 async function resolveRegistryDistribution(

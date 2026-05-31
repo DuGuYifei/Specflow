@@ -5,6 +5,7 @@ import type { AgentAuthenticationStatus, AgentConversation, AgentRestoreMode, Ag
 import { supportedRegistryAgentProfile } from "@specflow/bridge";
 import { uuidv7 } from "@specflow/shared";
 import { SkillStore } from "./skills";
+import { AuthTerminalSessionStore } from "./auth-terminal-sessions";
 import { canvasToWorkflow } from "./canvas-to-workflow";
 import {
   listCanvases,
@@ -119,11 +120,8 @@ function parseAgentServerSettings(input: unknown): AgentServerSettings | undefin
   if (!input || typeof input !== "object") return undefined;
   const raw = input as Record<string, unknown>;
   const env = recordOfStrings(raw.env);
+  const cwd = typeof raw.cwd === "string" && raw.cwd.trim() ? raw.cwd.trim() : undefined;
   const additionalDirectories = arrayOfStrings(raw.additionalDirectories ?? raw.additional_directories);
-  const terminal = terminalPolicy(raw.terminal);
-  const defaultMode = typeof raw.defaultMode === "string" ? raw.defaultMode : undefined;
-  const defaultModel = typeof raw.defaultModel === "string" ? raw.defaultModel : undefined;
-  const defaultConfigOptions = recordOfConfigValues(raw.defaultConfigOptions);
 
   if (raw.type === "registry" && typeof raw.registryId === "string" && raw.registryId.trim()) {
     if (!supportedRegistryAgentProfile(raw.registryId.trim())) return undefined;
@@ -131,12 +129,9 @@ function parseAgentServerSettings(input: unknown): AgentServerSettings | undefin
       type: "registry",
       registryId: raw.registryId.trim(),
       installedVersion: typeof raw.installedVersion === "string" ? raw.installedVersion : undefined,
+      cwd,
       env,
       additionalDirectories,
-      terminal,
-      defaultMode,
-      defaultModel,
-      defaultConfigOptions,
     };
   }
   if (raw.type === "custom" && typeof raw.command === "string" && raw.command.trim()) {
@@ -144,12 +139,9 @@ function parseAgentServerSettings(input: unknown): AgentServerSettings | undefin
       type: "custom",
       command: raw.command.trim(),
       args: arrayOfStrings(raw.args),
+      cwd,
       env,
       additionalDirectories,
-      terminal,
-      defaultMode,
-      defaultModel,
-      defaultConfigOptions,
     };
   }
   if (raw.type === "headless" && typeof raw.command === "string" && raw.command.trim()) {
@@ -157,12 +149,9 @@ function parseAgentServerSettings(input: unknown): AgentServerSettings | undefin
       type: "headless",
       command: raw.command.trim(),
       argsTemplate: arrayOfStrings(raw.argsTemplate),
+      cwd,
       env,
       additionalDirectories,
-      terminal,
-      defaultMode,
-      defaultModel,
-      defaultConfigOptions,
     };
   }
   return undefined;
@@ -179,24 +168,6 @@ function recordOfStrings(value: unknown): Record<string, string> | undefined {
   );
 }
 
-function recordOfConfigValues(value: unknown): Record<string, string | boolean> | undefined {
-  if (!value || typeof value !== "object") return undefined;
-  return Object.fromEntries(
-    Object.entries(value).filter((entry): entry is [string, string | boolean] =>
-      typeof entry[1] === "string" || typeof entry[1] === "boolean",
-    ),
-  );
-}
-
-function terminalPolicy(value: unknown): AgentServerSettings["terminal"] {
-  if (!value || typeof value !== "object") return undefined;
-  const raw = value as Record<string, unknown>;
-  return {
-    ...(typeof raw.enabled === "boolean" ? { enabled: raw.enabled } : {}),
-    ...(typeof raw.auth === "boolean" ? { auth: raw.auth } : {}),
-  };
-}
-
 function redactAgentServerEntries(entries: AgentServerEntry[]): AgentServerEntry[] {
   return entries.map((entry) => ({
     ...entry,
@@ -206,16 +177,6 @@ function redactAgentServerEntries(entries: AgentServerEntry[]): AgentServerEntry
 
 async function listAgentServerEntries(bridge: SpecflowBridge, root: string): Promise<AgentServerEntry[]> {
   return bridge.listAgentServers(root);
-}
-
-async function ensureRegistryAgentServersInstalled(
-  bridge: SpecflowBridge,
-  root: string,
-  entries: AgentServerEntry[],
-): Promise<void> {
-  await Promise.all(entries
-    .filter((entry) => entry.settings.type === "registry")
-    .map((entry) => bridge.ensureAgentServerInstalled(root, entry.id)));
 }
 
 function redactAgentServerSettings(settings: AgentServerSettings): AgentServerSettings {
@@ -454,6 +415,9 @@ function upsertRunInvocation(record: RunRecord, input: {
 
 export function createApiHandler(bridge: SpecflowBridge, root: string) {
   const bus = new EventBus();
+  const authTerminals = new AuthTerminalSessionStore({
+    checkAuth: (agentServerId) => bridge.inspectAgentAuthentication(root, agentServerId),
+  });
   const restoreStreams = new Map<string, RestoreStreamState>();
   const restoreControllers = new Map<string, AbortController>();
   const activeConversations = new Map<string, ActiveConversation>();
@@ -527,6 +491,47 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
           const restoreEvent = event as RestoreStreamEvent;
           enqueue(restoreEvent);
           if (closesRestoreStream(restoreEvent)) {
+            setTimeout(() => {
+              try { controller.close(); } catch { /* already closed */ }
+            }, 200);
+          }
+        });
+      },
+      cancel() {
+        cleanup();
+      },
+    });
+
+    return new Response(stream, {
+      headers: {
+        "content-type": "text/event-stream; charset=utf-8",
+        "cache-control": "no-cache",
+        "x-accel-buffering": "no",
+      },
+    });
+  }
+
+  function authTerminalSseResponse(sessionId: string): Response {
+    const record = authTerminals.get(sessionId);
+    if (!record) {
+      return Response.json({ error: "Auth terminal session not found" }, { status: 404 });
+    }
+    const encoder = new TextEncoder();
+    let cleanup = () => {};
+    const stream = new ReadableStream({
+      start(controller) {
+        const enqueue = (event: { type: string }) => {
+          controller.enqueue(encoder.encode(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`));
+        };
+
+        for (const event of record.events) enqueue(event);
+        if (record.status !== "running") {
+          controller.close();
+          return;
+        }
+        cleanup = authTerminals.subscribe(sessionId, (event) => {
+          enqueue(event);
+          if (event.type === "status" && event.status !== "running") {
             setTimeout(() => {
               try { controller.close(); } catch { /* already closed */ }
             }, 200);
@@ -841,10 +846,6 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
     const executor = new WorkflowExecutor({
       cwd: root,
       terminalEvents: bridge.terminalEvents,
-      agentServerSettingsResolver: async (agentServerId) => {
-        const entries = await bridge.listAgentServers(root);
-        return entries.find((entry) => entry.id === agentServerId)?.settings;
-      },
       onNodeStatus,
       onRunStatus,
       onAgentLifecycle: (event) => {
@@ -1093,11 +1094,7 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
         });
       },
       onPermissionRequest: mode === "continue"
-        ? async (request) => {
-            const entries = await bridge.listAgentServers(root);
-            const policy = entries.find((entry) => entry.id === session.agentServerId)?.settings.permissionPolicy;
-            return bridge.interactions.requestPermission(interactionContext, request, policy);
-          }
+        ? (request) => bridge.interactions.requestPermission(interactionContext, request)
         : undefined,
       onElicitationRequest: mode === "continue"
         ? (request) => bridge.interactions.requestElicitation(interactionContext, request)
@@ -1201,11 +1198,6 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
     // GET /api/agent-servers
     if (request.method === "GET" && pathname === "/api/agent-servers") {
       const entries = await listAgentServerEntries(bridge, root);
-      try {
-        await ensureRegistryAgentServersInstalled(bridge, root, entries);
-      } catch (error) {
-        return Response.json({ error: errorMessage(error) }, { status: 409 });
-      }
       return Response.json(redactAgentServerEntries(entries));
     }
 
@@ -1229,29 +1221,65 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
     if (agentServerAuthMethodMatch && request.method === "POST") {
       const id = decodeURIComponent(agentServerAuthMethodMatch[1]);
       const methodId = decodeURIComponent(agentServerAuthMethodMatch[2]);
-      let body: { env?: Record<string, unknown> } = {};
       try {
-        body = await request.json();
-      } catch {
-        return Response.json({ error: "Invalid JSON" }, { status: 400 });
-      }
-
-      const env = recordOfStrings(body.env);
-      if (env && Object.keys(env).length > 0) {
-        const current = (await bridge.listAgentServers(root)).find((entry) => entry.id === id);
-        if (!current) {
-          return Response.json({ error: "Agent server not found" }, { status: 404 });
+        const terminalTask = await bridge.resolveAgentTerminalAuthTask(root, id, methodId);
+        if (terminalTask) {
+          const terminalSessionId = authTerminals.start(terminalTask);
+          return Response.json({ status: "terminal_started", terminalSessionId });
         }
-        await upsertLocalAgentServer(root, id, {
-          ...current.settings,
-          env: { ...(current.settings.env ?? {}), ...env },
-        } as AgentServerSettings);
-      }
-
-      try {
         return Response.json(await bridge.authenticateAgentServer(root, id, methodId));
       } catch (error) {
         return Response.json({ error: errorMessage(error) }, { status: 409 });
+      }
+    }
+
+    // GET /api/agent-auth-terminals/:sessionId/events
+    const authTerminalMatch = pathname.match(/^\/api\/agent-auth-terminals\/([^/]+)$/);
+    const authTerminalEventsMatch = pathname.match(/^\/api\/agent-auth-terminals\/([^/]+)\/events$/);
+    if (authTerminalEventsMatch && request.method === "GET") {
+      return authTerminalSseResponse(decodeURIComponent(authTerminalEventsMatch[1]));
+    }
+
+    if (authTerminalMatch && request.method === "GET") {
+      const record = authTerminals.get(decodeURIComponent(authTerminalMatch[1]));
+      if (!record) return Response.json({ error: "Auth terminal session not found" }, { status: 404 });
+      return Response.json({
+        sessionId: record.id,
+        agentServerId: record.task.agentServerId,
+        methodId: record.task.methodId,
+        label: record.task.label,
+        status: record.status,
+      });
+    }
+
+    // POST /api/agent-auth-terminals/:sessionId/(input|resize|cancel|check)
+    const authTerminalActionMatch = pathname.match(/^\/api\/agent-auth-terminals\/([^/]+)\/(input|resize|cancel|check)$/);
+    if (authTerminalActionMatch && request.method === "POST") {
+      const sessionId = decodeURIComponent(authTerminalActionMatch[1]);
+      const action = authTerminalActionMatch[2];
+      try {
+        if (action === "input") {
+          const body = await request.json().catch(() => ({})) as { data?: unknown };
+          if (typeof body.data !== "string") return Response.json({ error: "Missing input data" }, { status: 400 });
+          authTerminals.input(sessionId, body.data);
+          return Response.json({ ok: true });
+        }
+        if (action === "resize") {
+          const body = await request.json().catch(() => ({})) as { cols?: unknown; rows?: unknown };
+          if (typeof body.cols !== "number" || typeof body.rows !== "number") {
+            return Response.json({ error: "Missing terminal size" }, { status: 400 });
+          }
+          authTerminals.resize(sessionId, body.cols, body.rows);
+          return Response.json({ ok: true });
+        }
+        if (action === "cancel") {
+          await authTerminals.cancel(sessionId);
+          return Response.json({ ok: true });
+        }
+        const authStatus = await authTerminals.check(sessionId);
+        return Response.json({ ok: true, authStatus });
+      } catch (error) {
+        return Response.json({ error: errorMessage(error) }, { status: 404 });
       }
     }
 
@@ -1269,7 +1297,15 @@ export function createApiHandler(bridge: SpecflowBridge, root: string) {
         return Response.json({ error: "Invalid agent server settings" }, { status: 400 });
       }
       settings = await preserveRedactedEnvValues(root, decodeURIComponent(agentServerMatch[1]), settings);
-      await upsertLocalAgentServer(root, decodeURIComponent(agentServerMatch[1]), settings);
+      const id = decodeURIComponent(agentServerMatch[1]);
+      await upsertLocalAgentServer(root, id, settings);
+      if (settings.type === "registry") {
+        try {
+          await bridge.ensureAgentServerInstalled(root, id);
+        } catch (error) {
+          return Response.json({ error: errorMessage(error) }, { status: 409 });
+        }
+      }
       return Response.json(redactAgentServerEntries(await listAgentServerEntries(bridge, root)));
     }
 

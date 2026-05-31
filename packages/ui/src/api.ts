@@ -100,34 +100,25 @@ export type AgentServerSettings =
       type: 'registry';
       registryId: string;
       installedVersion?: string;
-      defaultMode?: string;
-      defaultModel?: string;
-      defaultConfigOptions?: Record<string, string | boolean>;
+      cwd?: string;
       env?: Record<string, string>;
       additionalDirectories?: string[];
-      terminal?: { enabled?: boolean; auth?: boolean };
     }
   | {
       type: 'custom';
       command: string;
       args?: string[];
-      defaultMode?: string;
-      defaultModel?: string;
-      defaultConfigOptions?: Record<string, string | boolean>;
+      cwd?: string;
       env?: Record<string, string>;
       additionalDirectories?: string[];
-      terminal?: { enabled?: boolean; auth?: boolean };
     }
   | {
       type: 'headless';
       command: string;
       argsTemplate: string[];
-      defaultMode?: string;
-      defaultModel?: string;
-      defaultConfigOptions?: Record<string, string | boolean>;
+      cwd?: string;
       env?: Record<string, string>;
       additionalDirectories?: string[];
-      terminal?: { enabled?: boolean; auth?: boolean };
     };
 
 export interface AgentServerEntry {
@@ -164,7 +155,6 @@ export type AgentAuthenticationMethod =
       id: string;
       name: string;
       description?: string;
-      terminalEnabled: boolean;
     };
 
 export interface AgentAuthenticationStatus {
@@ -172,6 +162,25 @@ export interface AgentAuthenticationStatus {
   needsAuth: boolean;
   methods: AgentAuthenticationMethod[];
 }
+
+export type AgentAuthenticationResponse =
+  | AgentAuthenticationStatus
+  | { status: 'terminal_started'; terminalSessionId: string };
+
+export type AuthTerminalStatus = 'running' | 'succeeded' | 'failed' | 'cancelled';
+
+export type AuthTerminalEvent =
+  | { type: 'output'; sessionId: string; data: string; at: string }
+  | {
+      type: 'status';
+      sessionId: string;
+      status: AuthTerminalStatus;
+      exitCode?: number;
+      signal?: string | null;
+      error?: string;
+      authStatus?: AgentAuthenticationStatus;
+      at: string;
+    };
 
 export class AgentAuthenticationRequiredError extends Error {
   readonly statuses: AgentAuthenticationStatus[];
@@ -277,8 +286,6 @@ export interface RunInteraction {
   acpSessionId?: string;
   toolCall?: unknown;
   options?: Array<{ optionId: string; name?: string; kind?: string }>;
-  timeoutAt?: string;
-  timeoutAction?: 'accept' | 'deny';
   request?: unknown;
   resolution?: unknown;
 }
@@ -515,15 +522,63 @@ export async function fetchSkills(): Promise<SkillSummary[]> {
 export async function authenticateAgentServer(
   id: string,
   methodId: string,
-  env: Record<string, string> = {},
-): Promise<AgentAuthenticationStatus> {
+): Promise<AgentAuthenticationResponse> {
   const res = await fetch(`/api/agent-servers/${encodeURIComponent(id)}/auth/${encodeURIComponent(methodId)}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ env }),
+    body: JSON.stringify({}),
   });
   if (!res.ok) throw new Error(await apiError(res, `Failed to authenticate ${id}`));
   return res.json();
+}
+
+export function subscribeToAuthTerminal(
+  sessionId: string,
+  onEvent: (event: AuthTerminalEvent) => void,
+  onError?: (error: Event) => void,
+): () => void {
+  const source = new EventSource(`/api/agent-auth-terminals/${encodeURIComponent(sessionId)}/events`);
+  const handle = (e: MessageEvent) => {
+    try {
+      const event = JSON.parse(e.data) as AuthTerminalEvent;
+      onEvent(event);
+      if (event.type === 'status' && event.status !== 'running') source.close();
+    } catch { /* ignore bad json */ }
+  };
+  source.addEventListener('output', handle);
+  source.addEventListener('status', handle);
+  if (onError) source.addEventListener('error', onError);
+  return () => source.close();
+}
+
+export async function sendAuthTerminalInput(sessionId: string, data: string): Promise<void> {
+  const res = await fetch(`/api/agent-auth-terminals/${encodeURIComponent(sessionId)}/input`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ data }),
+  });
+  if (!res.ok) throw new Error(await apiError(res, 'Failed to send terminal input'));
+}
+
+export async function resizeAuthTerminal(sessionId: string, cols: number, rows: number): Promise<void> {
+  const res = await fetch(`/api/agent-auth-terminals/${encodeURIComponent(sessionId)}/resize`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ cols, rows }),
+  });
+  if (!res.ok) throw new Error(await apiError(res, 'Failed to resize terminal'));
+}
+
+export async function cancelAuthTerminal(sessionId: string): Promise<void> {
+  const res = await fetch(`/api/agent-auth-terminals/${encodeURIComponent(sessionId)}/cancel`, { method: 'POST' });
+  if (!res.ok) throw new Error(await apiError(res, 'Failed to cancel terminal auth'));
+}
+
+export async function checkAuthTerminal(sessionId: string): Promise<AgentAuthenticationStatus> {
+  const res = await fetch(`/api/agent-auth-terminals/${encodeURIComponent(sessionId)}/check`, { method: 'POST' });
+  if (!res.ok) throw new Error(await apiError(res, 'Failed to check terminal auth'));
+  const body = await res.json() as { authStatus: AgentAuthenticationStatus };
+  return body.authStatus;
 }
 
 export async function fetchAgentSession(id: string): Promise<AgentSessionRecord> {

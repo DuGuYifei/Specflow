@@ -22,7 +22,7 @@ export async function startSpecflowServer(
   options: SpecflowServerOptions = {},
 ): Promise<RunningSpecflowServer> {
   const cwd = process.cwd();
-  await initWorkspace(cwd);
+  await initWorkspace(cwd, { createIfMissing: true });
 
   const host = options.host ?? DEFAULT_HOST;
   const preferredPort = options.port ?? SERVER_PORT;

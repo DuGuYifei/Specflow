@@ -4,6 +4,7 @@ import {
   fetchRegistryIndex,
   filterSupportedRegistryIndex,
   inspectAgentAuthentication,
+  resolveAgentTerminalAuthTask,
   restoreAgentSession,
   openAgentConversation,
   type AgentConversation,
@@ -13,6 +14,7 @@ import {
   type AgentServerEntry,
   type AgentServerSettings,
   type AgentTerminalEvent,
+  type TerminalAuthTask,
   type RegistryIndex,
 } from "@specflow/agent-proxy";
 import {
@@ -35,12 +37,12 @@ export type {
   AgentServerEntry,
   AgentServerSettings,
   AgentTerminalEvent,
+  TerminalAuthTask,
   RegistryAgent,
   RegistryIndex,
 } from "@specflow/agent-proxy";
 export {
   assertSupportedRegistryAgent,
-  choosePreferredAuthMethod,
   supportedRegistryAgentIds,
   supportedRegistryAgentProfile,
 } from "@specflow/agent-proxy";
@@ -59,8 +61,8 @@ export interface SpecflowBridge {
     root: string,
     agentServerId: string,
     methodId: string,
-    onTerminalEvent?: (event: AgentTerminalEvent) => void,
   ): Promise<AgentAuthenticationStatus>;
+  resolveAgentTerminalAuthTask(root: string, agentServerId: string, methodId: string): Promise<TerminalAuthTask | undefined>;
   ensureAgentServerInstalled(root: string, agentServerId: string): Promise<void>;
   listAgentServers(root: string): Promise<AgentServerEntry[]>;
   listAgentRegistry(root: string): Promise<RegistryIndex>;
@@ -97,6 +99,7 @@ export function createSpecflowBridge(options: CreateSpecflowBridgeOptions = {}):
     openAgentConversation,
     inspectAgentAuthentication,
     authenticateAgentServer,
+    resolveAgentTerminalAuthTask,
     ensureAgentServerInstalled,
     listAgentServers,
     listAgentRegistry,

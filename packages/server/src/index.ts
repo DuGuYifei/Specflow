@@ -12,7 +12,6 @@ export * from "./agent-server-runtime";
 export * from "./workspace";
 export * from "./skills";
 export {
-  choosePreferredAuthMethod,
   supportedRegistryAgentIds,
   supportedRegistryAgentProfile,
 } from "@specflow/bridge";

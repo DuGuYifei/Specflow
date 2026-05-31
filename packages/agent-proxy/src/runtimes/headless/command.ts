@@ -12,9 +12,9 @@ export async function runHeadlessAgent(
   const args = resolved.settings.argsTemplate.map((arg) => renderArg(arg, request.prompt));
   let output = "";
   let stderr = "";
-  const child = spawn(resolved.settings.command, args, {
-    cwd: request.cwd,
-    env: { ...process.env, ...(resolved.settings.env ?? {}) },
+  const child = spawn(resolved.command.command, args, {
+    cwd: resolved.command.cwd ?? request.cwd,
+    env: { ...process.env, ...(resolved.command.env ?? {}) },
     stdio: ["ignore", "pipe", "pipe"],
   });
 
